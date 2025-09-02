@@ -64,6 +64,24 @@ app.get('/health', (_req, res) => {
   res.json(healthResponse)
 })
 
+// MongoDB status endpoint
+app.get('/mongo-status', (_req, res) => {
+  const mongoose = require('mongoose')
+  const status = {
+    readyState: mongoose.connection.readyState,
+    host: mongoose.connection.host,
+    port: mongoose.connection.port,
+    name: mongoose.connection.name,
+    connected: mongoose.connection.readyState === 1
+  }
+  
+  res.json({
+    success: true,
+    data: status,
+    message: status.connected ? 'MongoDB connected' : 'MongoDB not connected'
+  })
+})
+
 // DB - Always connect to MongoDB
 connectMongo().catch((err) => {
   console.error('Mongo connection error:', err)
