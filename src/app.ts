@@ -1,0 +1,88 @@
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import morgan from 'morgan'
+import { json, urlencoded } from 'express'
+import { connectMongo } from './config/mongoose'
+import routes from './routes/index'
+import { ApiResponse, HealthResponse } from './types'
+import { 
+  apiRateLimiter, 
+  ServerCSRFProtection, 
+  securityHeaders, 
+  validateRequest, 
+  sanitizeInputs,
+  authenticate 
+} from './middleware'
+
+const app = express()
+
+// Trust proxy for rate limiting (when behind reverse proxy)
+app.set('trust proxy', 1)
+
+// Security middleware (must be first)
+app.use(securityHeaders())
+app.use(validateRequest())
+
+// Basic Express middleware
+app.use(helmet({ contentSecurityPolicy: false }))
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: false }))
+app.use(morgan('dev'))
+
+// Body parsing middleware
+app.use(json({ limit: '10mb' }))
+app.use(urlencoded({ extended: true }))
+
+// Input sanitization (after body parsing)
+app.use(sanitizeInputs())
+
+// Rate limiting (for all API routes)
+app.use('/api', apiRateLimiter.middleware())
+
+// CSRF protection (exclude specific paths)
+app.use(ServerCSRFProtection.middleware([
+  '/api/video/download',
+  '/api/video/status', 
+  '/api/webhook'
+]))
+
+// NOTE: Authentication middleware is applied per-route in route files
+
+// Health
+app.get('/health', (_req, res) => {
+  const healthResponse: ApiResponse = { 
+    success: true, 
+    message: 'Express backend is running successfully' 
+  }
+  res.json(healthResponse)
+})
+
+// DB
+connectMongo().catch((err) => {
+  console.error('Mongo connection error:', err)
+  process.exit(1)
+})
+
+// API routes under /api to mirror Next
+app.use('/api', routes)
+
+// 404
+app.use((_req, res) => {
+  const notFoundResponse: ApiResponse = { success: false, message: 'Not Found' }
+  res.status(404).json(notFoundResponse)
+})
+
+// Error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err)
+  const errorResponse: ApiResponse = { 
+    success: false, 
+    message: err.message || 'Internal server error' 
+  }
+  res.status(err.status || 500).json(errorResponse)
+})
+
+export default app
+
+
