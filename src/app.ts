@@ -5,14 +5,13 @@ import morgan from 'morgan'
 import { json, urlencoded } from 'express'
 import mongoose from 'mongoose'
 import routes from './routes/index'
-import { ApiResponse, HealthResponse } from './types'
+import { ApiResponse } from './types'
 import { 
   apiRateLimiter, 
   ServerCSRFProtection, 
   securityHeaders, 
   validateRequest, 
-  sanitizeInputs,
-  authenticate 
+  sanitizeInputs
 } from './middleware'
 
 const app = express()
@@ -27,7 +26,6 @@ app.use(validateRequest())
 // Basic Express middleware
 app.use(helmet({ contentSecurityPolicy: false }))
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: false }))
-// Only use morgan in development
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'))
 }
@@ -36,15 +34,15 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(json({ limit: '10mb' }))
 app.use(urlencoded({ extended: true }))
 
-// Input sanitization (after body parsing)
+// Input sanitization
 app.use(sanitizeInputs())
 
-// Rate limiting (for all API routes) - Disable in serverless
+// Rate limiting - Disable in serverless
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.use('/api', apiRateLimiter.middleware())
 }
 
-// CSRF protection (exclude specific paths) - Disable in serverless for now
+// CSRF protection - Disable in serverless
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.use(ServerCSRFProtection.middleware([
     '/api/video/download',
@@ -53,7 +51,32 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   ]))
 }
 
-// NOTE: Authentication middleware is applied per-route in route files
+// --------- MongoDB Connection (cached for Vercel) ----------
+let isConnected = false
+
+const connectDB = async () => {
+  if (isConnected && mongoose.connection.readyState === 1) {
+    return
+  }
+
+  try {
+    const mongoUri =
+     'mongodb+srv://hrehman:gGcCAnzoQszAmdn4@cluster0.ieng9e7.mongodb.net/edgeai-realty?retryWrites=true&w=majority&appName=Cluster0'
+
+    await mongoose.connect(mongoUri, {
+      bufferCommands: true,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    })
+
+    isConnected = mongoose.connection.readyState === 1
+    console.log('✅ MongoDB connected successfully!')
+  } catch (err: any) {
+    console.error('❌ MongoDB connection error:', err.message)
+  }
+}
+
+// ---------- Routes ----------
 
 // Health
 app.get('/health', (_req, res) => {
@@ -65,7 +88,9 @@ app.get('/health', (_req, res) => {
 })
 
 // MongoDB status endpoint
-app.get('/mongo-status', (_req, res) => {
+app.get('/mongo-status', async (_req, res) => {
+  await connectDB()
+
   const status = {
     readyState: mongoose.connection.readyState,
     host: mongoose.connection.host,
@@ -81,25 +106,11 @@ app.get('/mongo-status', (_req, res) => {
   })
 })
 
-// DB - Always connect to MongoDB
-const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://hrehman:gGcCAnzoQszAmdn4@cluster0.ieng9e7.mongodb.net/edgeai-realty?retryWrites=true&w=majority&appName=Cluster0'
-
-mongoose.connect(mongoUri, {
-  bufferCommands: true,
-  serverSelectionTimeoutMS: 10000,
-  socketTimeoutMS: 45000,
-}).then(() => {
-  console.log('✅ MongoDB connected successfully!')
-}).catch((err) => {
-  console.error('❌ MongoDB connection error:', err)
-  // Don't exit in production/serverless - just log the error
-  if (process.env.NODE_ENV === 'development') {
-    process.exit(1)
-  }
-})
-
-// API routes under /api to mirror Next
-app.use('/api', routes)
+// Always connect before /api routes
+app.use('/api', async (req, res, next) => {
+  await connectDB()
+  next()
+}, routes)
 
 // 404
 app.use((_req, res) => {
@@ -119,5 +130,3 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 })
 
 export default app
-
-
