@@ -3,7 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import { json, urlencoded } from 'express'
-import { connectMongo } from './config/mongoose'
+import mongoose from 'mongoose'
 import routes from './routes/index'
 import { ApiResponse, HealthResponse } from './types'
 import { 
@@ -66,7 +66,6 @@ app.get('/health', (_req, res) => {
 
 // MongoDB status endpoint
 app.get('/mongo-status', (_req, res) => {
-  const mongoose = require('mongoose')
   const status = {
     readyState: mongoose.connection.readyState,
     host: mongoose.connection.host,
@@ -83,8 +82,16 @@ app.get('/mongo-status', (_req, res) => {
 })
 
 // DB - Always connect to MongoDB
-connectMongo().catch((err) => {
-  console.error('Mongo connection error:', err)
+const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://hrehman:gGcCAnzoQszAmdn4@cluster0.ieng9e7.mongodb.net/edgeai-realty?retryWrites=true&w=majority&appName=Cluster0'
+
+mongoose.connect(mongoUri, {
+  bufferCommands: true,
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+}).then(() => {
+  console.log('✅ MongoDB connected successfully!')
+}).catch((err) => {
+  console.error('❌ MongoDB connection error:', err)
   // Don't exit in production/serverless - just log the error
   if (process.env.NODE_ENV === 'development') {
     process.exit(1)
