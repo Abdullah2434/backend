@@ -64,16 +64,14 @@ app.get('/health', (_req, res) => {
   res.json(healthResponse)
 })
 
-// DB - Only connect in non-serverless environments
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  connectMongo().catch((err) => {
-    console.error('Mongo connection error:', err)
-    // Don't exit in production/serverless - just log the error
-    if (process.env.NODE_ENV === 'development') {
-      process.exit(1)
-    }
-  })
-}
+// DB - Always connect to MongoDB
+connectMongo().catch((err) => {
+  console.error('Mongo connection error:', err)
+  // Don't exit in production/serverless - just log the error
+  if (process.env.NODE_ENV === 'development') {
+    process.exit(1)
+  }
+})
 
 // API routes under /api to mirror Next
 app.use('/api', routes)
