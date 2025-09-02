@@ -27,7 +27,10 @@ app.use(validateRequest())
 // Basic Express middleware
 app.use(helmet({ contentSecurityPolicy: false }))
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: false }))
-app.use(morgan('dev'))
+// Only use morgan in development
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'))
+}
 
 // Body parsing middleware
 app.use(json({ limit: '10mb' }))
@@ -36,15 +39,19 @@ app.use(urlencoded({ extended: true }))
 // Input sanitization (after body parsing)
 app.use(sanitizeInputs())
 
-// Rate limiting (for all API routes)
-app.use('/api', apiRateLimiter.middleware())
+// Rate limiting (for all API routes) - Disable in serverless
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.use('/api', apiRateLimiter.middleware())
+}
 
-// CSRF protection (exclude specific paths)
-app.use(ServerCSRFProtection.middleware([
-  '/api/video/download',
-  '/api/video/status', 
-  '/api/webhook'
-]))
+// CSRF protection (exclude specific paths) - Disable in serverless for now
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.use(ServerCSRFProtection.middleware([
+    '/api/video/download',
+    '/api/video/status', 
+    '/api/webhook'
+  ]))
+}
 
 // NOTE: Authentication middleware is applied per-route in route files
 
@@ -57,11 +64,16 @@ app.get('/health', (_req, res) => {
   res.json(healthResponse)
 })
 
-// DB
-connectMongo().catch((err) => {
-  console.error('Mongo connection error:', err)
-  process.exit(1)
-})
+// DB - Only connect in non-serverless environments
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  connectMongo().catch((err) => {
+    console.error('Mongo connection error:', err)
+    // Don't exit in production/serverless - just log the error
+    if (process.env.NODE_ENV === 'development') {
+      process.exit(1)
+    }
+  })
+}
 
 // API routes under /api to mirror Next
 app.use('/api', routes)
