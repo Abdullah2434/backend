@@ -223,3 +223,6 @@ Temporary Items
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Vercel
+.vercel

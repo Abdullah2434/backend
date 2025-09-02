@@ -1,10 +1,15 @@
 import 'dotenv/config'
 import app from './app'
 
-const PORT = process.env.PORT || 4000
+// For Vercel serverless deployment
+export default app
 
-app.listen(PORT, () => {
-  console.log(`✅ Express server running on port ${PORT}`)
-})
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 4000
+  app.listen(PORT, () => {
+    console.log(`✅ Express server running on port ${PORT}`)
+  })
+}
 
 
