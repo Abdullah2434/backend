@@ -8,7 +8,11 @@ export async function connectMongo() {
   const uri = process.env.MONGODB_URI
   if (!uri) throw new Error('MONGODB_URI is required')
   mongoose.set('strictQuery', true)
-  cached = await mongoose.connect(uri, { bufferCommands: false })
+  cached = await mongoose.connect(uri, { 
+    bufferCommands: true,
+    serverSelectionTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+  })
   return cached
 }
 
