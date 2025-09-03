@@ -1,30 +1,45 @@
-import crypto from 'crypto'
-import Video, { IVideo } from '../models/Video'
-import User from '../models/User'
-import { getS3 } from './s3'
-import { 
-  CreateVideoData, 
-  UpdateVideoData, 
-  VideoMetadata, 
-  VideoStats, 
-  VideoDownloadResult 
-} from '../types'
+import crypto from "crypto";
+import Video, { IVideo } from "../models/Video";
+import User from "../models/User";
+import { getS3 } from "./s3";
+import { SubscriptionService } from "./subscription.service";
+import {
+  CreateVideoData,
+  UpdateVideoData,
+  VideoMetadata,
+  VideoStats,
+  VideoDownloadResult,
+} from "../types";
 
 export class VideoService {
-  private s3Service = getS3()
+  private s3Service = getS3();
+  private subscriptionService = new SubscriptionService();
 
   /**
    * Create a new video record
    */
   async createVideo(videoData: CreateVideoData): Promise<IVideo> {
     // Find user by email to get userId
-    const user = await User.findOne({ email: videoData.email })
+    const user = await User.findOne({ email: videoData.email });
     if (!user) {
-      throw new Error('User not found')
+      throw new Error("User not found");
     }
 
-    const videoId = `video_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`
-    const secretKey = videoData.secretKey || crypto.randomBytes(32).toString('hex')
+    // Check subscription limits
+    const videoLimit = await this.subscriptionService.canCreateVideo(
+      user._id.toString()
+    );
+    if (!videoLimit.canCreate) {
+      throw new Error(
+        `Video limit reached. Your plan allows ${videoLimit.limit} videos per month. Please upgrade your subscription to create more videos.`
+      );
+    }
+
+    const videoId = `video_${Date.now()}_${crypto
+      .randomBytes(8)
+      .toString("hex")}`;
+    const secretKey =
+      videoData.secretKey || crypto.randomBytes(32).toString("hex");
 
     const video = new Video({
       videoId,
@@ -33,23 +48,27 @@ export class VideoService {
       title: videoData.title,
       secretKey,
       s3Key: videoData.s3Key,
-      status: videoData.status || 'processing',
-      metadata: videoData.metadata
-    })
+      status: videoData.status || "processing",
+      metadata: videoData.metadata,
+    });
 
-    await video.save()
-    return video
+    await video.save();
+
+    // Increment video count for subscription
+    await this.subscriptionService.incrementVideoCount(user._id.toString());
+
+    return video;
   }
 
-    /**
+  /**
    * Get all videos for a user by email
    */
   async getUserVideos(email: string): Promise<IVideo[]> {
     const videos = await Video.find({ email })
-      .select('+secretKey') // Include secret key for S3 operations
-      .sort({ createdAt: -1 }) // Newest first
-     
-    return videos
+      .select("+secretKey") // Include secret key for S3 operations
+      .sort({ createdAt: -1 }); // Newest first
+
+    return videos;
   }
 
   /**
@@ -57,103 +76,110 @@ export class VideoService {
    */
   async getUserVideosByUserId(userId: string): Promise<IVideo[]> {
     const videos = await Video.find({ userId })
-      .select('+secretKey') // Include secret key for S3 operations
-      .sort({ createdAt: -1 }) // Newest first
-     
-    return videos
+      .select("+secretKey") // Include secret key for S3 operations
+      .sort({ createdAt: -1 }); // Newest first
+
+    return videos;
   }
 
   /**
    * Get a specific video by videoId
    */
   async getVideo(videoId: string): Promise<IVideo | null> {
-    const video = await Video.findOne({ videoId })
-      .select('+secretKey') // Include secret key for S3 operations
-    
-    return video
+    const video = await Video.findOne({ videoId }).select("+secretKey"); // Include secret key for S3 operations
+
+    return video;
   }
 
   /**
    * Get a video by S3 key
    */
   async getVideoByS3Key(s3Key: string): Promise<IVideo | null> {
-    const video = await Video.findOne({ s3Key })
-      .select('+secretKey') // Include secret key for S3 operations
-    
-    return video
+    const video = await Video.findOne({ s3Key }).select("+secretKey"); // Include secret key for S3 operations
+
+    return video;
   }
 
   /**
    * Update video status
    */
-  async updateVideoStatus(videoId: string, status: 'processing' | 'ready' | 'failed'): Promise<IVideo | null> {
+  async updateVideoStatus(
+    videoId: string,
+    status: "processing" | "ready" | "failed"
+  ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
       { videoId },
       { status },
       { new: true }
-    ).select('+secretKey')
-    
-    return video
+    ).select("+secretKey");
+
+    return video;
   }
 
   /**
    * Update video metadata
    */
-  async updateVideoMetadata(videoId: string, metadata: Partial<VideoMetadata>): Promise<IVideo | null> {
+  async updateVideoMetadata(
+    videoId: string,
+    metadata: Partial<VideoMetadata>
+  ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
       { videoId },
       { metadata },
       { new: true }
-    ).select('+secretKey')
-    
-    return video
+    ).select("+secretKey");
+
+    return video;
   }
 
   /**
    * Update video title
    */
-  async updateVideoTitle(videoId: string, title: string): Promise<IVideo | null> {
+  async updateVideoTitle(
+    videoId: string,
+    title: string
+  ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
       { videoId },
       { title },
       { new: true }
-    ).select('+secretKey')
-    
-    return video
+    ).select("+secretKey");
+
+    return video;
   }
 
   /**
    * Delete a video (from database and S3)
    */
   async deleteVideo(videoId: string): Promise<boolean> {
-    const video = await Video.findOne({ videoId }).select('+secretKey')
-    
+    const video = await Video.findOne({ videoId }).select("+secretKey");
+
     if (!video) {
-      return false
+      return false;
     }
 
     // Delete from S3
     try {
-      await this.s3Service.deleteVideo(video.s3Key, video.secretKey)
+      await this.s3Service.deleteVideo(video.s3Key, video.secretKey);
     } catch (s3Error) {
-      console.error('Error deleting video from S3:', s3Error)
+      console.error("Error deleting video from S3:", s3Error);
       // Continue with database deletion even if S3 fails
     }
 
     // Delete from database
-    await Video.deleteOne({ videoId })
-    
-    return true
+    await Video.deleteOne({ videoId });
+
+    return true;
   }
 
   /**
    * Get video with download URL
    */
   async getVideoWithDownloadUrl(videoId: string): Promise<IVideo | null> {
-    const video = await Video.findOne({ videoId }).select('+secretKey')
-    
-    if (!video || video.status !== 'ready') {
-      return video
+    const video = await Video.findOne({ videoId }).select("+secretKey");
+
+    if (!video || video.status !== "ready") {
+      return video;
     }
 
     // Generate download URL for ready videos
@@ -162,16 +188,16 @@ export class VideoService {
         video.s3Key,
         video.secretKey,
         3600 // 1 hour
-      )
-      
+      );
+
       // Add download URL to video object (not saved to database)
-      ;(video as any).downloadUrl = downloadResult.downloadUrl
+      (video as any).downloadUrl = downloadResult.downloadUrl;
     } catch (s3Error) {
-      console.error('Error creating download URL:', s3Error)
+      console.error("Error creating download URL:", s3Error);
       // Continue without download URL
     }
 
-    return video
+    return video;
   }
 
   /**
@@ -179,117 +205,145 @@ export class VideoService {
    */
   async getUserVideosWithDownloadUrls(userId: string): Promise<IVideo[]> {
     const videos = await Video.find({ userId })
-      .select('+secretKey')
-      .sort({ createdAt: -1 })
+      .select("+secretKey")
+      .sort({ createdAt: -1 });
 
     // Add download URLs for ready videos
     const videosWithUrls = await Promise.all(
       videos.map(async (video) => {
-        if (video.status === 'ready') {
+        if (video.status === "ready") {
           try {
             const downloadResult = await this.s3Service.createDownloadUrl(
               video.s3Key,
               video.secretKey,
               3600 // 1 hour
-            )
-            ;(video as any).downloadUrl = downloadResult.downloadUrl
+            );
+            (video as any).downloadUrl = downloadResult.downloadUrl;
           } catch (s3Error) {
-            console.error(`Error creating download URL for video ${video.videoId}:`, s3Error)
+            console.error(
+              `Error creating download URL for video ${video.videoId}:`,
+              s3Error
+            );
             // Continue without download URL
           }
         }
-        return video
+        return video;
       })
-    )
+    );
 
-    return videosWithUrls
+    return videosWithUrls;
   }
 
   /**
    * Get video by title for a specific user (by email)
    */
   async getVideoByTitle(email: string, title: string): Promise<IVideo | null> {
-    const user = await User.findOne({ email })
+    const user = await User.findOne({ email });
     if (!user) {
-      return null
+      return null;
     }
 
-    return await Video.findOne({ userId: user._id, title })
+    return await Video.findOne({ userId: user._id, title });
   }
 
   /**
    * Get video statistics for a user
    */
   async getUserVideoStats(userId: string): Promise<VideoStats> {
-    const [totalCount, readyCount, processingCount, failedCount] = await Promise.all([
-      Video.countDocuments({ userId }),
-      Video.countDocuments({ userId, status: 'ready' }),
-      Video.countDocuments({ userId, status: 'processing' }),
-      Video.countDocuments({ userId, status: 'failed' })
-    ])
+    const [totalCount, readyCount, processingCount, failedCount] =
+      await Promise.all([
+        Video.countDocuments({ userId }),
+        Video.countDocuments({ userId, status: "ready" }),
+        Video.countDocuments({ userId, status: "processing" }),
+        Video.countDocuments({ userId, status: "failed" }),
+      ]);
 
     return {
       totalCount,
       readyCount,
       processingCount,
-      failedCount
-    }
+      failedCount,
+    };
   }
 
   /**
    * Download video from external URL and upload to S3
    */
-  async downloadAndUploadVideo(videoUrl: string, email: string, title: string): Promise<VideoDownloadResult> {
-    const user = await User.findOne({ email })
+  async downloadAndUploadVideo(
+    videoUrl: string,
+    email: string,
+    title: string
+  ): Promise<VideoDownloadResult> {
+    const user = await User.findOne({ email });
     if (!user) {
-      throw new Error('User not found')
+      throw new Error("User not found");
     }
 
     // Generate unique video ID
-    const videoId = `video_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`
+    const videoId = `video_${Date.now()}_${crypto
+      .randomBytes(8)
+      .toString("hex")}`;
 
     // Generate title from URL or use provided title
-    const urlParts = videoUrl.split('/')
-    const filename = urlParts[urlParts.length - 1] || `${videoId}.mp4`
-    let baseTitle = title || filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ') || 'My Video'
-    
+    const urlParts = videoUrl.split("/");
+    const filename = urlParts[urlParts.length - 1] || `${videoId}.mp4`;
+    let baseTitle =
+      title ||
+      filename.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ") ||
+      "My Video";
+
     // Clean the title (remove special characters, trim whitespace)
-    baseTitle = baseTitle.trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, ' ')
-    
+    baseTitle = baseTitle
+      .trim()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, " ");
+
     // Check for existing videos with same title and generate unique title
-    let finalTitle = baseTitle
-    let counter = 1
-    
+    let finalTitle = baseTitle;
+    let counter = 1;
+
     while (await this.getVideoByTitle(email, finalTitle)) {
-      finalTitle = `${baseTitle}-${counter}`
-      counter++
+      finalTitle = `${baseTitle}-${counter}`;
+      counter++;
     }
 
     // Download video from external URL
-    console.log('Downloading video from:', videoUrl)
+    console.log("Downloading video from:", videoUrl);
     const videoResponse = await fetch(videoUrl, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    })
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
 
     if (!videoResponse.ok) {
-      throw new Error(`Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`)
+      throw new Error(
+        `Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`
+      );
     }
 
     // Get video content and content type
-    const videoBuffer = await videoResponse.arrayBuffer()
-    const contentType = videoResponse.headers.get('content-type') || 'video/mp4'
+    const videoBuffer = await videoResponse.arrayBuffer();
+    const contentType =
+      videoResponse.headers.get("content-type") || "video/mp4";
 
-    console.log('Video downloaded successfully, size:', videoBuffer.byteLength, 'bytes')
+    console.log(
+      "Video downloaded successfully, size:",
+      videoBuffer.byteLength,
+      "bytes"
+    );
 
     // Create S3 key and secret key
-    const s3Key = this.s3Service.generateS3Key(user._id.toString(), videoId, filename)
-    const secretKey = crypto.randomBytes(32).toString('hex')
+    const s3Key = this.s3Service.generateS3Key(
+      user._id.toString(),
+      videoId,
+      filename
+    );
+    const secretKey = crypto.randomBytes(32).toString("hex");
 
     // Upload video to S3
-    console.log('Uploading video to S3...')
+    console.log("Uploading video to S3...");
     await this.s3Service.uploadVideoDirectly(
       s3Key,
       Buffer.from(videoBuffer),
@@ -299,9 +353,9 @@ export class VideoService {
         secretKey,
         uploadedAt: new Date().toISOString(),
       }
-    )
+    );
 
-    console.log('Video uploaded to S3 successfully')
+    console.log("Video uploaded to S3 successfully");
 
     // Create video record in database
     const video = await this.createVideo({
@@ -309,12 +363,12 @@ export class VideoService {
       title: finalTitle,
       s3Key,
       secretKey,
-      status: 'ready',
+      status: "ready",
       metadata: {
         size: videoBuffer.byteLength,
-        format: contentType
-      }
-    })
+        format: contentType,
+      },
+    });
 
     return {
       videoId: video.videoId,
@@ -322,9 +376,9 @@ export class VideoService {
       s3Key: video.s3Key,
       status: video.status,
       size: videoBuffer.byteLength,
-      createdAt: video.createdAt
-    }
+      createdAt: video.createdAt,
+    };
   }
 }
 
-export default VideoService
+export default VideoService;
