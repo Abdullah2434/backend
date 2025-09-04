@@ -649,6 +649,11 @@ export class SubscriptionService {
     newPlanId: string
   ): Promise<UserSubscription> {
     try {
+      // Ensure userId is a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        throw new Error("Invalid user ID format");
+      }
+
       // Get current subscription
       const currentSubscription = await this.getActiveSubscription(userId);
       if (!currentSubscription) {
@@ -688,22 +693,37 @@ export class SubscriptionService {
       // Update local subscription record
       const subscription = await Subscription.findOne({
         userId,
-        status: "active",
+        status: { $in: ["active", "pending"] }, // Include pending subscriptions
       });
-      if (subscription) {
-        subscription.planId = newPlanId;
-        subscription.videoLimit = newPlan.videoLimit;
-        subscription.currentPeriodStart = new Date(
-          updatedStripeSubscription.current_period_start * 1000
-        );
-        subscription.currentPeriodEnd = new Date(
-          updatedStripeSubscription.current_period_end * 1000
-        );
-
-        await subscription.save();
+      
+      if (!subscription) {
+        console.error(`Subscription not found for userId: ${userId}, status: active or pending`);
+        console.error(`Current subscription data:`, currentSubscription);
+        
+        // Debug: Check what subscriptions exist for this user
+        const allUserSubscriptions = await Subscription.find({ userId });
+        console.error(`All subscriptions for user ${userId}:`, allUserSubscriptions.map(sub => ({
+          id: sub._id,
+          status: sub.status,
+          planId: sub.planId,
+          stripeSubscriptionId: sub.stripeSubscriptionId
+        })));
+        
+        throw new Error("Subscription record not found in database");
       }
 
-      return this.formatSubscription(subscription!);
+      subscription.planId = newPlanId;
+      subscription.videoLimit = newPlan.videoLimit;
+      subscription.currentPeriodStart = new Date(
+        updatedStripeSubscription.current_period_start * 1000
+      );
+      subscription.currentPeriodEnd = new Date(
+        updatedStripeSubscription.current_period_end * 1000
+      );
+
+      await subscription.save();
+
+      return this.formatSubscription(subscription);
     } catch (error: any) {
       throw error;
     }
