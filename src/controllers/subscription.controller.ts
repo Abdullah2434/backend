@@ -394,3 +394,68 @@ export async function getPlanChangeOptions(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Get user's billing history (transaction history)
+ */
+export async function getBillingHistory(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+    const { limit = 20, offset = 0, status, startDate, endDate } = req.query;
+
+    // Parse query parameters
+    const options: any = {
+      limit: parseInt(limit as string) || 20,
+      offset: parseInt(offset as string) || 0,
+    };
+
+    if (status) options.status = status as string;
+    if (startDate) options.startDate = new Date(startDate as string);
+    if (endDate) options.endDate = new Date(endDate as string);
+
+    // Validate limit
+    if (options.limit > 100) {
+      options.limit = 100; // Max 100 records per request
+    }
+
+    const result = await subscriptionService.getBillingHistory(
+      payload.userId,
+      options
+    );
+
+    return res.json({
+      success: true,
+      message: "Billing history retrieved successfully",
+      data: result,
+    });
+  } catch (e: any) {
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res.status(status).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}
+
+/**
+ * Get user's billing summary
+ */
+export async function getBillingSummary(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+
+    const summary = await subscriptionService.getBillingSummary(payload.userId);
+
+    return res.json({
+      success: true,
+      message: "Billing summary retrieved successfully",
+      data: summary,
+    });
+  } catch (e: any) {
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res.status(status).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}

@@ -12,6 +12,8 @@ import {
   getPaymentIntentStatus,
   changePlan,
   getPlanChangeOptions,
+  getBillingHistory,
+  getBillingSummary,
 } from "../../controllers/subscription.controller";
 
 const router = Router();
@@ -33,5 +35,9 @@ router.get("/payment-intent/:id/status", getPaymentIntentStatus);
 // Plan changes (requires auth)
 router.post("/change-plan", changePlan);
 router.get("/plan-change-options", getPlanChangeOptions);
+
+// Billing history (requires auth)
+router.get("/billing-history", getBillingHistory);
+router.get("/billing-summary", getBillingSummary);
 
 export default router;

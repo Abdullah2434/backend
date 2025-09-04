@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import mongoose from "mongoose";
 import Subscription, { ISubscription } from "../models/Subscription";
 import Billing from "../models/Billing";
 import User from "../models/User";
@@ -606,6 +607,128 @@ export class SubscriptionService {
     } catch (error: any) {
       throw error;
     }
+  }
+
+  /**
+   * Get user's billing history (transaction history)
+   */
+  async getBillingHistory(
+    userId: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<{
+    transactions: any[];
+    total: number;
+    hasMore: boolean;
+  }> {
+    const { limit = 20, offset = 0, status, startDate, endDate } = options;
+
+    // Build query
+    const query: any = { userId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = startDate;
+      if (endDate) query.createdAt.$lte = endDate;
+    }
+
+    // Get total count
+    const total = await Billing.countDocuments(query);
+
+    // Get transactions with pagination
+    const transactions = await Billing.find(query)
+      .populate("subscriptionId", "planId stripeSubscriptionId")
+      .sort({ createdAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .lean();
+
+    // Format transactions for API response
+    const formattedTransactions = transactions.map((transaction: any) => ({
+      id: (transaction._id as mongoose.Types.ObjectId).toString(),
+      amount: transaction.amount,
+      currency: transaction.currency,
+      status: transaction.status,
+      description: transaction.description,
+      stripeInvoiceId: transaction.stripeInvoiceId,
+      stripePaymentIntentId: transaction.stripePaymentIntentId,
+      subscriptionId: transaction.subscriptionId?._id?.toString(),
+      planId: transaction.subscriptionId?.planId,
+      createdAt: transaction.createdAt,
+      updatedAt: transaction.updatedAt,
+      // Add formatted amount for display
+      formattedAmount: new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: transaction.currency.toUpperCase(),
+      }).format(transaction.amount / 100), // Stripe amounts are in cents
+    }));
+
+    return {
+      transactions: formattedTransactions,
+      total,
+      hasMore: offset + limit < total,
+    };
+  }
+
+  /**
+   * Get billing summary for user
+   */
+  async getBillingSummary(userId: string): Promise<{
+    totalTransactions: number;
+    totalAmount: number;
+    successfulPayments: number;
+    failedPayments: number;
+    lastPaymentDate: Date | null;
+    nextBillingDate: Date | null;
+  }> {
+    const [
+      totalTransactions,
+      successfulPayments,
+      failedPayments,
+      lastPayment,
+      subscription,
+    ] = await Promise.all([
+      Billing.countDocuments({ userId }),
+      Billing.countDocuments({ userId, status: "succeeded" }),
+      Billing.countDocuments({ userId, status: "failed" }),
+      Billing.findOne({ userId, status: "succeeded" })
+        .sort({ createdAt: -1 })
+        .select("createdAt amount"),
+      Subscription.findOne({ userId, status: "active" }).select(
+        "currentPeriodEnd"
+      ),
+    ]);
+
+    // Calculate total amount from successful payments
+    const totalAmountResult = await Billing.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          status: "succeeded",
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+
+    const totalAmount = totalAmountResult[0]?.total || 0;
+
+    return {
+      totalTransactions,
+      totalAmount,
+      successfulPayments,
+      failedPayments,
+      lastPaymentDate: lastPayment?.createdAt || null,
+      nextBillingDate: subscription?.currentPeriodEnd || null,
+    };
   }
 
   /**
