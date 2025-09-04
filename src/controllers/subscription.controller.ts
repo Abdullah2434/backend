@@ -214,7 +214,7 @@ export async function createPaymentIntent(req: Request, res: Response) {
       });
     }
 
-    // Get or create Stripe customer
+    // Get user information
     const user = await authService.getCurrentUser(
       req.headers.authorization?.replace("Bearer ", "") || ""
     );
@@ -226,7 +226,7 @@ export async function createPaymentIntent(req: Request, res: Response) {
       });
     }
 
-    // Create actual Stripe payment intent
+    // Create payment intent (service handles all validation and cleanup automatically)
     const result = await subscriptionService.createPaymentIntent({
       userId: payload.userId,
       planId,
