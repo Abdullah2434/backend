@@ -22,12 +22,19 @@ app.set("trust proxy", 1);
 // Allow all origins (CORS first!)
 app.use(
   cors({
-    origin: "*",
+    origin: "*", // or whitelist your frontends for production
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-CSRF-Token",   // <-- add this
+      "x-csrf-token"    // <-- lowercase too (some libs send lowercase)
+    ],
     credentials: false,
   })
 );
+
 
 // Security middleware (must be after CORS)
 app.use(securityHeaders());
