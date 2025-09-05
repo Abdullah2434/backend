@@ -401,14 +401,34 @@ export class SubscriptionService {
         stripeSubscriptionId
       );
 
-      // Update local subscription
-      await this.updateSubscriptionStatus(
-        stripeSubscriptionId,
-        stripeSubscription.status
+      console.log(
+        `Syncing subscription ${stripeSubscriptionId} from Stripe status: ${stripeSubscription.status}`
       );
 
+      // Get local subscription
+      const localSubscription = await Subscription.findOne({
+        stripeSubscriptionId,
+      });
+
+      if (!localSubscription) {
+        throw new Error(`Local subscription not found for ${stripeSubscriptionId}`);
+      }
+
+      // Update local subscription with all current data from Stripe
+      const oldStatus = localSubscription.status;
+      localSubscription.status = stripeSubscription.status as any;
+      localSubscription.currentPeriodStart = new Date(
+        stripeSubscription.current_period_start * 1000
+      );
+      localSubscription.currentPeriodEnd = new Date(
+        stripeSubscription.current_period_end * 1000
+      );
+      localSubscription.cancelAtPeriodEnd = stripeSubscription.cancel_at_period_end;
+
+      await localSubscription.save();
+
       console.log(
-        `Synced subscription ${stripeSubscriptionId} status: ${stripeSubscription.status}`
+        `Successfully synced subscription ${stripeSubscriptionId} status from ${oldStatus} to ${localSubscription.status}`
       );
     } catch (error) {
       console.error(
@@ -685,6 +705,13 @@ export class SubscriptionService {
       throw new Error("No subscription ID found in payment intent metadata");
     }
 
+    // Get the latest subscription data from Stripe to ensure we have current status
+    const stripeSubscription = await this.stripe.subscriptions.retrieve(
+      subscriptionId
+    );
+
+    console.log(`Stripe subscription status: ${stripeSubscription.status}`);
+
     // Get the subscription from database
     const subscription = await Subscription.findOne({
       stripeSubscriptionId: subscriptionId,
@@ -693,11 +720,33 @@ export class SubscriptionService {
       throw new Error("Subscription not found");
     }
 
-    // Update subscription status if needed
-    if (subscription.status !== "active") {
-      subscription.status = "active";
-      await subscription.save();
+    // Update subscription status based on Stripe's current status
+    const oldStatus = subscription.status;
+    subscription.status = stripeSubscription.status as any;
+
+    // If subscription is now active, update period dates
+    if (stripeSubscription.status === "active") {
+      subscription.currentPeriodStart = new Date(
+        stripeSubscription.current_period_start * 1000
+      );
+      subscription.currentPeriodEnd = new Date(
+        stripeSubscription.current_period_end * 1000
+      );
+
+      console.log(
+        `Updated subscription ${subscriptionId} to active with period:`,
+        {
+          start: subscription.currentPeriodStart,
+          end: subscription.currentPeriodEnd,
+        }
+      );
     }
+
+    await subscription.save();
+
+    console.log(
+      `Subscription ${subscriptionId} status updated from ${oldStatus} to ${subscription.status}`
+    );
 
     return this.formatSubscription(subscription);
   }
