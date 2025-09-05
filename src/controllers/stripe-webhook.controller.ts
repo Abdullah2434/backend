@@ -205,25 +205,35 @@ async function handlePaymentIntentSucceeded(
     metadata: paymentIntent.metadata,
   });
 
-  // If this payment intent is associated with a subscription, activate it
+  // If this payment intent is associated with a subscription, sync the subscription status
   if (paymentIntent.metadata?.subscriptionId) {
     const subscriptionId = paymentIntent.metadata.subscriptionId;
     console.log(
-      "Payment intent associated with subscription, activating:",
+      "Payment intent associated with subscription, syncing status:",
       subscriptionId
     );
 
     try {
+      // Get the latest subscription data from Stripe
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: "2023-10-16",
+      });
+      
+      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+      console.log(`Stripe subscription status: ${stripeSubscription.status}`);
+
+      // Update subscription status based on Stripe's current status
       await subscriptionService.updateSubscriptionStatus(
         subscriptionId,
-        "active"
+        stripeSubscription.status
       );
+      
       console.log(
-        `Successfully activated subscription ${subscriptionId} from payment intent`
+        `Successfully synced subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
       );
     } catch (error) {
       console.error(
-        `Failed to activate subscription ${subscriptionId}:`,
+        `Failed to sync subscription ${subscriptionId}:`,
         error
       );
     }
