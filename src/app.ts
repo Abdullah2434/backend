@@ -19,18 +19,23 @@ const app = express();
 // Trust proxy for rate limiting (when behind reverse proxy)
 app.set("trust proxy", 1);
 
-// Security middleware (must be first)
+// Allow all origins (CORS first!)
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    credentials: false,
+  })
+);
+
+// Security middleware (must be after CORS)
 app.use(securityHeaders());
 app.use(validateRequest());
 
 // Basic Express middleware
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: false,
-  })
-);
+
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
