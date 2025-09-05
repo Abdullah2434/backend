@@ -14,6 +14,7 @@ import {
   getPlanChangeOptions,
   getBillingHistory,
   getBillingSummary,
+  syncSubscriptionFromStripe,
 } from "../../controllers/subscription.controller";
 
 const router = Router();
@@ -39,5 +40,8 @@ router.get("/plan-change-options", getPlanChangeOptions);
 // Billing history (requires auth)
 router.get("/billing-history", getBillingHistory);
 router.get("/billing-summary", getBillingSummary);
+
+// Sync subscription from Stripe (requires auth)
+router.post("/sync-from-stripe", syncSubscriptionFromStripe);
 
 export default router;

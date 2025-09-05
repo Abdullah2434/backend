@@ -459,3 +459,33 @@ export async function getBillingSummary(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Sync subscription status from Stripe (for webhook failures)
+ */
+export async function syncSubscriptionFromStripe(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+    const { stripeSubscriptionId } = req.body;
+
+    if (!stripeSubscriptionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe subscription ID is required",
+      });
+    }
+
+    await subscriptionService.syncSubscriptionFromStripe(stripeSubscriptionId);
+
+    return res.json({
+      success: true,
+      message: "Subscription status synced successfully from Stripe",
+    });
+  } catch (e: any) {
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res.status(status).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}

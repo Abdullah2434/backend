@@ -341,8 +341,81 @@ export class SubscriptionService {
   ): Promise<void> {
     const subscription = await Subscription.findOne({ stripeSubscriptionId });
     if (subscription) {
+      console.log(
+        `Updating subscription ${stripeSubscriptionId} status from ${subscription.status} to ${status}`
+      );
+
+      const oldStatus = subscription.status;
       subscription.status = status as any;
+
+      // If status is changing to active, update the period dates
+      if (status === "active" && oldStatus !== "active") {
+        try {
+          // Get the latest subscription data from Stripe to ensure we have current period info
+          const stripeSubscription = await this.stripe.subscriptions.retrieve(
+            stripeSubscriptionId
+          );
+
+          subscription.currentPeriodStart = new Date(
+            stripeSubscription.current_period_start * 1000
+          );
+          subscription.currentPeriodEnd = new Date(
+            stripeSubscription.current_period_end * 1000
+          );
+
+          console.log(
+            `Updated period dates for subscription ${stripeSubscriptionId}:`,
+            {
+              start: subscription.currentPeriodStart,
+              end: subscription.currentPeriodEnd,
+            }
+          );
+        } catch (error) {
+          console.error(
+            `Failed to fetch Stripe subscription data for ${stripeSubscriptionId}:`,
+            error
+          );
+        }
+      }
+
       await subscription.save();
+      console.log(
+        `Successfully updated subscription ${stripeSubscriptionId} status to ${status}`
+      );
+    } else {
+      console.error(
+        `Subscription not found for stripeSubscriptionId: ${stripeSubscriptionId}`
+      );
+    }
+  }
+
+  /**
+   * Sync subscription status from Stripe (manual sync for webhook failures)
+   */
+  async syncSubscriptionFromStripe(
+    stripeSubscriptionId: string
+  ): Promise<void> {
+    try {
+      // Get subscription from Stripe
+      const stripeSubscription = await this.stripe.subscriptions.retrieve(
+        stripeSubscriptionId
+      );
+
+      // Update local subscription
+      await this.updateSubscriptionStatus(
+        stripeSubscriptionId,
+        stripeSubscription.status
+      );
+
+      console.log(
+        `Synced subscription ${stripeSubscriptionId} status: ${stripeSubscription.status}`
+      );
+    } catch (error) {
+      console.error(
+        `Error syncing subscription ${stripeSubscriptionId}:`,
+        error
+      );
+      throw error;
     }
   }
 
@@ -695,20 +768,25 @@ export class SubscriptionService {
         userId,
         status: { $in: ["active", "pending"] }, // Include pending subscriptions
       });
-      
+
       if (!subscription) {
-        console.error(`Subscription not found for userId: ${userId}, status: active or pending`);
+        console.error(
+          `Subscription not found for userId: ${userId}, status: active or pending`
+        );
         console.error(`Current subscription data:`, currentSubscription);
-        
+
         // Debug: Check what subscriptions exist for this user
         const allUserSubscriptions = await Subscription.find({ userId });
-        console.error(`All subscriptions for user ${userId}:`, allUserSubscriptions.map(sub => ({
-          id: sub._id,
-          status: sub.status,
-          planId: sub.planId,
-          stripeSubscriptionId: sub.stripeSubscriptionId
-        })));
-        
+        console.error(
+          `All subscriptions for user ${userId}:`,
+          allUserSubscriptions.map((sub) => ({
+            id: sub._id,
+            status: sub.status,
+            planId: sub.planId,
+            stripeSubscriptionId: sub.stripeSubscriptionId,
+          }))
+        );
+
         throw new Error("Subscription record not found in database");
       }
 
