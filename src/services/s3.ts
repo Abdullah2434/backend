@@ -35,7 +35,11 @@ export class S3Service {
   async createDownloadUrl(s3Key: string, secretKey: string, expiresIn = 3600): Promise<VideoDownloadUrlResult> {
     const head = new HeadObjectCommand({ Bucket: this.bucketName, Key: s3Key })
     const info = await this.client.send(head)
-    if (info.Metadata?.secretKey !== secretKey) throw new Error('Invalid secret key for video access')
+    
+    // Allow access if S3 metadata is undefined (for existing videos without metadata)
+    if (info.Metadata?.secretKey && info.Metadata?.secretKey !== secretKey) {
+      throw new Error('Invalid secret key for video access')
+    }
     const cmd = new GetObjectCommand({ Bucket: this.bucketName, Key: s3Key })
     const downloadUrl = await getSignedUrl(this.client, cmd, { expiresIn })
     return { downloadUrl, expiresIn }
