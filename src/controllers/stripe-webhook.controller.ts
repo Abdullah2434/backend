@@ -43,6 +43,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   try {
+    console.log(`Processing webhook event: ${event.type}`);
+
     // Handle the event
     switch (event.type) {
       case "customer.subscription.created":
@@ -73,6 +75,12 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         break;
 
+      case "payment_intent.succeeded":
+        await handlePaymentIntentSucceeded(
+          event.data.object as Stripe.PaymentIntent
+        );
+        break;
+
       case "customer.subscription.trial_will_end":
         await handleTrialWillEnd(event.data.object as Stripe.Subscription);
         break;
@@ -96,12 +104,27 @@ export async function handleStripeWebhook(req: Request, res: Response) {
  */
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   console.log("Subscription created:", subscription.id);
+  console.log("Subscription details:", {
+    id: subscription.id,
+    status: subscription.status,
+    customer: subscription.customer,
+    current_period_start: subscription.current_period_start,
+    current_period_end: subscription.current_period_end,
+  });
 
   // Update subscription status in database
   await subscriptionService.updateSubscriptionStatus(
     subscription.id,
     subscription.status
   );
+
+  // If subscription is already active (immediate payment), ensure it's properly activated
+  if (subscription.status === "active") {
+    console.log(
+      `Subscription ${subscription.id} is already active, ensuring proper activation`
+    );
+    // The updateSubscriptionStatus above should handle this, but we log it for clarity
+  }
 }
 
 /**
@@ -140,6 +163,13 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
  */
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log("Invoice payment succeeded:", invoice.id);
+  console.log("Invoice details:", {
+    id: invoice.id,
+    subscription: invoice.subscription,
+    status: invoice.status,
+    amount_paid: invoice.amount_paid,
+    customer: invoice.customer,
+  });
 
   if (invoice.subscription) {
     // Update billing record status
@@ -147,6 +177,56 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
       { stripeInvoiceId: invoice.id },
       { status: "succeeded" }
     );
+
+    // Also update subscription status to active when payment succeeds
+    console.log(
+      "Updating subscription status to active for:",
+      invoice.subscription
+    );
+    await subscriptionService.updateSubscriptionStatus(
+      invoice.subscription as string,
+      "active"
+    );
+  }
+}
+
+/**
+ * Handle successful payment intent
+ */
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent
+) {
+  console.log("Payment intent succeeded:", paymentIntent.id);
+  console.log("Payment intent details:", {
+    id: paymentIntent.id,
+    amount: paymentIntent.amount,
+    status: paymentIntent.status,
+    customer: paymentIntent.customer,
+    metadata: paymentIntent.metadata,
+  });
+
+  // If this payment intent is associated with a subscription, activate it
+  if (paymentIntent.metadata?.subscriptionId) {
+    const subscriptionId = paymentIntent.metadata.subscriptionId;
+    console.log(
+      "Payment intent associated with subscription, activating:",
+      subscriptionId
+    );
+
+    try {
+      await subscriptionService.updateSubscriptionStatus(
+        subscriptionId,
+        "active"
+      );
+      console.log(
+        `Successfully activated subscription ${subscriptionId} from payment intent`
+      );
+    } catch (error) {
+      console.error(
+        `Failed to activate subscription ${subscriptionId}:`,
+        error
+      );
+    }
   }
 }
 
