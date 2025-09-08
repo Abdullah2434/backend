@@ -35,10 +35,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       apiVersion: "2023-10-16",
     });
 
-    // req.body should now be a string from our custom middleware
+    // req.body should now be a Buffer from the raw middleware
     console.log("🔍 Body type:", typeof req.body);
+    console.log("🔍 Body is Buffer:", Buffer.isBuffer(req.body));
     console.log("🔍 Body length:", req.body?.length || 0);
-    console.log("🔍 Body preview:", req.body?.substring(0, 100) + "...");
+    
+    if (Buffer.isBuffer(req.body)) {
+      console.log("🔍 Body preview:", req.body.toString().substring(0, 100) + "...");
+    }
     
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -56,7 +60,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     console.log("⚠️ TEMPORARY: Falling back to parsing without verification");
     try {
       // Parse the raw body as JSON
-      event = JSON.parse(req.body);
+      const bodyString = Buffer.isBuffer(req.body) ? req.body.toString() : req.body;
+      event = JSON.parse(bodyString);
       console.log("✅ Parsed webhook event without signature verification");
       console.log("📋 Event type:", event.type);
       console.log("📋 Event ID:", event.id);
