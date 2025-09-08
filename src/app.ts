@@ -47,9 +47,20 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
 
-// Body parsing middleware
-// For webhook routes, use raw body for signature verification
-app.use('/api/webhook', raw({ type: 'application/json' }));
+// Custom middleware for webhook routes to preserve raw body
+app.use('/api/webhook', (req, res, next) => {
+  let data = '';
+  req.setEncoding('utf8');
+  
+  req.on('data', (chunk) => {
+    data += chunk;
+  });
+  
+  req.on('end', () => {
+    req.body = data;
+    next();
+  });
+});
 
 // For all other routes, parse JSON
 app.use(json({ limit: "10mb" }));
