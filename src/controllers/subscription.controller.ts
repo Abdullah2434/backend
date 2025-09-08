@@ -489,3 +489,56 @@ export async function syncSubscriptionFromStripe(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Debug endpoint to check webhook processing
+ */
+export async function debugWebhook(req: Request, res: Response) {
+  try {
+    const { paymentIntentId, subscriptionId } = req.body;
+
+    if (!paymentIntentId && !subscriptionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Either paymentIntentId or subscriptionId is required",
+      });
+    }
+
+    const stripe = new (await import("stripe")).default(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: "2023-10-16",
+    });
+
+    let debugInfo: any = {};
+
+    if (paymentIntentId) {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      debugInfo.paymentIntent = {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        metadata: paymentIntent.metadata,
+        amount: paymentIntent.amount,
+      };
+    }
+
+    if (subscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      debugInfo.subscription = {
+        id: subscription.id,
+        status: subscription.status,
+        current_period_start: subscription.current_period_start,
+        current_period_end: subscription.current_period_end,
+      };
+    }
+
+    return res.json({
+      success: true,
+      message: "Debug information retrieved",
+      data: debugInfo,
+    });
+  } catch (e: any) {
+    return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}

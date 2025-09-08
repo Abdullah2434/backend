@@ -629,6 +629,20 @@ export class SubscriptionService {
                   invoice.payment_intent
                 )
               : invoice.payment_intent;
+          
+          // CRITICAL FIX: Add subscription ID to payment intent metadata
+          // This allows the webhook to find and update the subscription
+          await this.stripe.paymentIntents.update(paymentIntent.id, {
+            metadata: {
+              ...paymentIntent.metadata,
+              subscriptionId: subscription.id,
+              userId: userId,
+              planId: plan.id
+            }
+          });
+          
+          // Retrieve the updated payment intent
+          paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntent.id);
         } else {
           throw new Error("No payment intent found in subscription invoice");
         }

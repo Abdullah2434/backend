@@ -15,6 +15,7 @@ import {
   getBillingHistory,
   getBillingSummary,
   syncSubscriptionFromStripe,
+  debugWebhook,
 } from "../../controllers/subscription.controller";
 
 const router = Router();
@@ -43,5 +44,8 @@ router.get("/billing-summary", getBillingSummary);
 
 // Sync subscription from Stripe (requires auth)
 router.post("/sync-from-stripe", syncSubscriptionFromStripe);
+
+// Debug endpoint (requires auth)
+router.post("/debug-webhook", debugWebhook);
 
 export default router;

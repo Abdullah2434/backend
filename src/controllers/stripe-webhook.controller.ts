@@ -71,14 +71,14 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         );
         break;
 
-      case "invoice.payment_failed":
-        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
-        break;
-
       case "payment_intent.succeeded":
         await handlePaymentIntentSucceeded(
           event.data.object as Stripe.PaymentIntent
         );
+        break;
+
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         break;
 
       case "customer.subscription.trial_will_end":
@@ -196,7 +196,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 async function handlePaymentIntentSucceeded(
   paymentIntent: Stripe.PaymentIntent
 ) {
-  console.log("Payment intent succeeded:", paymentIntent.id);
+  console.log("🎉 Payment intent succeeded:", paymentIntent.id);
   console.log("Payment intent details:", {
     id: paymentIntent.id,
     amount: paymentIntent.amount,
@@ -209,7 +209,7 @@ async function handlePaymentIntentSucceeded(
   if (paymentIntent.metadata?.subscriptionId) {
     const subscriptionId = paymentIntent.metadata.subscriptionId;
     console.log(
-      "Payment intent associated with subscription, syncing status:",
+      "🔗 Payment intent associated with subscription, syncing status:",
       subscriptionId
     );
 
@@ -220,7 +220,7 @@ async function handlePaymentIntentSucceeded(
       });
       
       const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-      console.log(`Stripe subscription status: ${stripeSubscription.status}`);
+      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
 
       // Update subscription status based on Stripe's current status
       await subscriptionService.updateSubscriptionStatus(
@@ -229,14 +229,19 @@ async function handlePaymentIntentSucceeded(
       );
       
       console.log(
-        `Successfully synced subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
+        `✅ Successfully synced subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
       );
     } catch (error) {
       console.error(
-        `Failed to sync subscription ${subscriptionId}:`,
+        `❌ Failed to sync subscription ${subscriptionId}:`,
         error
       );
     }
+  } else {
+    console.log("⚠️ Payment intent has no subscriptionId in metadata:", {
+      paymentIntentId: paymentIntent.id,
+      metadata: paymentIntent.metadata
+    });
   }
 }
 
