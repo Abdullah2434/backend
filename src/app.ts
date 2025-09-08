@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { json, urlencoded } from "express";
+import { json, urlencoded, raw } from "express";
 import mongoose from "mongoose";
 import routes from "./routes/index";
 import { ApiResponse } from "./types";
@@ -48,6 +48,10 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Body parsing middleware
+// For webhook routes, use raw body for signature verification
+app.use('/api/webhook', raw({ type: 'application/json' }));
+
+// For all other routes, parse JSON
 app.use(json({ limit: "10mb" }));
 app.use(urlencoded({ extended: true }));
 

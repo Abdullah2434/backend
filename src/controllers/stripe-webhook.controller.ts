@@ -12,7 +12,7 @@ const subscriptionService = new SubscriptionService();
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
   // TEMPORARY: Hardcoded webhook secret for testing
-  const webhookSecret ="whsec_PuBVxim9Av9L9ortosiq6OmzwMKvUI5r";
+  const webhookSecret = "whsec_PuBVxim9Av9L9ortosiq6OmzwMKvUI5r";
 
   if (!webhookSecret) {
     console.error("STRIPE_WEBHOOK_SECRET is not set");
@@ -23,21 +23,22 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   console.log("🔐 Using webhook secret:", webhookSecret.substring(0, 10) + "...");
-  console.log("🔐 Full webhook secret:", webhookSecret);
-  console.log("🔐 Webhook secret length:", webhookSecret.length);
+  console.log("🔍 Webhook signature:", sig);
+  console.log("🔍 Request body type:", typeof req.body);
+  console.log("🔍 Request body length:", req.body?.length || 0);
 
   let event: Stripe.Event;
 
   try {
-    // Verify webhook signature
+    // Verify webhook signature with raw body
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
       apiVersion: "2023-10-16",
     });
 
-    console.log("🔍 Webhook signature:", sig);
-    console.log("🔍 Webhook secret length:", webhookSecret.length);
-    console.log("🔍 Request body length:", req.body?.length || 0);
-
+    // req.body should now be a Buffer from the raw middleware
+    console.log("🔍 Body is Buffer:", Buffer.isBuffer(req.body));
+    console.log("🔍 Body length:", req.body?.length || 0);
+    
     event = stripe.webhooks.constructEvent(
       req.body,
       sig as string,
@@ -45,15 +46,20 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     );
 
     console.log("✅ Webhook signature verified successfully");
+    console.log("📋 Event type:", event.type);
+    console.log("📋 Event ID:", event.id);
   } catch (err: any) {
     console.error("❌ Webhook signature verification failed:", err.message);
-    console.error("❌ Error details:", err);
     
-    // TEMPORARY: Skip signature verification for testing
-    console.log("⚠️ TEMPORARY: Skipping signature verification for testing");
+    // TEMPORARY: Fallback to parsing without verification for testing
+    console.log("⚠️ TEMPORARY: Falling back to parsing without verification");
     try {
-      event = JSON.parse(req.body);
+      // Parse the raw body as JSON
+      const bodyString = req.body.toString();
+      event = JSON.parse(bodyString);
       console.log("✅ Parsed webhook event without signature verification");
+      console.log("📋 Event type:", event.type);
+      console.log("📋 Event ID:", event.id);
     } catch (parseErr: any) {
       console.error("❌ Failed to parse webhook body:", parseErr.message);
       return res.status(400).json({
@@ -183,31 +189,49 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
  * Handle successful invoice payment
  */
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
-  console.log("Invoice payment succeeded:", invoice.id);
-  console.log("Invoice details:", {
+  console.log("🎉 Invoice payment succeeded:", invoice.id);
+  console.log("📊 Invoice details:", {
     id: invoice.id,
     subscription: invoice.subscription,
     status: invoice.status,
     amount_paid: invoice.amount_paid,
     customer: invoice.customer,
+    billing_reason: invoice.billing_reason,
   });
 
   if (invoice.subscription) {
-    // Update billing record status
-    await Billing.findOneAndUpdate(
-      { stripeInvoiceId: invoice.id },
-      { status: "succeeded" }
-    );
+    const subscriptionId = invoice.subscription as string;
+    console.log("🔗 Processing subscription:", subscriptionId);
 
-    // Also update subscription status to active when payment succeeds
-    console.log(
-      "Updating subscription status to active for:",
-      invoice.subscription
-    );
-    await subscriptionService.updateSubscriptionStatus(
-      invoice.subscription as string,
-      "active"
-    );
+    try {
+      // Update billing record status
+      const billingUpdate = await Billing.findOneAndUpdate(
+        { stripeInvoiceId: invoice.id },
+        { status: "succeeded" },
+        { new: true }
+      );
+      console.log("💰 Billing record updated:", billingUpdate ? "Success" : "Not found");
+
+      // Get the latest subscription data from Stripe to ensure we have the correct status
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: "2023-10-16",
+      });
+      
+      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+
+      // Update subscription status based on Stripe's current status
+      await subscriptionService.updateSubscriptionStatus(
+        subscriptionId,
+        stripeSubscription.status
+      );
+      
+      console.log(`✅ Successfully updated subscription ${subscriptionId} status to ${stripeSubscription.status}`);
+    } catch (error) {
+      console.error(`❌ Failed to process invoice payment for subscription ${subscriptionId}:`, error);
+    }
+  } else {
+    console.log("⚠️ Invoice has no associated subscription");
   }
 }
 
