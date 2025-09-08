@@ -11,7 +11,8 @@ const subscriptionService = new SubscriptionService();
  */
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  // TEMPORARY: Hardcoded webhook secret for testing
+  const webhookSecret ="whsec_PuBVxim9Av9L9ortosiq6OmzwMKvUI5r";
 
   if (!webhookSecret) {
     console.error("STRIPE_WEBHOOK_SECRET is not set");
@@ -21,6 +22,8 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     });
   }
 
+  console.log("🔐 Using webhook secret:", webhookSecret.substring(0, 10) + "...");
+
   let event: Stripe.Event;
 
   try {
@@ -29,13 +32,20 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       apiVersion: "2023-10-16",
     });
 
+    console.log("🔍 Webhook signature:", sig);
+    console.log("🔍 Webhook secret length:", webhookSecret.length);
+    console.log("🔍 Request body length:", req.body?.length || 0);
+
     event = stripe.webhooks.constructEvent(
       req.body,
       sig as string,
       webhookSecret
     );
+
+    console.log("✅ Webhook signature verified successfully");
   } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
+    console.error("❌ Webhook signature verification failed:", err.message);
+    console.error("❌ Error details:", err);
     return res.status(400).json({
       success: false,
       message: "Invalid webhook signature",
