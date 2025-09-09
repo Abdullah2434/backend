@@ -13,6 +13,10 @@ import {
   validateRequest,
   sanitizeInputs,
 } from "./middleware";
+import cron from 'node-cron';
+import { fetchAndStoreDefaultAvatars, fetchAndStoreDefaultVoices } from './cron/fetchDefaultAvatars';
+import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
+import './queues/photoAvatarWorker';
 
 const app = express();
 
@@ -161,6 +165,22 @@ app.use(
   },
   routes
 );
+
+// Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
+cron.schedule('55 14 * * 2', async () => {
+  console.log('Weekly avatar sync job started...');
+  await fetchAndStoreDefaultAvatars();
+  console.log('Weekly avatar sync job finished.');
+  console.log('Weekly voice sync job started...');
+  await fetchAndStoreDefaultVoices();
+  console.log('Weekly voice sync job finished.');
+});
+
+// Schedule avatar status check every 5 minutes
+cron.schedule('*/5 * * * *', async () => {
+  console.log('Checking pending avatars status...');
+  await checkPendingAvatarsAndUpdate();
+});
 
 // 404
 app.use((_req, res) => {

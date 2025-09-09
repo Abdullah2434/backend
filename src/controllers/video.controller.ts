@@ -2,9 +2,18 @@ import { Request, Response } from 'express'
 import AuthService from '../services/auth.service'
 import VideoService from '../services/video.service'
 import { VideoResponse, VideoStats, ApiResponse } from '../types'
+import DefaultAvatar from '../models/avatar';
+import DefaultVoice from '../models/voice';
+import mongoose from 'mongoose';
+import { photoAvatarQueue } from '../queues/photoAvatarQueue';
+import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 
 const authService = new AuthService()
 const videoService = new VideoService()
+const upload = multer({ dest: '/tmp' });
 
 function requireAuth(req: Request) {
   const token = (req.headers.authorization || '').replace('Bearer ', '')
@@ -208,5 +217,72 @@ export async function downloadProxy(req: Request, res: Response) {
     return res.status(200).send(Buffer.from(videoBuffer))
   } catch (e: any) {
     return res.status(500).json({ success: false, message: e.message || 'Internal server error' })
+  }
+}
+
+export async function getAvatars(req: Request, res: Response) {
+  try {
+    const user = await authService.getCurrentUser(req.headers.authorization?.replace('Bearer ', '') || '')
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired access token' })
+    }
+    const userObjectId = user._id;
+    // Fetch custom avatars for user
+    const customAvatars = await DefaultAvatar.find({ userId: userObjectId });
+    // Fetch default avatars (no userId)
+    const defaultAvatars = await DefaultAvatar.find({ userId: { $exists: false } , default: true });
+    return res.json({
+      success: true,
+      custom: customAvatars,
+      default: defaultAvatars,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
+  }
+}
+
+export async function getVoices(req: Request, res: Response) {
+  try {
+    const user = await authService.getCurrentUser(req.headers.authorization?.replace('Bearer ', '') || '')
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired access token' })
+    }
+    const userObjectId = user._id;
+    // Fetch custom voices for user
+    const customVoices = await DefaultVoice.find({ userId: userObjectId });
+    // Fetch default voices (no userId)
+    const defaultVoices = await DefaultVoice.find({ userId: { $exists: false } , default: true  });
+    return res.json({
+      success: true,
+      custom: customVoices,
+      default: defaultVoices,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
+  }
+}
+
+export const createPhotoAvatarUpload = upload.single('image');
+
+export async function createPhotoAvatar(req: Request & { file?: Express.Multer.File }, res: Response) {
+  try {
+    const { age_group, name, gender, userId, ethnicity } = req.body;
+    if (!req.file || !age_group || !name || !gender || !userId) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+    // Use uploaded file path
+    const tempImagePath = req.file.path;
+    // Add job to BullMQ queue
+    await photoAvatarQueue.add('create-photo-avatar', {
+      imagePath: tempImagePath,
+      age_group,
+      name,
+      gender,
+      userId,
+      ethnicity,
+    });
+    return res.json({ success: true, message: 'Photo avatar creation started. You will be notified when ready.' });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
   }
 }
