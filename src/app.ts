@@ -47,24 +47,18 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
 
-// Custom middleware for webhook routes to preserve raw body
-app.use('/api/webhook', (req, res, next) => {
-  if (req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
-      req.body = body;
-      next();
-    });
+// Stripe webhook requires raw body for signature verification
+// Apply raw body parser ONLY to webhook routes
+app.use('/api/webhook', raw({ type: 'application/json' }));
+
+// For all other routes, parse JSON (but skip webhook routes)
+app.use((req, res, next) => {
+  if (req.originalUrl && req.originalUrl.startsWith('/api/webhook')) {
+    next(); // Skip JSON parsing for webhooks
   } else {
-    next();
+    json({ limit: "10mb" })(req, res, next);
   }
 });
-
-// For all other routes, parse JSON
-app.use(json({ limit: "10mb" }));
 app.use(urlencoded({ extended: true }));
 
 // Input sanitization

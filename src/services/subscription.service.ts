@@ -141,6 +141,26 @@ export class SubscriptionService {
       description: `Subscription for ${plan.name}`,
     });
 
+    // CRITICAL FIX: Add subscription ID to payment intent metadata
+    // This ensures webhooks can link payment success back to subscription
+    if (subscription.latest_invoice) {
+      const invoice = subscription.latest_invoice as Stripe.Invoice;
+      if (invoice.payment_intent) {
+        const paymentIntentId = typeof invoice.payment_intent === "string" 
+          ? invoice.payment_intent 
+          : invoice.payment_intent.id;
+        
+        await this.stripe.paymentIntents.update(paymentIntentId, {
+          metadata: {
+            subscriptionId: subscription.id,
+            userId,
+            planId: plan.id,
+            planName: plan.name
+          }
+        });
+      }
+    }
+
     // Create subscription record in database
     const subscriptionRecord = new Subscription({
       userId,
@@ -529,6 +549,63 @@ export class SubscriptionService {
         Date.now() + 30 * 24 * 60 * 60 * 1000
       ); // 30 days
       await subscription.save();
+    }
+  }
+
+  /**
+   * FALLBACK METHOD: Sync subscription status by finding recent subscription for customer
+   * This handles cases where payment intent metadata doesn't include subscription ID
+   */
+  async syncRecentSubscriptionByCustomer(
+    stripeCustomerId: string,
+    paymentIntentId: string
+  ): Promise<void> {
+    console.log(`🔍 Searching for recent subscription for customer: ${stripeCustomerId}`);
+    
+    try {
+      // Find the most recent subscription for this customer that might need syncing
+      const localSubscription = await Subscription.findOne({
+        stripeCustomerId,
+        status: { $in: ["pending", "incomplete"] } // Only sync subscriptions that need activation
+      }).sort({ createdAt: -1 }); // Most recent first
+
+      if (!localSubscription) {
+        console.log(`📭 No pending subscriptions found for customer ${stripeCustomerId}`);
+        return;
+      }
+
+      console.log(`🎯 Found potential subscription to sync: ${localSubscription.stripeSubscriptionId}`);
+
+      // Get the latest subscription data from Stripe
+      const stripeSubscription = await this.stripe.subscriptions.retrieve(
+        localSubscription.stripeSubscriptionId
+      );
+
+      // Check if this subscription's latest invoice matches our payment intent
+      if (stripeSubscription.latest_invoice) {
+        const invoice = await this.stripe.invoices.retrieve(
+          stripeSubscription.latest_invoice as string
+        );
+        
+        if (invoice.payment_intent === paymentIntentId) {
+          console.log(`✅ Confirmed subscription ${stripeSubscription.id} matches payment intent ${paymentIntentId}`);
+          
+          // Update the subscription status
+          await this.updateSubscriptionStatus(
+            stripeSubscription.id,
+            stripeSubscription.status
+          );
+          
+          console.log(`🎉 Successfully synced subscription ${stripeSubscription.id} status to ${stripeSubscription.status}`);
+        } else {
+          console.log(`⚠️ Payment intent mismatch. Expected: ${paymentIntentId}, Found: ${invoice.payment_intent}`);
+        }
+      } else {
+        console.log(`⚠️ Subscription ${stripeSubscription.id} has no latest_invoice`);
+      }
+    } catch (error) {
+      console.error(`❌ Error in syncRecentSubscriptionByCustomer for customer ${stripeCustomerId}:`, error);
+      throw error;
     }
   }
 
