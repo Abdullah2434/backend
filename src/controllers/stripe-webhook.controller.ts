@@ -25,6 +25,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   console.log("🔐 Using webhook secret:", webhookSecret.substring(0, 10) + "...");
   console.log("🔍 Webhook signature:", sig);
   console.log("🔍 Request body type:", typeof req.body);
+  console.log("🔍 Request body is Buffer:", Buffer.isBuffer(req.body));
   console.log("🔍 Request body length:", req.body?.length || 0);
 
   let event: Stripe.Event;
@@ -35,13 +36,17 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       apiVersion: "2023-10-16",
     });
 
-    // req.body should now be a string from our custom middleware
+    // req.body is now a Buffer from express.raw() middleware
     console.log("🔍 Body type:", typeof req.body);
+    console.log("🔍 Body is Buffer:", Buffer.isBuffer(req.body));
     console.log("🔍 Body length:", req.body?.length || 0);
-    console.log("🔍 Body preview:", req.body?.substring(0, 100) + "...");
+    
+    // Convert Buffer to string for Stripe webhook verification
+    const bodyString = Buffer.isBuffer(req.body) ? req.body.toString() : req.body;
+    console.log("🔍 Body string preview:", bodyString?.substring(0, 100) + "...");
     
     event = stripe.webhooks.constructEvent(
-      req.body,
+      bodyString,
       sig as string,
       webhookSecret
     );
@@ -55,8 +60,9 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     // TEMPORARY: Fallback to parsing without verification for testing
     console.log("⚠️ TEMPORARY: Falling back to parsing without verification");
     try {
-      // Parse the raw body as JSON
-      event = JSON.parse(req.body);
+      // Parse the raw body as JSON (handle both Buffer and string)
+      const bodyString = Buffer.isBuffer(req.body) ? req.body.toString() : req.body;
+      event = JSON.parse(bodyString);
       console.log("✅ Parsed webhook event without signature verification");
       console.log("📋 Event type:", event.type);
       console.log("📋 Event ID:", event.id);
@@ -283,10 +289,27 @@ async function handlePaymentIntentSucceeded(
       );
     }
   } else {
-    console.log("⚠️ Payment intent has no subscriptionId in metadata:", {
+    // FALLBACK: Try to find subscription by customer ID and recent incomplete subscriptions
+    console.log("⚠️ Payment intent has no subscriptionId in metadata, trying fallback method");
+    console.log("🔍 Payment intent details:", {
       paymentIntentId: paymentIntent.id,
+      customer: paymentIntent.customer,
       metadata: paymentIntent.metadata
     });
+
+    if (paymentIntent.customer) {
+      try {
+        await subscriptionService.syncRecentSubscriptionByCustomer(
+          paymentIntent.customer as string,
+          paymentIntent.id
+        );
+        console.log("✅ Successfully synced subscription using customer fallback method");
+      } catch (error) {
+        console.error("❌ Fallback subscription sync failed:", error);
+      }
+    } else {
+      console.log("❌ No customer ID available for fallback sync");
+    }
   }
 }
 
