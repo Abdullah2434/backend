@@ -30,7 +30,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   console.log("🔍 Request body length:", req.body?.length || 0);
   console.log("🔍 Raw body content:", req.body);
 
-  let event: Stripe.Event;
+  let event: Stripe.Event | undefined;
 
   try {
     // Verify webhook signature with raw body
@@ -49,10 +49,23 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       // If it's already a string, use as-is
       bodyString = req.body;
       console.log("🔍 Body is already a string");
-    } else if (typeof req.body === 'object') {
-      // If it's an object, try to stringify it
-      bodyString = JSON.stringify(req.body);
-      console.log("🔍 Stringified object body");
+    } else if (typeof req.body === 'object' && req.body !== null) {
+      // Check if it's an object with numeric keys (array-like)
+      const keys = Object.keys(req.body);
+      const isArrayLike = keys.every(key => !isNaN(parseInt(key))) && keys.length > 0;
+      
+      if (isArrayLike) {
+        console.log("🔍 Detected array-like object, reconstructing from numeric keys");
+        // Reconstruct the original buffer/string from numeric keys
+        const values = keys.sort((a, b) => parseInt(a) - parseInt(b)).map(key => req.body[key]);
+        const buffer = Buffer.from(values);
+        bodyString = buffer.toString('utf8');
+        console.log("🔍 Reconstructed string from array-like object");
+      } else {
+        // Regular object, stringify it
+        bodyString = JSON.stringify(req.body);
+        console.log("🔍 Stringified regular object body");
+      }
     } else {
       // Fallback: convert to string
       bodyString = String(req.body);
@@ -79,32 +92,55 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     console.log("⚠️ TEMPORARY: Falling back to parsing without verification");
     try {
       // Parse the raw body as JSON with proper handling
-      if (typeof req.body === 'object' && req.body !== null && !Buffer.isBuffer(req.body)) {
-        // If it's already parsed as object, use it directly
-        event = req.body as Stripe.Event;
-        console.log("✅ Fallback: Using object body directly");
-        console.log("📋 Event type:", event.type);
-        console.log("📋 Event ID:", event.id);
-      } else {
-        // Need to parse from string
-        let bodyForParsing: string;
+      let bodyForParsing: string | undefined;
+      let eventFromObject: Stripe.Event | undefined;
+      
+      if (Buffer.isBuffer(req.body)) {
+        bodyForParsing = req.body.toString('utf8');
+        console.log("🔍 Fallback: Converted Buffer to string for parsing");
+      } else if (typeof req.body === 'string') {
+        bodyForParsing = req.body;
+        console.log("🔍 Fallback: Using string body for parsing");
+      } else if (typeof req.body === 'object' && req.body !== null) {
+        // Check if it's an object with numeric keys (array-like)
+        const keys = Object.keys(req.body);
+        const isArrayLike = keys.every(key => !isNaN(parseInt(key))) && keys.length > 0;
         
-        if (Buffer.isBuffer(req.body)) {
-          bodyForParsing = req.body.toString('utf8');
-          console.log("🔍 Fallback: Converted Buffer to string for parsing");
-        } else if (typeof req.body === 'string') {
-          bodyForParsing = req.body;
-          console.log("🔍 Fallback: Using string body for parsing");
+        if (isArrayLike) {
+          console.log("🔍 Fallback: Detected array-like object, reconstructing");
+          // Reconstruct the original buffer/string from numeric keys
+          const values = keys.sort((a, b) => parseInt(a) - parseInt(b)).map(key => req.body[key]);
+          const buffer = Buffer.from(values);
+          bodyForParsing = buffer.toString('utf8');
+          console.log("🔍 Fallback: Reconstructed string from array-like object");
+        } else if (req.body.type && req.body.id) {
+          // If it looks like a Stripe event object already, use it directly
+          eventFromObject = req.body as Stripe.Event;
+          console.log("✅ Fallback: Using Stripe event object directly");
+          console.log("📋 Event type:", eventFromObject.type);
+          console.log("📋 Event ID:", eventFromObject.id);
+          // Skip the JSON.parse step
         } else {
-          bodyForParsing = String(req.body);
-          console.log("🔍 Fallback: String conversion for parsing");
+          // Regular object, stringify it
+          bodyForParsing = JSON.stringify(req.body);
+          console.log("🔍 Fallback: Stringified object for parsing");
         }
-        
-        console.log("🔍 Fallback body string preview:", bodyForParsing?.substring(0, 200) + "...");
-        event = JSON.parse(bodyForParsing);
+      } else {
+        bodyForParsing = String(req.body);
+        console.log("🔍 Fallback: String conversion for parsing");
+      }
+      
+      // Set the event based on parsing results
+      if (eventFromObject) {
+        event = eventFromObject;
+      } else if (bodyForParsing) {
+        console.log("🔍 Fallback body string preview:", bodyForParsing.substring(0, 200) + "...");
+        event = JSON.parse(bodyForParsing) as Stripe.Event;
         console.log("✅ Parsed webhook event without signature verification");
         console.log("📋 Event type:", event.type);
         console.log("📋 Event ID:", event.id);
+      } else {
+        throw new Error("Could not extract event from request body");
       }
     } catch (parseErr: any) {
       console.error("❌ Failed to parse webhook body:", parseErr.message);
@@ -114,6 +150,15 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         message: "Invalid webhook signature and failed to parse body",
       });
     }
+  }
+
+  // Ensure we have a valid event before processing
+  if (!event) {
+    console.error("❌ No valid event object found after parsing");
+    return res.status(400).json({
+      success: false,
+      message: "Failed to parse webhook event",
+    });
   }
 
   try {
@@ -323,6 +368,14 @@ async function handlePaymentIntentSucceeded(
       console.log(
         `✅ Successfully synced subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
       );
+      
+      // Additional verification: Check if the subscription was actually updated in the database
+      const updatedLocalSub = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
+      if (updatedLocalSub) {
+        console.log(`🔍 Database verification: Local subscription status is now: ${updatedLocalSub.status}`);
+      } else {
+        console.log(`⚠️ Database verification: Could not find local subscription with Stripe ID: ${subscriptionId}`);
+      }
     } catch (error) {
       console.error(
         `❌ Failed to sync subscription ${subscriptionId}:`,

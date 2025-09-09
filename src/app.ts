@@ -47,22 +47,37 @@ if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
 
-// Stripe webhook requires raw body for signature verification
-// Apply raw body parser ONLY to webhook routes
-app.use('/api/webhook', raw({ type: 'application/json' }));
+// Configure body parsing with webhook-specific handling
+// First, handle webhooks with raw body parsing
+app.use('/api/webhook/stripe', raw({ type: 'application/json' }));
 
-// For all other routes, parse JSON (but skip webhook routes)
+// Then handle all other routes with JSON parsing, explicitly excluding webhooks
 app.use((req, res, next) => {
-  if (req.originalUrl && req.originalUrl.startsWith('/api/webhook')) {
-    next(); // Skip JSON parsing for webhooks
+  // Skip all body parsing middleware for webhook routes
+  if (req.path && req.path.startsWith('/api/webhook')) {
+    next();
   } else {
     json({ limit: "10mb" })(req, res, next);
   }
 });
-app.use(urlencoded({ extended: true }));
 
-// Input sanitization
-app.use(sanitizeInputs());
+// URL encoding for form data (also skip webhooks)
+app.use((req, res, next) => {
+  if (req.path && req.path.startsWith('/api/webhook')) {
+    next();
+  } else {
+    urlencoded({ extended: true })(req, res, next);
+  }
+});
+
+// Input sanitization (skip webhooks to preserve raw data)
+app.use((req, res, next) => {
+  if (req.path && req.path.startsWith('/api/webhook')) {
+    next(); // Skip sanitization for webhooks
+  } else {
+    sanitizeInputs()(req, res, next);
+  }
+});
 
 // Rate limiting - Disable in serverless
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
