@@ -359,10 +359,20 @@ export class SubscriptionService {
     stripeSubscriptionId: string,
     status: string
   ): Promise<void> {
+    console.log(`🔍 Looking for subscription with Stripe ID: ${stripeSubscriptionId}`);
     const subscription = await Subscription.findOne({ stripeSubscriptionId });
+    
     if (subscription) {
+      console.log(`✅ Found subscription in database:`, {
+        id: subscription._id,
+        userId: subscription.userId,
+        currentStatus: subscription.status,
+        planId: subscription.planId,
+        stripeCustomerId: subscription.stripeCustomerId
+      });
+      
       console.log(
-        `Updating subscription ${stripeSubscriptionId} status from ${subscription.status} to ${status}`
+        `🔄 Updating subscription ${stripeSubscriptionId} status from ${subscription.status} to ${status}`
       );
 
       const oldStatus = subscription.status;
@@ -370,6 +380,7 @@ export class SubscriptionService {
 
       // If status is changing to active, update the period dates
       if (status === "active" && oldStatus !== "active") {
+        console.log(`🎉 Subscription is becoming active! Updating period dates...`);
         try {
           // Get the latest subscription data from Stripe to ensure we have current period info
           const stripeSubscription = await this.stripe.subscriptions.retrieve(
@@ -384,7 +395,7 @@ export class SubscriptionService {
           );
 
           console.log(
-            `Updated period dates for subscription ${stripeSubscriptionId}:`,
+            `📅 Updated period dates for subscription ${stripeSubscriptionId}:`,
             {
               start: subscription.currentPeriodStart,
               end: subscription.currentPeriodEnd,
@@ -392,20 +403,32 @@ export class SubscriptionService {
           );
         } catch (error) {
           console.error(
-            `Failed to fetch Stripe subscription data for ${stripeSubscriptionId}:`,
+            `❌ Failed to fetch Stripe subscription data for ${stripeSubscriptionId}:`,
             error
           );
         }
+      } else {
+        console.log(`ℹ️ Status change from ${oldStatus} to ${status} - no period update needed`);
       }
 
+      console.log(`💾 Saving subscription to database...`);
       await subscription.save();
+      
+      // Verify the save was successful
+      const verifySubscription = await Subscription.findOne({ stripeSubscriptionId });
+      console.log(`✅ Database save verification: Status is now ${verifySubscription?.status}`);
+      
       console.log(
-        `Successfully updated subscription ${stripeSubscriptionId} status to ${status}`
+        `🎯 Successfully updated subscription ${stripeSubscriptionId} status to ${status}`
       );
     } else {
       console.error(
-        `Subscription not found for stripeSubscriptionId: ${stripeSubscriptionId}`
+        `❌ Subscription not found for stripeSubscriptionId: ${stripeSubscriptionId}`
       );
+      
+      // Additional debugging: List all subscriptions to see what's available
+      const allSubscriptions = await Subscription.find({}).select('stripeSubscriptionId status planId').limit(5);
+      console.log(`🔍 Available subscriptions in database:`, allSubscriptions);
     }
   }
 
@@ -550,6 +573,14 @@ export class SubscriptionService {
       ); // 30 days
       await subscription.save();
     }
+  }
+
+  /**
+   * Get subscription by Stripe subscription ID for verification
+   */
+  async getSubscriptionByStripeId(stripeSubscriptionId: string): Promise<UserSubscription | null> {
+    const subscription = await Subscription.findOne({ stripeSubscriptionId });
+    return subscription ? this.formatSubscription(subscription) : null;
   }
 
   /**
