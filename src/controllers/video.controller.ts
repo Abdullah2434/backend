@@ -280,6 +280,7 @@ export async function createPhotoAvatar(req: Request & { file?: Express.Multer.F
       gender,
       userId,
       ethnicity,
+      mimeType: req.file.mimetype, // Pass the correct MIME type
     });
     return res.json({ success: true, message: 'Photo avatar creation started. You will be notified when ready.' });
   } catch (e: any) {

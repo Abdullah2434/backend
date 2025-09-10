@@ -19,61 +19,82 @@ const redisConnection = {
 };
 
 export const worker = new Worker('photo-avatar', async job => {
-  const { imagePath, age_group, name, gender, userId, ethnicity } = job.data;
+  const { imagePath, age_group, name, gender, userId, ethnicity, mimeType } = job.data;
   try {
     // 1. Upload image to HeyGen
     const imageBuffer = fs.readFileSync(imagePath);
     const uploadRes = await axios.post(UPLOAD_URL, imageBuffer, {
       headers: {
         'x-api-key': API_KEY,
-        'Content-Type': 'image/jpeg',
+        'Content-Type': mimeType || 'image/jpeg',
       },
     });
-    const image_key = uploadRes.data.data.image_key;
+    const image_key = uploadRes.data?.data?.image_key;
+    if (!image_key) {
+      console.error('HeyGen image upload failed, no image_key returned:', uploadRes.data);
+      throw new Error('HeyGen image upload failed, no image_key returned');
+    }
     // 2. Create avatar group
-    const groupRes = await axios.post(AVATAR_GROUP_URL, {
+    const groupPayload = {
       name,
       image_key,
-    }, {
-      headers: {
-        'accept': 'application/json',
-        'Content-Type': 'application/json',
-        'X-Api-Key': API_KEY,
-      }
-    });
-    const avatar_id = groupRes.data.data.id;
-    const group_id = groupRes.data.data.group_id;
-    const preview_image_url = groupRes.data.data.image_url;    
-    // Wait 20 seconds before training
-    await new Promise(r => setTimeout(r, 20000));
-    // 3. Train avatar group
-    const response = await axios.post(TRAIN_URL, {
-      group_id,
-    }, {
-      headers: {
-        'accept': 'application/json',
-        'Content-Type': 'application/json',
-        'X-Api-Key': API_KEY,
-      }
-    });
+    };
+    try {
+      const groupRes = await axios.post(AVATAR_GROUP_URL, groupPayload, {
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': API_KEY,
+        }
+      });
+      const avatar_id = groupRes.data.data.id;
+      const group_id = groupRes.data.data.group_id;
+      const preview_image_url = groupRes.data.data.image_url;    
+      // Wait 20 seconds before training
+      await new Promise(r => setTimeout(r, 20000));
+      // 3. Train avatar group
+      const response = await axios.post(TRAIN_URL, {
+        group_id,
+      }, {
+        headers: {
+          'accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': API_KEY,
+        }
+      });
 
-    console.log('Train response:', response.data);
-    // 4. Save custom avatar in DB
-    await DefaultAvatar.create({
-      avatar_id: avatar_id,
-      avatar_name: name,
-      gender,
-      preview_image_url,
-      preview_video_url: '',
-      default: false,
-      userId,
-      ethnicity,
-      status: 'pending',
-      age_group,
-    });
-    // Cleanup temp image
-    fs.unlinkSync(imagePath);
-    return true;
+      console.log('Train response:', response.data);
+      // 4. Save custom avatar in DB
+      await DefaultAvatar.create({
+        avatar_id: avatar_id,
+        avatar_name: name,
+        gender,
+        preview_image_url,
+        preview_video_url: '',
+        default: false,
+        userId,
+        ethnicity,
+        status: 'pending',
+        age_group,
+      });
+      // Cleanup temp image
+      fs.unlinkSync(imagePath);
+      return true;
+    } catch (groupErr) {
+      // Enhanced error logging for HeyGen API
+      if (typeof groupErr === 'object' && groupErr !== null && 'response' in groupErr) {
+        const errObj = groupErr as any;
+        console.error('HeyGen avatar group creation failed:', {
+          status: errObj.response?.status,
+          data: errObj.response?.data,
+          payload: groupPayload,
+        });
+      } else {
+        console.error('HeyGen avatar group creation error:', groupErr);
+      }
+      if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+      throw groupErr;
+    }
   } catch (error) {
     console.error('Photo avatar worker error:', error);
     // Cleanup temp image
