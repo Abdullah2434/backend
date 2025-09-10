@@ -23,8 +23,10 @@ const router = Router();
 // Get all available plans (public)
 router.get("/plans", getPlans);
 
-// Subscription management (requires auth)
+// Get current subscription (public - works with and without auth)
 router.get("/current", getCurrentSubscription);
+
+// Subscription management (requires auth)
 router.post("/create", createSubscription);
 router.post("/cancel", cancelSubscription);
 router.post("/reactivate", reactivateSubscription);

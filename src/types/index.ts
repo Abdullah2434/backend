@@ -94,6 +94,33 @@ export interface PaymentMethodData {
   isDefault: boolean;
 }
 
+// Enhanced Card Management Types
+export interface CardInfo {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+  isExpired: boolean;
+}
+
+export interface SetupIntentData {
+  setupIntent: {
+    id: string;
+    client_secret: string;
+    status: string;
+  };
+  customer: {
+    id: string;
+  };
+}
+
+export interface UpdatePaymentMethodRequest {
+  setupIntentId: string;
+  setAsDefault?: boolean;
+}
+
 export interface BillingData {
   userId: string;
   amount: number;

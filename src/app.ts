@@ -55,29 +55,29 @@ if (process.env.NODE_ENV !== "production") {
 // First, handle webhooks with raw body parsing
 app.use('/api/webhook/stripe', raw({ type: 'application/json' }));
 
-// Then handle all other routes with JSON parsing, explicitly excluding webhooks
+// Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
-  // Skip all body parsing middleware for webhook routes
-  if (req.path && req.path.startsWith('/api/webhook')) {
+  // Skip all body parsing middleware for webhook routes and file upload routes
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
     next();
   } else {
     json({ limit: "10mb" })(req, res, next);
   }
 });
 
-// URL encoding for form data (also skip webhooks)
+// URL encoding for form data (also skip webhooks and file uploads)
 app.use((req, res, next) => {
-  if (req.path && req.path.startsWith('/api/webhook')) {
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
     next();
   } else {
     urlencoded({ extended: true })(req, res, next);
   }
 });
 
-// Input sanitization (skip webhooks to preserve raw data)
+// Input sanitization (skip webhooks and file uploads to preserve raw data)
 app.use((req, res, next) => {
-  if (req.path && req.path.startsWith('/api/webhook')) {
-    next(); // Skip sanitization for webhooks
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
+    next(); // Skip sanitization for webhooks and file uploads
   } else {
     sanitizeInputs()(req, res, next);
   }
