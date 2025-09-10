@@ -36,10 +36,34 @@ export async function getPlans(req: Request, res: Response) {
 
 /**
  * Get user's current subscription
+ * This endpoint works both with and without authentication
  */
 export async function getCurrentSubscription(req: Request, res: Response) {
   try {
-    const payload = requireAuth(req);
+    // Try to get authentication, but don't require it
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    
+    if (!token) {
+      // No token provided - return no subscription (guest user)
+      return res.json({
+        success: true,
+        message: "No authentication provided - guest user",
+        data: { subscription: null },
+      });
+    }
+
+    // Verify token if provided
+    const payload = authService.verifyToken(token);
+    if (!payload) {
+      // Invalid token - return no subscription
+      return res.json({
+        success: true,
+        message: "Invalid token - guest user",
+        data: { subscription: null },
+      });
+    }
+
+    // Valid token - get user's subscription
     const subscription = await subscriptionService.getActiveSubscription(
       payload.userId
     );
@@ -58,10 +82,12 @@ export async function getCurrentSubscription(req: Request, res: Response) {
       data: { subscription },
     });
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
-    return res.status(status).json({
-      success: false,
-      message: e.message || "Internal server error",
+    // For any error, return as guest user instead of throwing 401
+    console.warn("Error in getCurrentSubscription:", e.message);
+    return res.json({
+      success: true,
+      message: "Error retrieving subscription - guest user",
+      data: { subscription: null },
     });
   }
 }
