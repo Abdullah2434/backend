@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import * as ctrl from '../../controllers/video.controller'
 import { authenticate } from '../../middleware'
 
@@ -15,6 +15,10 @@ router.post('/photo-avatar', authenticate(), ctrl.createPhotoAvatarUpload, ctrl.
 // PUBLIC ROUTES (no authentication required)
 router.post('/download', ctrl.download)
 router.post('/status', ctrl.updateStatus)
+
+// PUBLIC ROUTE: Video creation via webhook
+router.post('/create', ctrl.createVideo);
+router.post('/generate-video', ctrl.generateVideo);
 
 export default router
 
