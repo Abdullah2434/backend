@@ -2,6 +2,7 @@ import DefaultAvatar from '../models/avatar';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { connectMongo } from '../config/mongoose';
+import { notificationService } from '../services/notification.service';
 dotenv.config();
 
 const API_KEY = process.env.HEYGEN_API_KEY;
@@ -25,6 +26,15 @@ export async function checkPendingAvatarsAndUpdate() {
         avatar.status = 'ready';
         await avatar.save();
         console.log(`Avatar ${avatarId} is now ready.`);
+        
+        // Send notification to user that avatar is ready
+        if (avatar.userId) {
+          notificationService.notifyPhotoAvatarProgress(avatar.userId.toString(), 'ready', 'success', {
+            message: 'Your avatar training is complete and ready to use!',
+            avatarId: avatar.avatar_id,
+            previewImageUrl: avatar.preview_image_url
+          });
+        }
       }
     }
   } catch (error) {

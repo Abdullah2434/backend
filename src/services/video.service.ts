@@ -267,6 +267,13 @@ export class VideoService {
   }
 
   /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string) {
+    return await User.findOne({ email });
+  }
+
+  /**
    * Download video from external URL and upload to S3
    */
   async downloadAndUploadVideo(

@@ -4,6 +4,7 @@ import VideoService from '../services/video.service'
 import DefaultAvatar from '../models/avatar';
 import DefaultVoice from '../models/voice';
 import { photoAvatarQueue } from '../queues/photoAvatarQueue';
+import { notificationService } from '../services/notification.service';
 import multer from 'multer';
 import https from 'https';
 import url from 'url';
@@ -74,7 +75,29 @@ export async function download(req: Request, res: Response) {
       }
     }
 
+    // Get user ID for notifications
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      })
+    }
+
+    // Send initial notification
+    notificationService.notifyVideoDownloadProgress(user._id.toString(), 'download', 'progress', {
+      message: 'Starting video download...'
+    });
+
     const result = await videoService.downloadAndUploadVideo(videoUrl, email, title)
+
+    // Send success notification
+    notificationService.notifyVideoDownloadProgress(user._id.toString(), 'complete', 'success', {
+      message: 'Video downloaded and uploaded successfully!',
+      videoId: result.videoId,
+      title: result.title,
+      size: result.size
+    });
 
     return res.json({
       success: true,
@@ -82,6 +105,22 @@ export async function download(req: Request, res: Response) {
       data: result
     })
   } catch (e: any) {
+    // Send error notification if we have user info
+    try {
+      const { email } = req.body;
+      if (email) {
+        const user = await videoService.getUserByEmail(email);
+        if (user) {
+          notificationService.notifyVideoDownloadProgress(user._id.toString(), 'error', 'error', {
+            message: 'Failed to download video. Please try again.',
+            error: e.message || 'Unknown error occurred'
+          });
+        }
+      }
+    } catch (notificationError) {
+      console.error('Error sending notification:', notificationError);
+    }
+
     return res.status(500).json({ success: false, message: e.message || 'Internal server error' })
   }
 }

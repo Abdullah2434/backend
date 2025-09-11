@@ -8,6 +8,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { json, urlencoded, raw } from "express";
 import mongoose from "mongoose";
+import { createServer } from "http";
 import routes from "./routes/index";
 import { ApiResponse } from "./types";
 import {
@@ -22,8 +23,13 @@ import { fetchAndStoreDefaultAvatars, fetchAndStoreDefaultVoices } from './cron/
 import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
 import './queues/photoAvatarWorker';
 import { connectMongo } from './config/mongoose';
+import { notificationService } from './services/notification.service';
 
 const app = express();
+const server = createServer(app);
+
+// Initialize WebSocket server
+notificationService.initialize(server);
 
 // Trust proxy for rate limiting (when behind reverse proxy)
 app.set("trust proxy", 1);
@@ -143,7 +149,7 @@ cron.schedule('55 14 * * 2', async () => {
 });
 
 // Schedule avatar status check every 5 minutes
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('*/2 * * * *', async () => {
   console.log('Checking pending avatars status...');
   await checkPendingAvatarsAndUpdate();
 });
@@ -177,8 +183,8 @@ app.use(
 );
 
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Express server running on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Express server with WebSocket running on port ${PORT}`);
 });
 
 export default app;
