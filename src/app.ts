@@ -1,3 +1,7 @@
+// Load environment variables first
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,15 +12,16 @@ import routes from "./routes/index";
 import { ApiResponse } from "./types";
 import {
   apiRateLimiter,
-  ServerCSRFProtection,
   securityHeaders,
   validateRequest,
   sanitizeInputs,
+  authenticate,
 } from "./middleware";
 import cron from 'node-cron';
 import { fetchAndStoreDefaultAvatars, fetchAndStoreDefaultVoices } from './cron/fetchDefaultAvatars';
 import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
 import './queues/photoAvatarWorker';
+import { connectMongo } from './config/mongoose';
 
 const app = express();
 
@@ -88,44 +93,6 @@ if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.use("/api", apiRateLimiter.middleware());
 }
 
-// CSRF protection - Disable in serverless
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  app.use(
-    ServerCSRFProtection.middleware([
-      "/api/video/download",
-      "/api/video/status",
-      "/api/webhook",
-      "/api/subscription/confirm-payment-intent",
-      "/api/subscription/payment-intent",
-    ])
-  );
-}
-
-// --------- MongoDB Connection (cached for Vercel) ----------
-let isConnected = false;
-
-const connectDB = async () => {
-  if (isConnected && mongoose.connection.readyState === 1) {
-    return;
-  }
-
-  try {
-    const mongoUri =
-      "mongodb+srv://hrehman:gGcCAnzoQszAmdn4@cluster0.ieng9e7.mongodb.net/edgeai-realty?retryWrites=true&w=majority&appName=Cluster0";
-
-    await mongoose.connect(mongoUri, {
-      bufferCommands: true,
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    });
-
-    isConnected = mongoose.connection.readyState === 1;
-    console.log("✅ MongoDB connected successfully!");
-  } catch (err: any) {
-    console.error("❌ MongoDB connection error:", err.message);
-  }
-};
-
 // ---------- Routes ----------
 
 // Health
@@ -139,8 +106,7 @@ app.get("/health", (_req, res) => {
 
 // MongoDB status endpoint
 app.get("/mongo-status", async (_req, res) => {
-  await connectDB();
-
+  await connectMongo();
   const status = {
     readyState: mongoose.connection.readyState,
     host: mongoose.connection.host,
@@ -148,7 +114,6 @@ app.get("/mongo-status", async (_req, res) => {
     name: mongoose.connection.name,
     connected: mongoose.connection.readyState === 1,
   };
-
   res.json({
     success: true,
     data: status,
@@ -160,9 +125,10 @@ app.get("/mongo-status", async (_req, res) => {
 app.use(
   "/api",
   async (req, res, next) => {
-    await connectDB();
+    await connectMongo();
     next();
   },
+  authenticate(),
   routes
 );
 
@@ -209,5 +175,10 @@ app.use(
     res.status(err.status || 500).json(errorResponse);
   }
 );
+
+const PORT = Number(process.env.PORT) || 4000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Express server running on port ${PORT}`);
+});
 
 export default app;

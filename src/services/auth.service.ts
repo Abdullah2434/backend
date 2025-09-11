@@ -308,7 +308,9 @@ export class AuthService {
   // Verify email
   async verifyEmail(token: string): Promise<{ user: IUser; message: string }> {
     // Hash the token to compare with stored hash
+    console.log(`🔍 Verifying email with token: ${token}`);
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    console.log(`🔍 Verifying email with token hash: ${hashedToken}`);
 
     // Find user with this verification token
     const user = await User.findOne({

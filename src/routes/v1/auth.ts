@@ -4,7 +4,6 @@ import {
   loginRateLimiter, 
   registerRateLimiter, 
   passwordResetRateLimiter,
-  generateCSRFToken,
   authenticate
 } from '../../middleware'
 
@@ -25,26 +24,10 @@ router.post('/validate-token', ctrl.validateToken)
 router.post('/google', ctrl.googleLogin)
 
 // PROTECTED ROUTES (authentication required)
-router.get('/me', authenticate(), ctrl.me)
-router.put('/profile', authenticate(), ctrl.updateProfile)
-router.post('/logout', authenticate(), ctrl.logout)
-router.post('/clear-expired-tokens', authenticate(), ctrl.clearExpiredTokens)
-
-// CSRF token endpoint
-router.get('/csrf-token', async (req, res) => {
-  try {
-    const result = await generateCSRFToken()
-    res.json({
-      success: true,
-      data: result
-    })
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to generate CSRF token'
-    })
-  }
-})
+router.get('/me', ctrl.me)
+router.put('/profile', ctrl.updateProfile)
+router.post('/logout', ctrl.logout)
+router.post('/clear-expired-tokens', ctrl.clearExpiredTokens)
 
 export default router
 
