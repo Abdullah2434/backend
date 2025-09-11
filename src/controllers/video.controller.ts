@@ -436,6 +436,7 @@ export async function generateVideo(req: Request, res: Response) {
       email: body.email,
       title: body.title,
       voice: voice_id,
+      isDefault : avatarDoc?.default,
       timestamp: new Date().toISOString()
     };
     // Fire and forget: send request to n8n webhook and return immediately
