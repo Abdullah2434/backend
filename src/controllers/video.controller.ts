@@ -264,7 +264,7 @@ export async function getAvatars(req: Request, res: Response) {
     }
     const userObjectId = user._id;
     // Fetch custom avatars for user
-    const customAvatars = await DefaultAvatar.find({ userId: userObjectId,status: 'ready'  });
+    const customAvatars = await DefaultAvatar.find({ userId: userObjectId });
     // Fetch default avatars (no userId)
     const defaultAvatars = await DefaultAvatar.find({ userId: { $exists: false } , default: true });
     return res.json({
