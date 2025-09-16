@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Video, { IVideo } from "../models/Video";
 import User from "../models/User";
+import Topic, { ITopic } from "../models/Topic";
 import { getS3 } from "./s3";
 import { SubscriptionService } from "./subscription.service";
 import {
@@ -386,6 +387,32 @@ export class VideoService {
       createdAt: video.createdAt,
     };
   }
+
+  /**
+   * Get all topics
+   */
+  async getAllTopics(): Promise<ITopic[]> {
+    const topics = await Topic.find().sort({ createdAt: -1 });
+    return topics;
+  }
+
+  /**
+   * Get topic by topic type
+   */
+  async getTopicByType(topic: string): Promise<ITopic | null> {
+    const topicData = await Topic.findOne({ topic });
+    return topicData;
+  }
+
+  /**
+   * Get topic by ID
+   */
+  async getTopicById(id: string): Promise<ITopic | null> {
+    const topicData = await Topic.findById(id);
+    return topicData;
+  }
+
+
 }
 
 export default VideoService;
