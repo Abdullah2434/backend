@@ -84,7 +84,7 @@ async function generateMultipleTopicDataWithGemini(topic: string): Promise<Topic
     const prompt = `Generate 5 different latest trending ${topic} content pieces. Each should focus on a different aspect of the ${topic} industry. Provide:
 
 For each of the 5 pieces, include:
-1. A comprehensive description (1-2 sentences) about current ${topic} trends
+1. A comprehensive description (5-6 words that look like a title) about current ${topic} trends
 2. Key points covering the most important aspects not more than 5 words.
 
 Format your response as JSON array:

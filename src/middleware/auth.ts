@@ -25,7 +25,10 @@ const AUTH_ROUTES = {
   PROTECTED: [
     '/api/auth/me',
     '/api/auth/profile',
-    '/api/auth/clear-expired-tokens'
+    '/api/auth/clear-expired-tokens',
+    '/api/video/topics/:id',
+    '/api/video/topics',
+    '/api/video/topics/:topic',
   ],
   
   // Video routes (auth required)
