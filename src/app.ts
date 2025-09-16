@@ -24,6 +24,7 @@ import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
 import './queues/photoAvatarWorker';
 import { connectMongo } from './config/mongoose';
 import { notificationService } from './services/notification.service';
+import { generateAndStoreTopicData } from './cron/generateTopicData';
 
 const app = express();
 const server = createServer(app);
@@ -152,6 +153,11 @@ cron.schedule('55 14 * * 2', async () => {
 cron.schedule('*/2 * * * *', async () => {
   console.log('Checking pending avatars status...');
   await checkPendingAvatarsAndUpdate();
+});
+
+cron.schedule('0 23 * * 6', async () => {
+  console.log('Updating trend topics...');
+  await generateAndStoreTopicData();
 });
 
 // 404
