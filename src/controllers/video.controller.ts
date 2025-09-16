@@ -430,7 +430,7 @@ export async function generateVideo(req: Request, res: Response) {
     const body = req.body;
     const requiredFields = [
       'hook', 'body', 'conclusion', 'company_name', 
-      'social_handles', 'license', 'avatar', 'email', 
+      'social_handles', 'license', 'avatar_title','avatar_body','avatar_conclusion', 'email', 
       'title'
     ];
     for (const field of requiredFields) {
@@ -453,7 +453,7 @@ export async function generateVideo(req: Request, res: Response) {
       });
     }
     // Get gender from DefaultAvatar
-    const avatarDoc = await DefaultAvatar.findOne({ avatar_id: body.avatar });
+    const avatarDoc = await DefaultAvatar.findOne({ avatar_id: body.avatar_title });
     console.log('Found avatar document:', avatarDoc);
     const gender = avatarDoc ? avatarDoc.gender : undefined;
     // Get voice_id from DefaultVoice by gender
@@ -471,7 +471,9 @@ export async function generateVideo(req: Request, res: Response) {
       company_name: body.company_name,
       social_handles: body.social_handles,
       license: body.license,
-      avatar: body.avatar,
+      avatar_body: body.avatar_body,
+      avatar_conclusion: body.avatar_conclusion,
+      avatar_title: body.avatar_title,
       email: body.email,
       title: body.title,
       voice: voice_id,
