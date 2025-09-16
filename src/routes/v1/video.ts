@@ -20,6 +20,11 @@ router.post('/status', ctrl.updateStatus)
 router.post('/create', ctrl.createVideo);
 router.post('/generate-video', ctrl.generateVideo);
 
+// TOPIC ROUTES (public - no authentication required)
+router.get('/topics', ctrl.getAllTopics);
+router.get('/topics/id/:id', ctrl.getTopicById);
+router.get('/topics/:topic', ctrl.getTopicByType);
+
 export default router
 
 

@@ -526,3 +526,88 @@ export async function generateVideo(req: Request, res: Response) {
     });
   }
 }
+
+// Topic-related controllers
+export async function getAllTopics(req: Request, res: Response) {
+  try {
+    const topics = await videoService.getAllTopics();
+    
+    return res.json({
+      success: true,
+      message: 'Topics retrieved successfully',
+      data: topics
+    });
+  } catch (e: any) {
+    return res.status(500).json({ 
+      success: false, 
+      message: e.message || 'Internal server error' 
+    });
+  }
+}
+
+export async function getTopicByType(req: Request, res: Response) {
+  try {
+    const { topic } = req.params;
+    
+    if (!topic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Topic parameter is required'
+      });
+    }
+
+    const topicData = await videoService.getTopicByType(topic);
+    
+    if (!topicData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Topic not found'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Topic retrieved successfully',
+      data: topicData
+    });
+  } catch (e: any) {
+    return res.status(500).json({ 
+      success: false, 
+      message: e.message || 'Internal server error' 
+    });
+  }
+}
+
+export async function getTopicById(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID parameter is required'
+      });
+    }
+
+    const topicData = await videoService.getTopicById(id);
+    
+    if (!topicData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Topic not found'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Topic retrieved successfully',
+      data: topicData
+    });
+  } catch (e: any) {
+    return res.status(500).json({ 
+      success: false, 
+      message: e.message || 'Internal server error' 
+    });
+  }
+}
+
