@@ -124,7 +124,7 @@ export const worker = new Worker('photo-avatar', async job => {
 
       // Final success notification
       notificationService.notifyPhotoAvatarProgress(userId, 'complete', 'success', {
-        message: 'Your custom avatar has been created successfully!',
+        message: 'Your avatar has been submitted for training!',
         avatarId: avatar_id,
         previewImageUrl: preview_image_url
       });
@@ -142,8 +142,15 @@ export const worker = new Worker('photo-avatar', async job => {
 
         // Notify user about specific error
         let errorMessage = 'Failed to create avatar group. Please try again.';
+        console.log('Error object:', errObj.response);
         if (errObj.response?.status === 400) {
-          errorMessage = 'Invalid image format or size. Please use a clear photo of a person.';
+          // Check for specific error codes in the response
+          const errorCode = errObj.response?.data?.error?.code;
+          if (errorCode === 'insufficient_credit') {
+            errorMessage = 'Insufficient credits to create avatar. Please contact support.';
+          } else {
+            errorMessage = 'Invalid image format or size. Please use a clear photo of a person.';
+          }
         } else if (errObj.response?.status === 429) {
           errorMessage = 'Too many requests. Please wait a moment and try again.';
         }
