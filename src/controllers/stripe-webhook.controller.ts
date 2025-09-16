@@ -12,7 +12,7 @@ const subscriptionService = new SubscriptionService();
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
   // TEMPORARY: Hardcoded webhook secret for testing
-  const webhookSecret = "whsec_PuBVxim9Av9L9ortosiq6OmzwMKvUI5r";
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
     console.error("STRIPE_WEBHOOK_SECRET is not set");
