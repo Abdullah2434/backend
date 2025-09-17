@@ -2,7 +2,6 @@ import { Worker } from 'bullmq';
 import axios from 'axios';
 import DefaultAvatar from '../models/avatar';
 import fs from 'fs';
-import path from 'path';
 import dotenv from 'dotenv';
 import { photoAvatarQueue } from './photoAvatarQueue';
 import { notificationService } from '../services/notification.service';
@@ -30,18 +29,67 @@ export const worker = new Worker('photo-avatar', async job => {
 
     // 1. Upload image to HeyGen
     const imageBuffer = fs.readFileSync(imagePath);
-    const uploadRes = await axios.post(UPLOAD_URL, imageBuffer, {
-      headers: {
-        'x-api-key': API_KEY,
-        'Content-Type': mimeType || 'image/jpeg',
-      },
-    });
+    let uploadRes;
+    
+    try {
+      uploadRes = await axios.post(UPLOAD_URL, imageBuffer, {
+        headers: {
+          'x-api-key': API_KEY,
+          'Content-Type': mimeType || 'image/jpeg',
+        },
+      });
+    } catch (uploadError: any) {
+      console.error('HeyGen upload request failed:', uploadError);
+      
+      let errorCode = 'upload_failed';
+      let userFriendlyMessage = 'Failed to upload image to HeyGen. Please try again.';
+      
+      if (uploadError.response) {
+        // Server responded with error status
+        const status = uploadError.response.status;
+        if (status === 401) {
+          errorCode = 'auth_failed';
+          userFriendlyMessage = 'Authentication failed. Please contact support.';
+        } else if (status === 413) {
+          errorCode = 'file_too_large';
+          userFriendlyMessage = 'Image file is too large. Please use a smaller image.';
+        } else if (status === 415) {
+          errorCode = 'unsupported_format';
+          userFriendlyMessage = 'Unsupported image format. Please use JPEG, PNG, or WebP.';
+        } else if (status >= 500) {
+          errorCode = 'server_error';
+          userFriendlyMessage = 'Server error. Please try again later.';
+        }
+      } else if (uploadError.request) {
+        // Network error
+        errorCode = 'network_error';
+        userFriendlyMessage = 'Network error. Please check your connection and try again.';
+      }
+      
+      notificationService.notifyPhotoAvatarProgress(userId, 'upload', 'error', {
+        message: userFriendlyMessage,
+        error: uploadError.message,
+        errorCode: errorCode,
+        details: {
+          status: uploadError.response?.status,
+          response: uploadError.response?.data,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      throw uploadError;
+    }
     const image_key = uploadRes.data?.data?.image_key;
     if (!image_key) {
       console.error('HeyGen image upload failed, no image_key returned:', uploadRes.data);
       notificationService.notifyPhotoAvatarProgress(userId, 'upload', 'error', {
         message: 'Failed to upload image to HeyGen. Please try again.',
-        error: 'No image_key returned from HeyGen'
+        error: 'No image_key returned from HeyGen',
+        errorCode: 'upload_failed',
+        details: {
+          response: uploadRes.data,
+          timestamp: new Date().toISOString()
+        }
       });
       throw new Error('HeyGen image upload failed, no image_key returned');
     }
@@ -89,15 +137,64 @@ export const worker = new Worker('photo-avatar', async job => {
         message: 'Training your avatar with AI...'
       });
 
-      const response = await axios.post(TRAIN_URL, {
-        group_id,
-      }, {
-        headers: {
-          'accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-Api-Key': API_KEY,
+      let response;
+      try {
+        response = await axios.post(TRAIN_URL, {
+          group_id,
+        }, {
+          headers: {
+            'accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Api-Key': API_KEY,
+          }
+        });
+      } catch (trainError: any) {
+        console.error('HeyGen training request failed:', trainError);
+        
+        let errorCode = 'training_failed';
+        let userFriendlyMessage = 'Failed to start avatar training. Please try again.';
+        
+        if (trainError.response) {
+          const status = trainError.response.status;
+          const apiError = trainError.response.data?.error;
+          
+          if (status === 400) {
+            if (apiError?.code === 'invalid_parameter' && apiError?.message?.includes('No valid image for training found')) {
+              errorCode = 'invalid_image';
+              userFriendlyMessage = 'The uploaded image cannot be used for avatar training. Please ensure the image shows a clear, well-lit photo of a person\'s face.';
+            } else {
+              errorCode = 'invalid_parameters';
+              userFriendlyMessage = 'Invalid parameters for avatar training. Please try again.';
+            }
+          } else if (status === 401) {
+            errorCode = 'auth_failed';
+            userFriendlyMessage = 'Authentication failed. Please contact support.';
+          } else if (status === 429) {
+            errorCode = 'rate_limited';
+            userFriendlyMessage = 'Too many requests. Please wait a moment and try again.';
+          } else if (status >= 500) {
+            errorCode = 'server_error';
+            userFriendlyMessage = 'Server error. Please try again later.';
+          }
+        } else if (trainError.request) {
+          errorCode = 'network_error';
+          userFriendlyMessage = 'Network error. Please check your connection and try again.';
         }
-      });
+        
+        notificationService.notifyPhotoAvatarProgress(userId, 'training', 'error', {
+          message: userFriendlyMessage,
+          error: trainError.message,
+          errorCode: errorCode,
+          details: {
+            status: trainError.response?.status,
+            response: trainError.response?.data,
+            groupId: group_id,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        throw trainError;
+      }
 
       console.log('Train response:', response.data);
 
@@ -142,28 +239,85 @@ export const worker = new Worker('photo-avatar', async job => {
 
         // Notify user about specific error
         let errorMessage = 'Failed to create avatar group. Please try again.';
+        let errorCode = 'unknown_error';
+        let userFriendlyMessage = 'Something went wrong. Please try again.';
+        
         console.log('Error object:', errObj.response);
+        
         if (errObj.response?.status === 400) {
           // Check for specific error codes in the response
-          const errorCode = errObj.response?.data?.error?.code;
-          if (errorCode === 'insufficient_credit') {
+          const apiErrorCode = errObj.response?.data?.error?.code;
+          const apiErrorMessage = errObj.response?.data?.error?.message;
+          
+          if (apiErrorCode === 'insufficient_credit') {
+            errorCode = 'insufficient_credits';
             errorMessage = 'Insufficient credits to create avatar. Please contact support.';
+            userFriendlyMessage = 'You don\'t have enough credits to create an avatar. Please contact support or upgrade your plan.';
+          } else if (apiErrorCode === 'invalid_parameter') {
+            errorCode = 'invalid_image';
+            if (apiErrorMessage?.includes('No valid image for training found')) {
+              errorMessage = 'The uploaded image could not be processed for avatar training.';
+              userFriendlyMessage = 'The image you uploaded cannot be used for avatar training. Please ensure the image shows a clear, well-lit photo of a person\'s face with good contrast and no obstructions.';
+            } else {
+              errorMessage = 'Invalid image parameters. Please use a clear photo of a person with good lighting.';
+              userFriendlyMessage = 'The image doesn\'t meet the requirements. Please use a clear, well-lit photo of a person\'s face.';
+            }
+          } else if (apiErrorCode === 'invalid_image_format') {
+            errorCode = 'unsupported_format';
+            errorMessage = 'Unsupported image format. Please use JPEG, PNG, or WebP format.';
+            userFriendlyMessage = 'The image format is not supported. Please use JPEG, PNG, or WebP format.';
+          } else if (apiErrorCode === 'image_too_small') {
+            errorCode = 'image_too_small';
+            errorMessage = 'Image resolution is too low. Please use a higher quality image (minimum 256x256 pixels).';
+            userFriendlyMessage = 'The image resolution is too low. Please use a higher quality image (at least 256x256 pixels).';
+          } else if (apiErrorCode === 'image_too_large') {
+            errorCode = 'image_too_large';
+            errorMessage = 'Image file is too large. Please use an image smaller than 10MB.';
+            userFriendlyMessage = 'The image file is too large. Please use an image smaller than 10MB.';
           } else {
-            errorMessage = 'Invalid image format or size. Please use a clear photo of a person.';
+            errorCode = 'invalid_image';
+            errorMessage = apiErrorMessage || 'Invalid image format or size. Please use a clear photo of a person.';
+            userFriendlyMessage = 'The image doesn\'t meet the requirements. Please use a clear, well-lit photo of a person\'s face.';
           }
         } else if (errObj.response?.status === 429) {
+          errorCode = 'rate_limited';
           errorMessage = 'Too many requests. Please wait a moment and try again.';
+          userFriendlyMessage = 'Too many requests. Please wait a moment and try again.';
+        } else if (errObj.response?.status === 401) {
+          errorCode = 'auth_failed';
+          errorMessage = 'Authentication failed. Please contact support.';
+          userFriendlyMessage = 'Authentication failed. Please contact support.';
+        } else if (errObj.response?.status === 403) {
+          errorCode = 'access_denied';
+          errorMessage = 'Access denied. Please contact support.';
+          userFriendlyMessage = 'Access denied. Please contact support.';
+        } else if (errObj.response?.status >= 500) {
+          errorCode = 'server_error';
+          errorMessage = 'Server error. Please try again later.';
+          userFriendlyMessage = 'Server error. Please try again later.';
         }
 
+        // Send detailed error notification to frontend
         notificationService.notifyPhotoAvatarProgress(userId, 'group-creation', 'error', {
-          message: errorMessage,
-          error: errObj.response?.data?.message || 'Avatar group creation failed'
+          message: userFriendlyMessage,
+          error: errorMessage,
+          errorCode: errorCode,
+          statusCode: errObj.response?.status,
+          details: {
+            apiError: errObj.response?.data?.error,
+            timestamp: new Date().toISOString()
+          }
         });
       } else {
         console.error('HeyGen avatar group creation error:', groupErr);
         notificationService.notifyPhotoAvatarProgress(userId, 'group-creation', 'error', {
           message: 'Failed to create avatar group. Please try again.',
-          error: 'Unknown error occurred'
+          error: 'Unknown error occurred',
+          errorCode: 'unknown_error',
+          details: {
+            error: groupErr instanceof Error ? groupErr.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
         });
       }
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
@@ -172,10 +326,40 @@ export const worker = new Worker('photo-avatar', async job => {
   } catch (error) {
     console.error('Photo avatar worker error:', error);
     
-    // Notify user about general error
+    // Determine error type and create appropriate message
+    let errorCode = 'processing_error';
+    let userFriendlyMessage = 'Failed to create your custom avatar. Please try again.';
+    let technicalError = 'Unknown error occurred';
+    
+    if (error instanceof Error) {
+      technicalError = error.message;
+      
+      // Categorize common errors
+      if (error.message.includes('ENOENT') || error.message.includes('no such file')) {
+        errorCode = 'file_not_found';
+        userFriendlyMessage = 'The uploaded image file was not found. Please try uploading again.';
+      } else if (error.message.includes('EACCES') || error.message.includes('permission denied')) {
+        errorCode = 'permission_error';
+        userFriendlyMessage = 'Permission error accessing the image file. Please try again.';
+      } else if (error.message.includes('network') || error.message.includes('timeout')) {
+        errorCode = 'network_error';
+        userFriendlyMessage = 'Network error occurred. Please check your connection and try again.';
+      } else if (error.message.includes('validation')) {
+        errorCode = 'validation_error';
+        userFriendlyMessage = 'Image validation failed. Please ensure you\'re uploading a valid image file.';
+      }
+    }
+    
+    // Send detailed error notification to frontend
     notificationService.notifyPhotoAvatarProgress(userId, 'error', 'error', {
-      message: 'Failed to create your custom avatar. Please try again.',
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      message: userFriendlyMessage,
+      error: technicalError,
+      errorCode: errorCode,
+      details: {
+        timestamp: new Date().toISOString(),
+        userId: userId,
+        imagePath: imagePath
+      }
     });
 
     // Cleanup temp image
