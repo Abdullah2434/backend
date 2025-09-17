@@ -35,7 +35,7 @@ export const submitContactForm = async (req: Request, res: Response) => {
 
     // Send email notification to admin
     await sendContactFormNotification(
-      process.env.CONTACT_EMAIL || process.env.ADMIN_EMAIL || "admin@example.com",
+      process.env.CONTACT_EMAIL || process.env.ADMIN_EMAIL || "hrehman@techtiz.co",
       fullName,
       position,
       email,

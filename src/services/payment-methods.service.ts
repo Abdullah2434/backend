@@ -172,9 +172,16 @@ export class PaymentMethodsService {
         });
         
         if (subscription) {
-          await this.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-            default_payment_method: paymentMethodId,
-          });
+          try {
+            await this.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+              default_payment_method: paymentMethodId,
+            });
+          } catch (subscriptionError: any) {
+            // If subscription update fails (e.g., subscription is canceled), 
+            // log the error but don't fail the entire operation since we've 
+            // already successfully updated the customer's default payment method
+            console.warn(`Warning: Could not update subscription default payment method: ${subscriptionError.message}`);
+          }
         }
       }
 
@@ -221,15 +228,23 @@ export class PaymentMethodsService {
       });
 
       // Update active subscription default payment method
+      // Only update subscription if it's active or pending (not canceled)
       const subscription = await Subscription.findOne({ 
         userId, 
         status: { $in: ['active', 'pending'] } 
       });
       
       if (subscription) {
-        await this.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-          default_payment_method: paymentMethodId,
-        });
+        try {
+          await this.stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+            default_payment_method: paymentMethodId,
+          });
+        } catch (subscriptionError: any) {
+          // If subscription update fails (e.g., subscription is canceled), 
+          // log the error but don't fail the entire operation since we've 
+          // already successfully updated the customer's default payment method
+          console.warn(`Warning: Could not update subscription default payment method: ${subscriptionError.message}`);
+        }
       }
     } catch (error) {
       console.error("Error setting default payment method:", error);

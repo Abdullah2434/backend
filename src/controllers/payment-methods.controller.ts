@@ -151,11 +151,21 @@ export async function setDefaultPaymentMethod(req: Request, res: Response) {
   } catch (e: any) {
     console.error("❌ Error setting default payment method:", e.message);
     
-    const status = e.message.includes("Access token") ? 401 : 
-                   e.message.includes("does not belong") ? 403 : 500;
+    let status = 500;
+    let message = e.message || "Internal server error";
+    
+    if (e.message.includes("Access token")) {
+      status = 401;
+    } else if (e.message.includes("does not belong")) {
+      status = 403;
+    } else if (e.message.includes("canceled subscription")) {
+      status = 400;
+      message = "Cannot update payment method for canceled subscription";
+    }
+    
     return res.status(status).json({
       success: false,
-      message: e.message || "Internal server error",
+      message: message,
     });
   }
 }
