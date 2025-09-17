@@ -119,7 +119,7 @@ class EmailService {
 const emailService = new EmailService()
 
 export async function sendVerificationEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/verify-email?token=${token}`
   const name = firstName ? ` ${firstName}` : ''
   
   const content = `
@@ -165,7 +165,7 @@ export async function sendVerificationEmail(email: string, token: string, firstN
 }
 
 export async function sendPasswordResetEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/reset-password?token=${token}`
   const name = firstName ? ` ${firstName}` : ''
   
   const content = `
@@ -223,7 +223,7 @@ export async function sendPasswordResetEmail(email: string, token: string, first
 }
 
 export async function sendWelcomeEmail(email: string, firstName: string) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
   
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
@@ -283,7 +283,7 @@ export async function sendWelcomeEmail(email: string, firstName: string) {
 }
 
 export async function sendResendVerificationEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${token}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/verify-email?token=${token}`
   const name = firstName ? ` ${firstName}` : ''
   
   const content = `
@@ -330,7 +330,7 @@ export async function sendResendVerificationEmail(email: string, token: string, 
 
 // Additional professional email templates
 export async function sendAvatarReadyNotification(email: string, firstName: string, avatarName: string) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
   
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
@@ -369,7 +369,7 @@ export async function sendAvatarReadyNotification(email: string, firstName: stri
 }
 
 export async function sendSubscriptionConfirmation(email: string, firstName: string, planName: string, amount: number) {
-  const url = `${process.env.FRONTEND_URL || 'http://localhost:3000'}`
+  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
   
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
