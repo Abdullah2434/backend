@@ -399,16 +399,16 @@ export class VideoService {
   /**
    * Get topic by topic type
    */
-  async getTopicByType(topic: string): Promise<ITopic | null> {
-    const topicData = await Topic.findOne({ topic });
+  async getTopicByType(topic: string): Promise<ITopic[]> {
+    const topicData = await Topic.find({ topic });
     return topicData;
   }
 
   /**
    * Get topic by ID
    */
-  async getTopicById(id: string): Promise<ITopic | null> {
-    const topicData = await Topic.findById(id);
+  async getTopicById(id: string): Promise<ITopic[]> {
+    const topicData = await Topic.find({ _id: id });
     return topicData;
   }
 
