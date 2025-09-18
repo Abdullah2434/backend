@@ -3,11 +3,13 @@ import AuthService from '../services/auth.service'
 import VideoService from '../services/video.service'
 import DefaultAvatar from '../models/avatar';
 import DefaultVoice from '../models/voice';
+import WorkflowHistory from '../models/WorkflowHistory';
 import { photoAvatarQueue } from '../queues/photoAvatarQueue';
 import { notificationService } from '../services/notification.service';
 import multer from 'multer';
 import https from 'https';
 import url from 'url';
+import User from '../models/User';
 
 const authService = new AuthService()
 const videoService = new VideoService()
@@ -57,6 +59,57 @@ export async function gallery(req: Request, res: Response) {
   } catch (e: any) {
     const status = e.message.includes('Access token') ? 401 : 500
     return res.status(status).json({ success: false, message: e.message || 'Internal server error' })
+  }
+}
+
+export async function trackExecution(req: Request, res: Response) {
+  try {
+    const { executionId, email } = req.body;
+
+    // Validate required fields
+    if (!executionId || !email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: executionId, email'
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Create workflow history entry
+    const workflowHistory = new WorkflowHistory({
+      executionId,
+      userId: user._id,
+      email
+    });
+
+    await workflowHistory.save();
+
+    console.log(`Execution tracked: ${executionId} for user: ${email}`);
+
+    return res.json({
+      success: true,
+      message: 'Execution tracked successfully',
+      data: {
+        executionId,
+        userId: user._id,
+        email,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (e: any) {
+    console.error('Error tracking execution:', e);
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Internal server error'
+    });
   }
 }
 

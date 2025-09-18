@@ -25,6 +25,9 @@ router.get('/topics', ctrl.getAllTopics);
 router.get('/topics/id/:id', ctrl.getTopicById);
 router.get('/topics/:topic', ctrl.getTopicByType);
 
+// EXECUTION TRACKING ROUTE (public - no authentication required)
+router.post('/track-execution', ctrl.trackExecution);
+
 export default router
 
 

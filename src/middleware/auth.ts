@@ -18,7 +18,9 @@ const AUTH_ROUTES = {
     '/api/auth/check-email-verification',
     '/api/auth/validate-token',
     '/api/auth/google',
-    '/api/auth/csrf-token'
+    '/api/auth/csrf-token',
+    '/api/video/track-execution',
+    '/api/webhook/workflow-error'
   ],
   
   // Protected routes (auth required)
