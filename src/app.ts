@@ -44,8 +44,6 @@ app.use(
       "Content-Type",
       "Authorization",
       "X-Requested-With",
-      "X-CSRF-Token",   // <-- add this
-      "x-csrf-token"    // <-- lowercase too (some libs send lowercase)
     ],
     credentials: false,
   })
