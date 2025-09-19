@@ -59,6 +59,17 @@ export async function handleWorkflowError(req: Request, res: Response) {
     // Convert technical error to user-friendly message
     const userFriendlyMessage = 'Video creation failed. Please try again or contact support if the issue persists.';
 
+    // Update workflow history to mark as failed
+    await WorkflowHistory.findOneAndUpdate(
+      { executionId },
+      { 
+        status: 'failed',
+        completedAt: new Date(),
+        errorMessage: errorMessage
+      }
+    )
+    console.log(`Workflow history updated for execution ${executionId}: failed`)
+
     // Send socket notification to user
     console.log('Sending workflow error notification to user:', workflowHistory.userId._id.toString())
     console.log('User :', workflowHistory)

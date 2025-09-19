@@ -115,7 +115,7 @@ export async function trackExecution(req: Request, res: Response) {
 
 export async function download(req: Request, res: Response) {
   try {
-    const { videoUrl, email, title } = req.body
+    const { videoUrl, email, title, executionId } = req.body
     
     // Validate required fields
     const requiredFields = ['videoUrl', 'email', 'title']
@@ -144,6 +144,22 @@ export async function download(req: Request, res: Response) {
 
     const result = await videoService.downloadAndUploadVideo(videoUrl, email, title)
 
+    // Update workflow history if executionId is provided
+    if (executionId) {
+      try {
+        await WorkflowHistory.findOneAndUpdate(
+          { executionId },
+          { 
+            status: 'completed',
+            completedAt: new Date()
+          }
+        )
+        console.log(`Workflow history updated for execution ${executionId}: completed`)
+      } catch (workflowError) {
+        console.error(`Error updating workflow history for execution ${executionId}:`, workflowError)
+      }
+    }
+
     // Send success notification
     notificationService.notifyVideoDownloadProgress(user._id.toString(), 'complete', 'success', {
       message: 'Video downloaded and uploaded successfully!',
@@ -158,6 +174,24 @@ export async function download(req: Request, res: Response) {
       data: result
     })
   } catch (e: any) {
+    // Update workflow history as failed if executionId is provided
+    try {
+      const { executionId } = req.body;
+      if (executionId) {
+        await WorkflowHistory.findOneAndUpdate(
+          { executionId },
+          { 
+            status: 'failed',
+            completedAt: new Date(),
+            errorMessage: e.message || 'Video download failed'
+          }
+        )
+        console.log(`Workflow history updated for execution ${executionId}: failed`)
+      }
+    } catch (workflowError) {
+      console.error(`Error updating workflow history for execution:`, workflowError)
+    }
+
     // Send error notification if we have user info
     try {
       const { email } = req.body;

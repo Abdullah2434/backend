@@ -4,6 +4,9 @@ export interface IWorkflowHistory extends Document {
   executionId: string;
   userId: mongoose.Types.ObjectId;
   email: string;
+  status: 'pending' | 'completed' | 'failed';
+  completedAt?: Date;
+  errorMessage?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +28,20 @@ const WorkflowHistorySchema = new Schema<IWorkflowHistory>({
     type: String,
     required: true,
     index: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'completed', 'failed'],
+    default: 'pending',
+    required: true,
+    index: true
+  },
+  completedAt: {
+    type: Date,
+    index: true
+  },
+  errorMessage: {
+    type: String
   }
 }, {
   timestamps: true
