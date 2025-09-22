@@ -2,8 +2,6 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import User, { IUser } from "../models/User";
-import WorkflowHistory from "../models/WorkflowHistory";
-import { notificationService } from "./notification.service";
 import {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -127,9 +125,6 @@ export class AuthService {
 
     // Generate new JWT access token
     const accessToken = this.generateToken(user._id.toString(), user.email);
-
-    // Check for pending workflows and notify user
-    await this.checkPendingWorkflows(user._id.toString());
 
     return { user, accessToken };
   }
@@ -377,9 +372,6 @@ export class AuthService {
       // Existing Google user - generate new JWT token
       const accessToken = this.generateToken(user._id.toString(), user.email);
 
-      // Check for pending workflows and notify user
-      await this.checkPendingWorkflows(user._id.toString());
-
       return { user, accessToken, isNewUser: false };
     }
 
@@ -394,9 +386,6 @@ export class AuthService {
 
       const accessToken = this.generateToken(user._id.toString(), user.email);
       await user.save();
-
-      // Check for pending workflows and notify user
-      await this.checkPendingWorkflows(user._id.toString());
 
       // Send welcome email for existing users who just linked their Google account
       try {
@@ -427,9 +416,6 @@ export class AuthService {
 
     const accessToken = this.generateToken(user._id.toString(), user.email);
     await user.save();
-
-    // Check for pending workflows and notify user
-    await this.checkPendingWorkflows(user._id.toString());
 
     // Send welcome email for new Google users since their email is pre-verified
     try {
@@ -497,44 +483,6 @@ export class AuthService {
     return Promise.resolve();
   }
 
-  // Check pending workflows and notify user
-  private async checkPendingWorkflows(userId: string): Promise<void> {
-    try {
-      console.log(`🔍 Checking pending workflows for user: ${userId}`);
-
-      // Find all pending workflows for this user
-      const pendingWorkflows = await WorkflowHistory.find({
-        userId,
-        status: 'pending'
-      });
-      console.log('Pending workflows:', pendingWorkflows)
-
-      if (pendingWorkflows.length === 0) {
-        console.log(`✅ No pending workflows found for user: ${userId}`);
-        return;
-      }
-
-      console.log(`📋 Found ${pendingWorkflows.length} pending workflows for user: ${userId}`);
-
-      // Send notification for each pending workflow
-      for (const workflow of pendingWorkflows) {
-        try {
-          notificationService.notifyUser(userId, 'video-download-update', {
-            type: 'progress',
-            status: 'processing',
-            message: 'Your video creation is in progress',
-            timestamp: new Date().toISOString()
-          });
-
-          console.log(`📤 Sent pending workflow notification for execution ${workflow.executionId}`);
-        } catch (notificationError) {
-          console.error(`❌ Error sending notification for workflow ${workflow.executionId}:`, notificationError);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Error checking pending workflows for user ${userId}:`, error);
-    }
-  }
 }
 
 export default AuthService;

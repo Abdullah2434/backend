@@ -10,6 +10,7 @@ import multer from 'multer';
 import https from 'https';
 import url from 'url';
 import User from '../models/User';
+import mongoose from 'mongoose';
 
 const authService = new AuthService()
 const videoService = new VideoService()
@@ -106,6 +107,90 @@ export async function trackExecution(req: Request, res: Response) {
     });
   } catch (e: any) {
     console.error('Error tracking execution:', e);
+    return res.status(500).json({
+      success: false,
+      message: e.message || 'Internal server error'
+    });
+  }
+}
+
+export async function checkPendingWorkflows(req: Request, res: Response) {
+  try {
+    const { userId } = req.params;
+
+    // Validate required fields
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameter: userId'
+      });
+    }
+
+    // Validate userId format (should be a valid ObjectId string)
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid userId format'
+      });
+    }
+
+    // Convert string userId to ObjectId for database query
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    // Find all pending workflows for this user
+    const pendingWorkflows = await WorkflowHistory.find({
+      userId: userObjectId,
+      status: 'pending'
+    });
+
+    console.log(`🔍 Checking pending workflows for user: ${userId}`);
+    console.log(`📋 Found ${pendingWorkflows.length} pending workflows`);
+
+    if (pendingWorkflows.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No pending workflows found',
+        data: {
+          hasPendingWorkflows: false,
+          pendingCount: 0,
+          message: null
+        }
+      });
+    }
+
+    // Send socket notification for each pending workflow
+    for (const workflow of pendingWorkflows) {
+      try {
+        notificationService.notifyUser(userId, 'video-download-update', {
+          type: 'progress',
+          status: 'processing',
+          message: 'Your video creation is in progress',
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📤 Sent pending workflow notification for execution ${workflow.executionId}`);
+      } catch (notificationError) {
+        console.error(`❌ Error sending notification for workflow ${workflow.executionId}:`, notificationError);
+      }
+    }
+
+    // Return pending workflow information
+    return res.json({
+      success: true,
+      message: 'Pending workflows found',
+      data: {
+        hasPendingWorkflows: true,
+        pendingCount: pendingWorkflows.length,
+        message: 'Your video creation is in progress',
+        workflows: pendingWorkflows.map(workflow => ({
+          executionId: workflow.executionId,
+          createdAt: workflow.createdAt,
+          email: workflow.email
+        }))
+      }
+    });
+  } catch (e: any) {
+    console.error('Error checking pending workflows:', e);
     return res.status(500).json({
       success: false,
       message: e.message || 'Internal server error'

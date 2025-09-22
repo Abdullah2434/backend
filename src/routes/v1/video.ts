@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express'
 import * as ctrl from '../../controllers/video.controller'
-import { authenticate } from '../../middleware'
 
 const router = Router()
 
@@ -11,6 +10,7 @@ router.get('/download-proxy', ctrl.downloadProxy)
 router.get('/avatars', ctrl.getAvatars)
 router.get('/voices', ctrl.getVoices)
 router.post('/photo-avatar', ctrl.createPhotoAvatarUpload, ctrl.createPhotoAvatar)
+router.get('/pending-workflows/:userId', ctrl.checkPendingWorkflows)
 
 // PUBLIC ROUTES (no authentication required)
 router.post('/download', ctrl.download)
