@@ -20,7 +20,7 @@ const AUTH_ROUTES = {
     '/api/auth/google',
     '/api/auth/csrf-token',
     '/api/video/track-execution',
-    '/api/webhook/workflow-error'
+    '/api/webhook/workflow-error',
   ],
   
   // Protected routes (auth required)
@@ -31,6 +31,7 @@ const AUTH_ROUTES = {
     '/api/video/topics/:id',
     '/api/video/topics',
     '/api/video/topics/:topic',
+    '/api/trends/real-estate'
   ],
   
   // Video routes (auth required)

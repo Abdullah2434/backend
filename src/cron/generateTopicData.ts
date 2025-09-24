@@ -4,20 +4,18 @@ import dotenv from 'dotenv';
 import { connectMongo } from '../config/mongoose';
 dotenv.config();
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Define available topics array (matches the enum in Topic model)
 const AVAILABLE_TOPICS: string[] = ['real_estate'];
 // Future: Add more topics here when you expand the enum
 // const AVAILABLE_TOPICS: string[] = ['real_estate', 'technology', 'healthcare'];
 
-interface GeminiResponse {
-  candidates: Array<{
-    content: {
-      parts: Array<{
-        text: string;
-      }>;
+interface OpenAIResponse {
+  choices: Array<{
+    message: {
+      content: string;
     };
   }>;
 }
@@ -31,8 +29,8 @@ export async function generateAndStoreTopicData() {
   try {
     await connectMongo();
     
-    if (!GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY environment variable is not set');
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
       return;
     }
 
@@ -47,10 +45,10 @@ export async function generateAndStoreTopicData() {
       console.log(`\n--- Processing ${topic} ---`);
       
       // Generate all 5 documents for this topic in one API call
-      const topicDataArray = await generateMultipleTopicDataWithGemini(topic);
+      const topicDataArray = await generateMultipleTopicDataWithChatGPT(topic);
       
       if (!topicDataArray || topicDataArray.length === 0) {
-        console.error(`Failed to generate topic data from Gemini AI for ${topic}`);
+        console.error(`Failed to generate topic data from ChatGPT for ${topic}`);
         continue; // Skip this topic and continue with others
       }
       
@@ -78,7 +76,7 @@ export async function generateAndStoreTopicData() {
   }
 }
 
-async function generateMultipleTopicDataWithGemini(topic: string): Promise<TopicData[]> {
+async function generateMultipleTopicDataWithChatGPT(topic: string): Promise<TopicData[]> {
   try {
     // Prompt to generate 5 different documents for the topic
     const prompt = `Generate 5 different latest trending ${topic} content pieces. Each should focus on a different aspect of the ${topic} industry. Provide:
@@ -113,34 +111,34 @@ Format your response as JSON array:
 
 Make each piece current, relevant, and engaging for ${topic} professionals and stakeholders. Focus on different aspects like market trends, technology, investment opportunities, regulatory changes, and consumer behavior.`;
 
-    const response = await axios.post<GeminiResponse>(
-      GEMINI_API_URL,
+    const response = await axios.post<OpenAIResponse>(
+      OPENAI_API_URL,
       {
-        contents: [
+        model: 'gpt-4',
+        messages: [
           {
-            parts: [
-              {
-                text: `You are a ${topic} market analyst providing current, accurate, and engaging market insights. ${prompt}`
-              }
-            ]
+            role: 'system',
+            content: `You are a ${topic} market analyst providing current, accurate, and engaging market insights.`
+          },
+          {
+            role: 'user',
+            content: prompt
           }
         ],
-        generationConfig: {
-          temperature: 0.8,
-          maxOutputTokens: 2000,
-        }
+        temperature: 0.8,
+        max_tokens: 2000,
       },
       {
         headers: {
           'Content-Type': 'application/json',
-          'X-goog-api-key': GEMINI_API_KEY
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
         }
       }
     );
 
-    const content = response.data.candidates[0]?.content?.parts[0]?.text;
+    const content = response.data.choices[0]?.message?.content;
     if (!content) {
-      console.error('No content received from Gemini AI');
+      console.error('No content received from ChatGPT');
       return [];
     }
 
@@ -158,7 +156,7 @@ Make each piece current, relevant, and engaging for ${topic} professionals and s
       
       // Ensure it's an array
       if (!Array.isArray(parsedData)) {
-        console.error('Expected array response from Gemini AI');
+        console.error('Expected array response from ChatGPT');
         return [];
       }
       
@@ -177,13 +175,13 @@ Make each piece current, relevant, and engaging for ${topic} professionals and s
       });
       
     } catch (parseError) {
-      console.error('Error parsing Gemini AI response:', parseError);
+      console.error('Error parsing ChatGPT response:', parseError);
       console.log('Raw response:', content);
       return [];
     }
 
   } catch (error) {
-    console.error('Error calling Gemini AI API:', error);
+    console.error('Error calling ChatGPT API:', error);
     return [];
   }
 }

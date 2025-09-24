@@ -24,7 +24,7 @@ import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
 import './queues/photoAvatarWorker';
 import { connectMongo } from './config/mongoose';
 import { notificationService } from './services/notification.service';
-import { generateAndStoreTopicData } from './cron/generateTopicData';
+// import { generateAndStoreTopicData } from './cron/generateTopicData'; // Removed - now using API endpoint
 
 const app = express();
 const server = createServer(app);
@@ -156,10 +156,10 @@ cron.schedule('*/2 * * * *', async () => {
   await checkPendingAvatarsAndUpdate();
 });
 
-cron.schedule('0 23 * * 6', async () => {
-  console.log('Updating trend topics...');
-  await generateAndStoreTopicData();
-});
+// cron.schedule('0 23 * * 6', async () => {
+//   console.log('Updating trend topics...');
+//   await generateAndStoreTopicData();
+// }); // Removed - now using API endpoint
 
 // 404
 app.use((_req, res) => {

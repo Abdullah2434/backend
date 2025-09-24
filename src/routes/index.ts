@@ -5,6 +5,7 @@ import webhookRoutes from "./v1/webhook";
 import subscriptionRoutes from "./v1/subscription";
 import paymentMethodsRoutes from "./v1/payment-methods";
 import contactRoutes from "./v1/contact";
+import trendsRoutes from "./v1/trends";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use("/webhook", webhookRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/payment-methods", paymentMethodsRoutes);
 router.use("/contact", contactRoutes);
+router.use("/trends", trendsRoutes);
 
 export default router;
