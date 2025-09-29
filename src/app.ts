@@ -71,11 +71,12 @@ app.use('/api/webhook/workflow-error', json({ limit: "10mb" }));
 // Handle SocialBu webhook with JSON parsing
 app.use('/api/webhook/socialbu', json({ limit: "10mb" }));
 app.use('/api/webhook/test', json({ limit: "10mb" }));
+app.use('/api/video/generate-video', json({ limit: "1gb" }));
 
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
     next();
   } else {
     json({ limit: "10mb" })(req, res, next);
@@ -84,7 +85,7 @@ app.use((req, res, next) => {
 
 // URL encoding for form data (also skip webhooks and file uploads)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
     next();
   } else {
     urlencoded({ extended: true })(req, res, next);
@@ -93,7 +94,7 @@ app.use((req, res, next) => {
 
 // Input sanitization (skip webhooks and file uploads to preserve raw data)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar')) {
+  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
     next(); // Skip sanitization for webhooks and file uploads
   } else {
     sanitizeInputs()(req, res, next);
