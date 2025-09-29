@@ -43,7 +43,8 @@ export async function gallery(req: Request, res: Response) {
       createdAt: video.createdAt,
       updatedAt: video.updatedAt,
       metadata: video.metadata,
-      downloadUrl: video.downloadUrl || null
+      downloadUrl: video.downloadUrl || null,
+      videoUrl: video.videoUrl || null
     }))
 
     return res.json({
