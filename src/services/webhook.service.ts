@@ -182,6 +182,46 @@ class WebhookService {
       };
     }
   }
+
+  /**
+   * Check if user has a specific SocialBu account ID
+   */
+  async checkUserHasAccount(userId: string, accountId: number): Promise<WebhookResponse> {
+    try {
+      await connectMongo();
+
+      console.log(`Checking if user ${userId} has account ${accountId}`);
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+          error: 'User not found'
+        };
+      }
+
+      const hasAccount = user.socialbu_account_ids && user.socialbu_account_ids.includes(accountId);
+
+      return {
+        success: true,
+        message: hasAccount ? 'User has this account' : 'User does not have this account',
+        data: {
+          userId,
+          accountId,
+          hasAccount,
+          userAccounts: user.socialbu_account_ids || []
+        }
+      };
+    } catch (error) {
+      console.error('Error checking user account:', error);
+      return {
+        success: false,
+        message: 'Failed to check user account',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
 }
 
 export default WebhookService.getInstance();

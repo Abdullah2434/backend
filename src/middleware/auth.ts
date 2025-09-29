@@ -41,7 +41,8 @@ const AUTH_ROUTES = {
     '/api/socialbu/accounts',
     '/api/socialbu/accounts/public',
     '/api/socialbu/test-auth',
-    '/api/socialbu-media'
+    '/api/socialbu-media',
+    '/api/socialbu-account'
   ],
   
   // Video routes (auth required)
