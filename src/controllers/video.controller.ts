@@ -636,7 +636,6 @@ export async function generateVideo(req: Request, res: Response) {
       voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
     }
     console.log('Using voice_id:', voice_id);
-    console.log(body.body,"body body");
     const webhookData = {
       hook: body.hook,
       body: body.body,
