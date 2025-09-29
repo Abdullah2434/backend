@@ -224,13 +224,7 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
  */
 export const createSocialPost = async (req: Request, res: Response) => {
   try {
-    const { accountIds, name, videoUrl, date, time, caption } = req.body;
-
-    // Debug logging
-    console.log('Request body received:', req.body);
-    console.log('accountIds type:', typeof accountIds);
-    console.log('accountIds value:', accountIds);
-    console.log('Is array:', Array.isArray(accountIds));
+    const { accountIds, name,userId, videoUrl, date, time, caption } = req.body;
 
     // Normalize accountIds to array format
     let normalizedAccountIds = accountIds;
@@ -279,27 +273,24 @@ export const createSocialPost = async (req: Request, res: Response) => {
       caption
     });
 
-    // Step 1: Initiate media upload
-    console.log('Step 1: Initiating media upload...');
-    const uploadResponse = await socialBuService.makeAuthenticatedRequest(
-      'POST',
-      '/upload_media',
-      {
-        name,
-        mime_type: 'mp4'
-      }
-    );
+    // Step 1: Use the working media upload logic
+    console.log('Step 1: Using working media upload logic...');
+    const uploadResult = await socialBuMediaService.uploadMedia(userId, {
+      name,
+      mime_type: videoUrl,
+      videoUrl
+    });
 
-    if (!uploadResponse.success) {
+    if (!uploadResult.success) {
       return res.status(400).json({
         success: false,
-        message: 'Failed to initiate media upload',
-        error: uploadResponse.message
+        message: 'Failed to upload media',
+        error: uploadResult.message
       });
     }
 
-    const { key } = uploadResponse.data;
-    console.log('Media upload initiated successfully, key:', key);
+    const { key } = uploadResult.data?.socialbuResponse;
+    console.log('Media upload completed successfully, key:', key);
 
     // Step 2: Wait 2 seconds and check upload status
     console.log('Step 2: Waiting 2 seconds before checking upload status...');
@@ -309,6 +300,8 @@ export const createSocialPost = async (req: Request, res: Response) => {
       'GET',
       `/upload_media/status?key=${encodeURIComponent(key)}`
     );
+
+    console.log('Status response:', statusResponse);
 
     if (!statusResponse.success) {
       return res.status(400).json({
@@ -358,7 +351,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       success: true,
       message: 'Social media post created successfully',
       data: {
-        upload: uploadResponse.data,
+        upload: uploadResult.data,
         status: statusResponse.data,
         post: postResponse.data
       }
