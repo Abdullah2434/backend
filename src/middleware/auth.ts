@@ -40,7 +40,8 @@ const AUTH_ROUTES = {
     '/api/trends/real-estate',
     '/api/socialbu/accounts',
     '/api/socialbu/accounts/public',
-    '/api/socialbu/test-auth'
+    '/api/socialbu/test-auth',
+    '/api/socialbu-media'
   ],
   
   // Video routes (auth required)
