@@ -262,7 +262,7 @@ class SocialBuService {
         return {
           success: false,
           message: (axiosError.response?.data as any)?.message || axiosError.message,
-          error: axiosError.response?.data
+          error: (axiosError.response?.data as any)?.message || (axiosError.response?.data as any)?.error || (axiosError.response?.data as string) || 'Unknown error'
         };
       }
 

@@ -251,7 +251,7 @@ class SocialBuMediaService {
     try {
       await connectMongo();
 
-      const mediaRecords = await SocialBuMedia.findByUserId(userId);
+      const mediaRecords = await SocialBuMedia.find({ userId }).sort({ createdAt: -1 });
 
       return {
         success: true,

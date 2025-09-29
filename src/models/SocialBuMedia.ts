@@ -146,6 +146,8 @@ socialBuMediaSchema.methods.markScriptFailed = function(this: ISocialBuMedia, er
   this.uploadScript.duration = this.uploadScript.startTime ? 
     this.uploadScript.endTime.getTime() - this.uploadScript.startTime.getTime() : 0;
   this.uploadScript.response = {
+    statusCode: 500,
+    headers: {},
     success: false,
     errorMessage: error
   };

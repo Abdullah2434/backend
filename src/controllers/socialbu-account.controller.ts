@@ -8,7 +8,7 @@ export const disconnectAccount = async (req: Request, res: Response) => {
   try {
     const { accountId } = req.params;
     // For testing purposes, use a hardcoded user ID
-    const userId = req.user?.id || "68b19f13b732018f898d7046";
+    const userId = req.user?._id || "68b19f13b732018f898d7046";
 
     if (!userId) {
       return res.status(401).json({
@@ -94,7 +94,7 @@ export const checkAccount = async (req: Request, res: Response) => {
   try {
     const { accountId } = req.params;
     // For testing purposes, use a hardcoded user ID
-    const userId = req.user?.id || "68b19f13b732018f898d7046";
+    const userId = req.user?._id || "68b19f13b732018f898d7046";
 
     if (!userId) {
       return res.status(401).json({

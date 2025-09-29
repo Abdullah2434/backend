@@ -8,7 +8,7 @@ import socialBuService from '../services/socialbu.service';
 export const uploadMedia = async (req: Request, res: Response) => {
   try {
     // For testing purposes, use a hardcoded user ID
-    const userId = req.user?.id || "68b19f13b732018f898d7046";
+    const userId = req.user?._id || "68b19f13b732018f898d7046";
     const { name, mime_type, videoUrl } = req.body;
 
     if (!userId) {
@@ -82,7 +82,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
  */
 export const getUserMedia = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id; // Get user ID from authenticated request
+    const userId = req.user?._id; // Get user ID from authenticated request
 
     if (!userId) {
       return res.status(401).json({
@@ -125,7 +125,7 @@ export const getUserMedia = async (req: Request, res: Response) => {
 export const getMediaById = async (req: Request, res: Response) => {
   try {
     const { mediaId } = req.params;
-    const userId = req.user?.id; // Get user ID from authenticated request
+    const userId = req.user?._id; // Get user ID from authenticated request
 
     if (!userId) {
       return res.status(401).json({
@@ -289,8 +289,16 @@ export const createSocialPost = async (req: Request, res: Response) => {
       });
     }
 
-    const { key } = uploadResult.data?.socialbuResponse;
+    const { key } = uploadResult.data?.socialbuResponse || {};
     console.log('Media upload completed successfully, key:', key);
+
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        message: 'No key returned from upload',
+        error: 'Missing upload key'
+      });
+    }
 
     // Step 2: Wait 2 seconds and check upload status
     console.log('Step 2: Waiting 2 seconds before checking upload status...');
