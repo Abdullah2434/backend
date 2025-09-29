@@ -48,6 +48,7 @@ export class VideoService {
       email: videoData.email,
       title: videoData.title,
       secretKey,
+      videoUrl: videoData.videoUrl,
       s3Key: videoData.s3Key,
       status: videoData.status || "processing",
       metadata: videoData.metadata,
@@ -371,6 +372,7 @@ export class VideoService {
       title: finalTitle,
       s3Key,
       secretKey,
+      videoUrl,
       status: "ready",
       metadata: {
         size: videoBuffer.byteLength,

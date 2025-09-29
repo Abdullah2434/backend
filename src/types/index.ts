@@ -137,6 +137,7 @@ export interface CreateVideoData {
   email: string;
   title: string;
   s3Key: string;
+  videoUrl: string;
   secretKey?: string;
   status?: "processing" | "ready" | "failed";
   metadata?: VideoMetadata;

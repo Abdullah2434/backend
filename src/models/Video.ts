@@ -9,6 +9,7 @@ export interface IVideo extends Document {
   title: string
   secretKey: string
   s3Key: string
+  videoUrl: string
   status: 'processing' | 'ready' | 'failed'
   metadata?: VideoMetadata
   createdAt: Date
@@ -20,6 +21,7 @@ const videoSchema = new Schema<IVideo>({
   userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
   email: { type: String, required: true, index: true, trim: true },
   title: { type: String, required: true, trim: true },
+  videoUrl: { type: String, required: true },
   secretKey: { type: String, required: true, select: false },
   s3Key: { type: String, required: true },
   status: { type: String, enum: ['processing', 'ready', 'failed'], default: 'processing', index: true },

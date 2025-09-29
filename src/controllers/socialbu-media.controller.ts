@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import socialBuMediaService from '../services/socialbu-media.service';
+import socialBuService from '../services/socialbu.service';
 
 /**
  * Upload media to SocialBu
@@ -213,6 +214,162 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update media status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Create social media post with complete workflow
+ */
+export const createSocialPost = async (req: Request, res: Response) => {
+  try {
+    const { accountIds, name, videoUrl, date, time, caption } = req.body;
+
+    // Debug logging
+    console.log('Request body received:', req.body);
+    console.log('accountIds type:', typeof accountIds);
+    console.log('accountIds value:', accountIds);
+    console.log('Is array:', Array.isArray(accountIds));
+
+    // Normalize accountIds to array format
+    let normalizedAccountIds = accountIds;
+    if (typeof accountIds === 'string') {
+      try {
+        normalizedAccountIds = JSON.parse(accountIds);
+      } catch (e) {
+        // If it's a single number as string, convert to array
+        normalizedAccountIds = [parseInt(accountIds)];
+      }
+    } else if (typeof accountIds === 'number') {
+      normalizedAccountIds = [accountIds];
+    } else if (typeof accountIds === 'object' && accountIds !== null && !Array.isArray(accountIds)) {
+      // Handle object format like { '0': 148311, '1': 148312 }
+      normalizedAccountIds = Object.values(accountIds).filter(val => typeof val === 'number');
+    }
+
+    // Validate required fields
+    if (!normalizedAccountIds || !Array.isArray(normalizedAccountIds) || normalizedAccountIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Account IDs array is required',
+        debug: {
+          received: accountIds,
+          normalized: normalizedAccountIds,
+          type: typeof accountIds,
+          isArray: Array.isArray(normalizedAccountIds),
+          length: normalizedAccountIds?.length
+        }
+      });
+    }
+
+    if (!name || !videoUrl || !date || !time || !caption) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, videoUrl, date, time, and caption are required'
+      });
+    }
+
+    console.log('Starting social media post creation workflow:', {
+      accountIds: normalizedAccountIds,
+      name,
+      videoUrl,
+      date,
+      time,
+      caption
+    });
+
+    // Step 1: Initiate media upload
+    console.log('Step 1: Initiating media upload...');
+    const uploadResponse = await socialBuService.makeAuthenticatedRequest(
+      'POST',
+      '/upload_media',
+      {
+        name,
+        mime_type: 'mp4'
+      }
+    );
+
+    if (!uploadResponse.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to initiate media upload',
+        error: uploadResponse.message
+      });
+    }
+
+    const { key } = uploadResponse.data;
+    console.log('Media upload initiated successfully, key:', key);
+
+    // Step 2: Wait 2 seconds and check upload status
+    console.log('Step 2: Waiting 2 seconds before checking upload status...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const statusResponse = await socialBuService.makeAuthenticatedRequest(
+      'GET',
+      `/upload_media/status?key=${encodeURIComponent(key)}`
+    );
+
+    if (!statusResponse.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to check upload status',
+        error: statusResponse.message
+      });
+    }
+
+    const { upload_token } = statusResponse.data;
+    console.log('Upload status checked successfully, upload_token:', upload_token);
+
+    // Step 3: Create social media post
+    console.log('Step 3: Creating social media post...');
+    
+    // Format date and time for publish_at
+    const publishAt = `${date} ${time}`;
+    
+    const postData = {
+      accounts: normalizedAccountIds,
+      publish_at: publishAt,
+      content: caption,
+      existing_attachments: [
+        {
+          upload_token: upload_token
+        }
+      ]
+    };
+
+    const postResponse = await socialBuService.makeAuthenticatedRequest(
+      'POST',
+      '/posts',
+      postData
+    );
+
+    if (!postResponse.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to create social media post',
+        error: postResponse.message
+      });
+    }
+
+    console.log('Social media post created successfully');
+
+    res.status(200).json({
+      success: true,
+      message: 'Social media post created successfully',
+      data: {
+        upload: uploadResponse.data,
+        status: statusResponse.data,
+        post: postResponse.data
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in social media post creation workflow:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create social media post',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
