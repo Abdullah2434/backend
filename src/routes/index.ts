@@ -6,6 +6,7 @@ import subscriptionRoutes from "./v1/subscription";
 import paymentMethodsRoutes from "./v1/payment-methods";
 import contactRoutes from "./v1/contact";
 import trendsRoutes from "./v1/trends";
+import socialbuRoutes from "./v1/socialbu";
 
 const router = Router();
 
@@ -16,5 +17,7 @@ router.use("/subscription", subscriptionRoutes);
 router.use("/payment-methods", paymentMethodsRoutes);
 router.use("/contact", contactRoutes);
 router.use("/trends", trendsRoutes);
+router.use("/socialbu", socialbuRoutes);
+router.use("/webhook", webhookRoutes);
 
 export default router;

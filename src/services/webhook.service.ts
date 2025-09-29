@@ -1,55 +1,187 @@
-import VideoService from './video.service'
-import { VideoCompleteData, WebhookResult } from '../types'
+import User from '../models/User';
+import { connectMongo } from '../config/mongoose';
 
-export class WebhookService {
-  private videoService: VideoService
+interface SocialBuWebhookData {
+  account_action: string;
+  account_id: number;
+  account_type: string;
+  account_name: string;
+}
 
-  constructor() {
-    this.videoService = new VideoService()
+interface WebhookResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+class WebhookService {
+  private static instance: WebhookService;
+
+  private constructor() {}
+
+  public static getInstance(): WebhookService {
+    if (!WebhookService.instance) {
+      WebhookService.instance = new WebhookService();
+    }
+    return WebhookService.instance;
   }
 
   /**
-   * Handle video completion webhook
+   * Handle SocialBu account webhook
    */
-  async handleVideoComplete(data: VideoCompleteData): Promise<WebhookResult> {
-    const { videoId, status = 'ready', s3Key, metadata, error } = data
+  async handleSocialBuAccountWebhook(webhookData: SocialBuWebhookData, userId?: string): Promise<WebhookResponse> {
+    try {
+      await connectMongo();
 
-    if (!videoId) {
-      throw new Error('Video ID is required')
+      console.log('Processing SocialBu webhook:', webhookData, 'for user:', userId);
+
+      const { account_action, account_id, account_type, account_name } = webhookData;
+
+      if (account_action === 'added' || account_action === 'updated') {
+        // Add account_id to specific user if userId is provided, otherwise add to all users
+        const updateQuery = userId 
+          ? { _id: userId }
+          : {}; // Update all users if no specific user ID
+
+        const result = await User.updateMany(
+          updateQuery,
+          { 
+            $addToSet: { 
+              socialbu_account_ids: account_id 
+            } 
+          }
+        );
+
+        console.log(`${account_action === 'updated' ? 'Updated' : 'Added'} account ${account_id} to ${result.modifiedCount} user(s)`);
+
+        return {
+          success: true,
+          message: `Account ${account_id} (${account_name}) ${account_action === 'updated' ? 'updated' : 'added'} successfully${userId ? ` to user ${userId}` : ' to all users'}`,
+          data: {
+            account_id,
+            account_name,
+            account_type,
+            users_updated: result.modifiedCount,
+            target_user: userId || 'all_users'
+          }
+        };
+      } else if (account_action === 'removed') {
+        // Remove account_id from specific user if userId is provided, otherwise remove from all users
+        const updateQuery = userId 
+          ? { _id: userId }
+          : {}; // Update all users if no specific user ID
+
+        const result = await User.updateMany(
+          updateQuery,
+          { 
+            $pull: { 
+              socialbu_account_ids: account_id 
+            } 
+          }
+        );
+
+        console.log(`Removed account ${account_id} from ${result.modifiedCount} user(s)`);
+
+        return {
+          success: true,
+          message: `Account ${account_id} (${account_name}) removed successfully${userId ? ` from user ${userId}` : ' from all users'}`,
+          data: {
+            account_id,
+            account_name,
+            account_type,
+            users_updated: result.modifiedCount,
+            target_user: userId || 'all_users'
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: `Unknown account action: ${account_action}`
+        };
+      }
+    } catch (error) {
+      console.error('Error processing SocialBu webhook:', error);
+      return {
+        success: false,
+        message: 'Failed to process webhook',
+        data: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
+  }
 
-    // If there's an error, mark video as failed
-    const finalStatus = error ? 'failed' : status
+  /**
+   * Get user's SocialBu account IDs
+   */
+  async getUserSocialBuAccounts(userId: string): Promise<WebhookResponse> {
+    try {
+      await connectMongo();
 
-    // Update video status
-    const updatedVideo = await this.videoService.updateVideoStatus(videoId, finalStatus as any)
+      const user = await User.findById(userId).select('socialbu_account_ids');
+      
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found'
+        };
+      }
 
-    if (!updatedVideo) {
-      throw new Error('Video not found')
+      return {
+        success: true,
+        message: 'SocialBu accounts retrieved successfully',
+        data: {
+          socialbu_account_ids: user.socialbu_account_ids || []
+        }
+      };
+    } catch (error) {
+      console.error('Error getting user SocialBu accounts:', error);
+      return {
+        success: false,
+        message: 'Failed to get SocialBu accounts',
+        data: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
+  }
 
-    // Update metadata if provided
-    if (metadata) {
-      await this.videoService.updateVideoMetadata(videoId, metadata)
-    }
+  /**
+   * Remove specific SocialBu account from user
+   */
+  async removeUserSocialBuAccount(userId: string, accountId: number): Promise<WebhookResponse> {
+    try {
+      await connectMongo();
 
-    // Update S3 key if provided (log for now)
-    if (s3Key && s3Key !== updatedVideo.s3Key) {
-      console.log(`Video complete webhook: S3 key updated for video ${videoId}`)
-    }
+      const result = await User.findByIdAndUpdate(
+        userId,
+        { 
+          $pull: { 
+            socialbu_account_ids: accountId 
+          } 
+        },
+        { new: true }
+      );
 
-    console.log(`Video complete webhook: Successfully updated video ${videoId} to status ${finalStatus}`)
+      if (!result) {
+        return {
+          success: false,
+          message: 'User not found'
+        };
+      }
 
     return {
       success: true,
-      message: 'Video status updated successfully',
+        message: `Account ${accountId} removed successfully`,
       data: {
-        videoId: updatedVideo.videoId,
-        status: updatedVideo.status,
-        updatedAt: updatedVideo.updatedAt
-      }
+          socialbu_account_ids: result.socialbu_account_ids || []
+        }
+      };
+    } catch (error) {
+      console.error('Error removing SocialBu account:', error);
+      return {
+        success: false,
+        message: 'Failed to remove SocialBu account',
+        data: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
   }
 }
 
-export default WebhookService
+export default WebhookService.getInstance();

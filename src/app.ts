@@ -68,6 +68,10 @@ app.use('/api/webhook/stripe', raw({ type: 'application/json' }));
 // Handle workflow error webhook with JSON parsing
 app.use('/api/webhook/workflow-error', json({ limit: "10mb" }));
 
+// Handle SocialBu webhook with JSON parsing
+app.use('/api/webhook/socialbu', json({ limit: "10mb" }));
+app.use('/api/webhook/test', json({ limit: "10mb" }));
+
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes

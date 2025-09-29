@@ -21,6 +21,12 @@ const AUTH_ROUTES = {
     '/api/auth/csrf-token',
     '/api/video/track-execution',
     '/api/webhook/workflow-error',
+    '/api/socialbu/login',
+    '/api/socialbu/save-token',
+    '/api/socialbu/test',
+    '/api/socialbu/accounts/connect',
+    '/api/webhook/socialbu',
+    '/api/webhook/test'
   ],
   
   // Protected routes (auth required)
@@ -31,7 +37,10 @@ const AUTH_ROUTES = {
     '/api/video/topics/:id',
     '/api/video/topics',
     '/api/video/topics/:topic',
-    '/api/trends/real-estate'
+    '/api/trends/real-estate',
+    '/api/socialbu/accounts',
+    '/api/socialbu/accounts/public',
+    '/api/socialbu/test-auth'
   ],
   
   // Video routes (auth required)
