@@ -38,46 +38,22 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       apiVersion: "2023-10-16",
     });
 
-    // Handle different body formats
-    let bodyString: string;
+    // Get raw body - should be a Buffer from Express raw middleware
+    const rawBody = req.body;
     
-    if (Buffer.isBuffer(req.body)) {
-      // If it's a Buffer, convert to string
-      bodyString = req.body.toString('utf8');
-      console.log("🔍 Converted Buffer to string");
-    } else if (typeof req.body === 'string') {
-      // If it's already a string, use as-is
-      bodyString = req.body;
-      console.log("🔍 Body is already a string");
-    } else if (typeof req.body === 'object' && req.body !== null) {
-      // Check if it's an object with numeric keys (array-like)
-      const keys = Object.keys(req.body);
-      const isArrayLike = keys.every(key => !isNaN(parseInt(key))) && keys.length > 0;
-      
-      if (isArrayLike) {
-        console.log("🔍 Detected array-like object, reconstructing from numeric keys");
-        // Reconstruct the original buffer/string from numeric keys
-        const values = keys.sort((a, b) => parseInt(a) - parseInt(b)).map(key => req.body[key]);
-        const buffer = Buffer.from(values);
-        bodyString = buffer.toString('utf8');
-        console.log("🔍 Reconstructed string from array-like object");
-      } else {
-        // Regular object, stringify it
-        bodyString = JSON.stringify(req.body);
-        console.log("🔍 Stringified regular object body");
-      }
-    } else {
-      // Fallback: convert to string
-      bodyString = String(req.body);
-      console.log("🔍 Fallback string conversion");
+    if (!Buffer.isBuffer(rawBody)) {
+      console.error("❌ Expected Buffer body, got:", typeof rawBody);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request body format",
+      });
     }
-    
-    console.log("🔍 Final body string type:", typeof bodyString);
-    console.log("🔍 Final body string length:", bodyString?.length || 0);
-    console.log("🔍 Body string preview:", bodyString?.substring(0, 200) + "...");
+
+    console.log("🔍 Raw body length:", rawBody.length);
+    console.log("🔍 Body preview:", rawBody.toString('utf8').substring(0, 200) + "...");
     
     event = stripe.webhooks.constructEvent(
-      bodyString,
+      rawBody,
       sig as string,
       webhookSecret
     );
@@ -87,69 +63,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     console.log("📋 Event ID:", event.id);
   } catch (err: any) {
     console.error("❌ Webhook signature verification failed:", err.message);
-    
-    // TEMPORARY: Fallback to parsing without verification for testing
-    console.log("⚠️ TEMPORARY: Falling back to parsing without verification");
-    try {
-      // Parse the raw body as JSON with proper handling
-      let bodyForParsing: string | undefined;
-      let eventFromObject: Stripe.Event | undefined;
-      
-      if (Buffer.isBuffer(req.body)) {
-        bodyForParsing = req.body.toString('utf8');
-        console.log("🔍 Fallback: Converted Buffer to string for parsing");
-      } else if (typeof req.body === 'string') {
-        bodyForParsing = req.body;
-        console.log("🔍 Fallback: Using string body for parsing");
-      } else if (typeof req.body === 'object' && req.body !== null) {
-        // Check if it's an object with numeric keys (array-like)
-        const keys = Object.keys(req.body);
-        const isArrayLike = keys.every(key => !isNaN(parseInt(key))) && keys.length > 0;
-        
-        if (isArrayLike) {
-          console.log("🔍 Fallback: Detected array-like object, reconstructing");
-          // Reconstruct the original buffer/string from numeric keys
-          const values = keys.sort((a, b) => parseInt(a) - parseInt(b)).map(key => req.body[key]);
-          const buffer = Buffer.from(values);
-          bodyForParsing = buffer.toString('utf8');
-          console.log("🔍 Fallback: Reconstructed string from array-like object");
-        } else if (req.body.type && req.body.id) {
-          // If it looks like a Stripe event object already, use it directly
-          eventFromObject = req.body as Stripe.Event;
-          console.log("✅ Fallback: Using Stripe event object directly");
-          console.log("📋 Event type:", eventFromObject.type);
-          console.log("📋 Event ID:", eventFromObject.id);
-          // Skip the JSON.parse step
-        } else {
-          // Regular object, stringify it
-          bodyForParsing = JSON.stringify(req.body);
-          console.log("🔍 Fallback: Stringified object for parsing");
-        }
-      } else {
-        bodyForParsing = String(req.body);
-        console.log("🔍 Fallback: String conversion for parsing");
-      }
-      
-      // Set the event based on parsing results
-      if (eventFromObject) {
-        event = eventFromObject;
-      } else if (bodyForParsing) {
-        console.log("🔍 Fallback body string preview:", bodyForParsing.substring(0, 200) + "...");
-        event = JSON.parse(bodyForParsing) as Stripe.Event;
-        console.log("✅ Parsed webhook event without signature verification");
-        console.log("📋 Event type:", event.type);
-        console.log("📋 Event ID:", event.id);
-      } else {
-        throw new Error("Could not extract event from request body");
-      }
-    } catch (parseErr: any) {
-      console.error("❌ Failed to parse webhook body:", parseErr.message);
-      console.error("❌ Body content that failed to parse:", req.body);
-      return res.status(400).json({
-        success: false,
-        message: "Invalid webhook signature and failed to parse body",
-      });
-    }
+    console.error("❌ Error details:", err);
+    return res.status(400).json({
+      success: false,
+      message: "Invalid webhook signature",
+    });
   }
 
   // Ensure we have a valid event before processing
