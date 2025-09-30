@@ -1216,6 +1216,8 @@ export class SubscriptionService {
     metadata?: { [key: string]: string }
   ): Promise<UserSubscription> {
     console.log(`🔄 Creating/updating subscription from webhook: ${stripeSubscription.id}`);
+    console.log(`📊 Metadata received:`, metadata);
+    console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
     
     // Check if subscription already exists
     let existingSubscription = await Subscription.findOne({
@@ -1239,15 +1241,25 @@ export class SubscriptionService {
     
     // Get plan information from metadata or subscription items
     let planId = metadata?.planId;
+    console.log(`🔍 Plan ID from metadata: ${planId}`);
+    
     if (!planId && stripeSubscription.items.data.length > 0) {
       const priceId = stripeSubscription.items.data[0].price.id;
+      console.log(`🔍 Price ID from subscription: ${priceId}`);
+      
       // Find plan by price ID
       const plans = this.getPlans();
+      console.log(`🔍 Available plans:`, plans.map(p => ({ id: p.id, stripePriceId: p.stripePriceId })));
+      
       const plan = plans.find((p: SubscriptionPlan) => p.stripePriceId === priceId);
       planId = plan?.id;
+      console.log(`🔍 Found plan by price ID: ${planId}`);
     }
 
     if (!planId) {
+      console.error(`❌ Could not determine plan ID for subscription ${stripeSubscription.id}`);
+      console.error(`❌ Metadata:`, metadata);
+      console.error(`❌ Subscription items:`, stripeSubscription.items.data);
       throw new Error(`Could not determine plan ID for subscription ${stripeSubscription.id}`);
     }
 
