@@ -21,6 +21,7 @@ const AUTH_ROUTES = {
     '/api/auth/csrf-token',
     '/api/video/track-execution',
     '/api/webhook/workflow-error',
+    '/api/webhook/stripe',
     '/api/socialbu/login',
     '/api/socialbu/save-token',
     '/api/socialbu/test',

@@ -1,14 +1,18 @@
-import { Router } from 'express';
+import { Router } from "express";
+import * as ctrl from "../../controllers/webhook.controller";
+import { handleStripeWebhook } from "../../controllers/stripe-webhook.controller";
 import {
-  testWebhook,
-  handleSocialBuWebhook,
-  getUserSocialBuAccounts,
-  removeUserSocialBuAccount
-} from '../../controllers/webhook.controller';
+    testWebhook,
+    handleSocialBuWebhook,
+    getUserSocialBuAccounts,
+    removeUserSocialBuAccount
+  } from '../../controllers/webhooksocialbu.controller';
 
 const router = Router();
 
-// Webhook routes
+router.post("/video-complete", ctrl.videoComplete);
+router.post("/workflow-error", ctrl.handleWorkflowError);
+router.post("/stripe", handleStripeWebhook);
 router.post('/test', testWebhook); // Test webhook endpoint
 router.post('/socialbu', handleSocialBuWebhook); // Handle SocialBu account webhooks
 
