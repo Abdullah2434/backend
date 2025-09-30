@@ -7,6 +7,7 @@ import socialBuService from '../services/socialbu.service';
  */
 export const uploadMedia = async (req: Request, res: Response) => {
   try {
+    // change id to _id
     // For testing purposes, use a hardcoded user ID
     const userId = req.user?.id || "68b19f13b732018f898d7046";
     const { name, mime_type, videoUrl } = req.body;
