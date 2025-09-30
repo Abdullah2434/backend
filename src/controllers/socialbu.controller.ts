@@ -128,7 +128,7 @@ export const getAccounts = async (req: Request, res: Response) => {
 export const getAccountsPublic = async (req: Request, res: Response) => {
   try {
     // For testing purposes, use a hardcoded user ID
-    const userId = req.user?.id || "68b19f13b732018f898d7046";
+    const userId = req.user?._id || "68b19f13b732018f898d7046";
 
     if (!userId) {
       return res.status(401).json({
@@ -215,7 +215,7 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
 export const connectAccount = async (req: Request, res: Response) => {
   try {
     const { provider, postback_url, account_id, user_id } = req.body;
-    const userId = req.user?.id || user_id; // Get user ID from authenticated request or body
+    const userId = req.user?._id || user_id; // Get user ID from authenticated request or body
 
     if (!provider) {
       return res.status(400).json({
@@ -280,7 +280,7 @@ export const testAuth = async (req: Request, res: Response) => {
     console.log('Test auth request:', {
       user: req.user,
       hasUser: !!req.user,
-      userId: req.user?.id,
+      userId: req.user?._id,
       hasToken: !!accessToken,
       tokenLength: accessToken?.length
     });
@@ -291,7 +291,7 @@ export const testAuth = async (req: Request, res: Response) => {
       data: {
         user: req.user,
         hasUser: !!req.user,
-        userId: req.user?.id,
+        userId: req.user?._id,
         hasToken: !!accessToken,
         tokenLength: accessToken?.length
       }
