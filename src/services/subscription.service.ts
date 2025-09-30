@@ -161,33 +161,28 @@ export class SubscriptionService {
       }
     }
 
-    // Create subscription record in database
-    const subscriptionRecord = new Subscription({
+    // DO NOT create subscription record here - wait for webhook confirmation
+    // The subscription record will be created when checkout.session.completed 
+    // or invoice.payment_succeeded webhook is received
+    console.log(`📝 Stripe subscription created: ${subscription.id}, waiting for payment confirmation via webhook`);
+
+    // Return a temporary subscription object for API response
+    // The actual database record will be created via webhook
+    return {
+      id: subscription.id,
       userId,
       planId,
       stripeSubscriptionId: subscription.id,
       stripeCustomerId: customer.id,
-      status: subscription.status === "active" ? "active" : "pending",
+      status: "pending", // Will be updated via webhook
       currentPeriodStart: new Date(subscription.current_period_start * 1000),
       currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
       videoLimit: plan.videoLimit,
       videoCount: 0,
-    });
-
-    await subscriptionRecord.save();
-
-    // Create billing record
-    if (subscription.latest_invoice) {
-      const invoice = subscription.latest_invoice as Stripe.Invoice;
-      await this.createBillingRecord(
-        userId,
-        invoice,
-        subscriptionRecord._id,
-        plan.name
-      );
-    }
-
-    return this.formatSubscription(subscriptionRecord);
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as UserSubscription;
   }
 
   /**
@@ -758,39 +753,28 @@ export class SubscriptionService {
         throw new Error("No invoice found in subscription");
       }
 
-      // Create subscription record in database
-      const subscriptionRecord = new Subscription({
-        userId,
-        planId,
-        stripeSubscriptionId: subscription.id,
-        stripeCustomerId: customer.id,
-        status: subscription.status === "active" ? "active" : "pending",
-        currentPeriodStart: new Date(subscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        videoLimit: plan.videoLimit,
-        videoCount: 0,
-      });
-
-      await subscriptionRecord.save();
-
-      // Create billing record
-      if (subscription.latest_invoice) {
-        const invoice = subscription.latest_invoice as Stripe.Invoice;
-
-        // Only create billing record if invoice has required fields
-        if (invoice.id && invoice.amount_due !== undefined) {
-          await this.createBillingRecord(
-            userId,
-            invoice,
-            subscriptionRecord._id,
-            plan.name
-          );
-        }
-      }
+      // DO NOT create subscription record here - wait for webhook confirmation
+      // The subscription record will be created when checkout.session.completed 
+      // or invoice.payment_succeeded webhook is received
+      console.log(`📝 Stripe subscription created: ${subscription.id}, waiting for payment confirmation via webhook`);
 
       const result = {
         paymentIntent,
-        subscription: this.formatSubscription(subscriptionRecord),
+        subscription: {
+          id: subscription.id,
+          userId,
+          planId,
+          stripeSubscriptionId: subscription.id,
+          stripeCustomerId: customer.id,
+          status: "pending", // Will be updated via webhook
+          currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          videoLimit: plan.videoLimit,
+          videoCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as UserSubscription,
       };
 
       return result;
@@ -1222,6 +1206,92 @@ export class SubscriptionService {
       lastPaymentDate: lastPayment?.createdAt || null,
       nextBillingDate: subscription?.currentPeriodEnd || null,
     };
+  }
+
+  /**
+   * Create or update subscription from webhook (after successful payment)
+   */
+  async createOrUpdateSubscriptionFromWebhook(
+    stripeSubscription: Stripe.Subscription,
+    metadata?: { [key: string]: string }
+  ): Promise<UserSubscription> {
+    console.log(`🔄 Creating/updating subscription from webhook: ${stripeSubscription.id}`);
+    
+    // Check if subscription already exists
+    let existingSubscription = await Subscription.findOne({
+      stripeSubscriptionId: stripeSubscription.id,
+    });
+
+    if (existingSubscription) {
+      console.log(`📝 Updating existing subscription ${stripeSubscription.id}`);
+      // Update existing subscription
+      existingSubscription.status = stripeSubscription.status === "active" ? "active" : "pending";
+      existingSubscription.currentPeriodStart = new Date(stripeSubscription.current_period_start * 1000);
+      existingSubscription.currentPeriodEnd = new Date(stripeSubscription.current_period_end * 1000);
+      existingSubscription.cancelAtPeriodEnd = stripeSubscription.cancel_at_period_end;
+      
+      await existingSubscription.save();
+      return this.formatSubscription(existingSubscription);
+    }
+
+    // Create new subscription record
+    console.log(`🆕 Creating new subscription record for ${stripeSubscription.id}`);
+    
+    // Get plan information from metadata or subscription items
+    let planId = metadata?.planId;
+    if (!planId && stripeSubscription.items.data.length > 0) {
+      const priceId = stripeSubscription.items.data[0].price.id;
+      // Find plan by price ID
+      const plans = this.getPlans();
+      const plan = plans.find((p: SubscriptionPlan) => p.stripePriceId === priceId);
+      planId = plan?.id;
+    }
+
+    if (!planId) {
+      throw new Error(`Could not determine plan ID for subscription ${stripeSubscription.id}`);
+    }
+
+    const plan = this.getPlan(planId);
+    if (!plan) {
+      throw new Error(`Invalid plan ID: ${planId}`);
+    }
+
+    // Get user ID from metadata
+    const userId = metadata?.userId;
+    if (!userId) {
+      throw new Error(`User ID not found in subscription metadata for ${stripeSubscription.id}`);
+    }
+
+    const subscriptionRecord = new Subscription({
+      userId,
+      planId,
+      stripeSubscriptionId: stripeSubscription.id,
+      stripeCustomerId: stripeSubscription.customer as string,
+      status: stripeSubscription.status === "active" ? "active" : "pending",
+      currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+      cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+      videoLimit: plan.videoLimit,
+      videoCount: 0,
+    });
+
+    await subscriptionRecord.save();
+
+    // Create billing record if there's an invoice
+    if (stripeSubscription.latest_invoice) {
+      const invoice = stripeSubscription.latest_invoice as Stripe.Invoice;
+      if (invoice.id && invoice.amount_due !== undefined) {
+        await this.createBillingRecord(
+          userId,
+          invoice,
+          subscriptionRecord._id,
+          plan.name
+        );
+      }
+    }
+
+    console.log(`✅ Successfully created subscription record for ${stripeSubscription.id}`);
+    return this.formatSubscription(subscriptionRecord);
   }
 
   /**
