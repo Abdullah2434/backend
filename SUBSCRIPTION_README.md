@@ -60,10 +60,11 @@ STRIPE_PROFESSIONAL_PRICE_ID=price_professional_plan_id
 3. Copy the price IDs to your environment variables
 4. Set up webhook endpoint: `https://yourdomain.com/api/webhook/stripe`
 5. Configure webhook events:
+   - `checkout.session.completed` ⭐ **CRITICAL** - Creates subscription records after successful payment
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
-   - `invoice.payment_succeeded`
+   - `invoice.payment_succeeded` ⭐ **CRITICAL** - Creates subscription records for direct payments
    - `invoice.payment_failed`
    - `customer.subscription.trial_will_end`
 
@@ -115,11 +116,16 @@ await subscriptionService.incrementVideoCount(userId);
 
 ## 💳 Payment Flow
 
-### 1. Subscription Creation
+### 1. Subscription Creation (Fixed Flow)
 
 ```
-User selects plan → Payment method attached → Stripe subscription created → Local record created
+User selects plan → Stripe subscription created → Payment intent returned → User completes payment → Webhook creates local record
 ```
+
+**Key Changes:**
+- ✅ **No premature DB records** - Subscription records are only created after successful payment
+- ✅ **Webhook-driven creation** - Records created via `checkout.session.completed` or `invoice.payment_succeeded`
+- ✅ **Modal cancellation safe** - If user closes payment modal, no DB record is created
 
 ### 2. Monthly Billing
 

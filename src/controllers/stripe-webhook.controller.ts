@@ -84,6 +84,12 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
     // Handle the event
     switch (event.type) {
+      case "checkout.session.completed":
+        await handleCheckoutSessionCompleted(
+          event.data.object as Stripe.Checkout.Session
+        );
+        break;
+
       case "customer.subscription.created":
         await handleSubscriptionCreated(
           event.data.object as Stripe.Subscription
@@ -137,6 +143,60 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 }
 
 /**
+ * Handle checkout session completion - this is where we create subscription records
+ */
+async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+  console.log("🎉 Checkout session completed:", session.id);
+  console.log("📊 Session details:", {
+    id: session.id,
+    mode: session.mode,
+    payment_status: session.payment_status,
+    customer: session.customer,
+    subscription: session.subscription,
+    metadata: session.metadata,
+  });
+
+  // Only process if payment was successful
+  if (session.payment_status !== "paid") {
+    console.log("⚠️ Checkout session not paid, skipping subscription creation");
+    return;
+  }
+
+  // Only process subscription mode (not one-time payments)
+  if (session.mode !== "subscription") {
+    console.log("⚠️ Not a subscription checkout session, skipping");
+    return;
+  }
+
+  if (session.subscription) {
+    const subscriptionId = session.subscription as string;
+    console.log("🔗 Processing subscription from checkout session:", subscriptionId);
+
+    try {
+      // Get the latest subscription data from Stripe
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+        apiVersion: "2023-10-16",
+      });
+      
+      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+
+      // Create or update subscription record in database
+      await subscriptionService.createOrUpdateSubscriptionFromWebhook(
+        stripeSubscription,
+        session.metadata || {}
+      );
+      
+      console.log(`✅ Successfully created/updated subscription ${subscriptionId} from checkout session`);
+    } catch (error) {
+      console.error(`❌ Failed to process checkout session for subscription ${subscriptionId}:`, error);
+    }
+  } else {
+    console.log("⚠️ Checkout session has no associated subscription");
+  }
+}
+
+/**
  * Handle subscription creation
  */
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
@@ -149,18 +209,18 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
     current_period_end: subscription.current_period_end,
   });
 
-  // Update subscription status in database
-  await subscriptionService.updateSubscriptionStatus(
-    subscription.id,
-    subscription.status
-  );
-
-  // If subscription is already active (immediate payment), ensure it's properly activated
-  if (subscription.status === "active") {
-    console.log(
-      `Subscription ${subscription.id} is already active, ensuring proper activation`
+  // Only update existing subscription status, don't create new ones here
+  // New subscriptions should be created via checkout.session.completed or invoice.payment_succeeded
+  const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscription.id);
+  
+  if (existingSubscription) {
+    console.log(`📝 Updating existing subscription ${subscription.id} status to ${subscription.status}`);
+    await subscriptionService.updateSubscriptionStatus(
+      subscription.id,
+      subscription.status
     );
-    // The updateSubscriptionStatus above should handle this, but we log it for clarity
+  } else {
+    console.log(`⚠️ Subscription ${subscription.id} created event received but no local record found. This should be handled by checkout.session.completed or invoice.payment_succeeded.`);
   }
 }
 
@@ -230,13 +290,24 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
       const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
       console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
 
-      // Update subscription status based on Stripe's current status
-      await subscriptionService.updateSubscriptionStatus(
-        subscriptionId,
-        stripeSubscription.status
-      );
+      // Check if subscription record exists in database
+      const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
       
-      console.log(`✅ Successfully updated subscription ${subscriptionId} status to ${stripeSubscription.status}`);
+      if (existingSubscription) {
+        // Update existing subscription status
+        await subscriptionService.updateSubscriptionStatus(
+          subscriptionId,
+          stripeSubscription.status
+        );
+        console.log(`✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status}`);
+      } else {
+        // Create new subscription record from webhook
+        await subscriptionService.createOrUpdateSubscriptionFromWebhook(
+          stripeSubscription,
+          { userId: stripeSubscription.metadata?.userId, planId: stripeSubscription.metadata?.planId }
+        );
+        console.log(`✅ Successfully created new subscription ${subscriptionId} from invoice payment webhook`);
+      }
     } catch (error) {
       console.error(`❌ Failed to process invoice payment for subscription ${subscriptionId}:`, error);
     }
