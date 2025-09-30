@@ -17,6 +17,7 @@ export interface IUser extends Document {
   lastUsedResetToken?: string
   googleId?: string
   googleEmail?: string
+  socialbu_account_ids?: number[]
   createdAt: Date
   updatedAt: Date
   comparePassword(candidate: string): Promise<boolean>
@@ -38,6 +39,7 @@ const userSchema = new Schema<IUser>({
   lastUsedResetToken: { type: String, select: false },
   googleId: { type: String, unique: true, sparse: true, select: false },
   googleEmail: { type: String, lowercase: true, trim: true },
+  socialbu_account_ids: { type: [Number], default: [] },
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } })
 
 userSchema.virtual('fullName').get(function(this: any) { return `${this.firstName} ${this.lastName}` })

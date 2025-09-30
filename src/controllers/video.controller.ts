@@ -43,7 +43,8 @@ export async function gallery(req: Request, res: Response) {
       createdAt: video.createdAt,
       updatedAt: video.updatedAt,
       metadata: video.metadata,
-      downloadUrl: video.downloadUrl || null
+      downloadUrl: video.downloadUrl || null,
+      videoUrl: video.videoUrl || null
     }))
 
     return res.json({
@@ -636,6 +637,7 @@ export async function generateVideo(req: Request, res: Response) {
       voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
     }
     console.log('Using voice_id:', voice_id);
+    console.log(body.body,"body body");
     const webhookData = {
       hook: body.hook,
       body: body.body,
