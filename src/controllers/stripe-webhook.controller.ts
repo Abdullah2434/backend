@@ -331,6 +331,11 @@ async function handlePaymentIntentSucceeded(
     metadata: paymentIntent.metadata,
   });
 
+  // Debug: Check if metadata has required fields
+  if (!paymentIntent.metadata?.subscriptionId) {
+    console.log("⚠️ Payment intent has no subscriptionId in metadata:", paymentIntent.metadata);
+  }
+
   // If this payment intent is associated with a subscription, sync the subscription status
   if (paymentIntent.metadata?.subscriptionId) {
     const subscriptionId = paymentIntent.metadata.subscriptionId;
@@ -348,22 +353,23 @@ async function handlePaymentIntentSucceeded(
       const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
       console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
 
-      // Update subscription status based on Stripe's current status
-      await subscriptionService.updateSubscriptionStatus(
-        subscriptionId,
-        stripeSubscription.status
-      );
+      // Check if subscription record exists in database
+      const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
       
-      console.log(
-        `✅ Successfully synced subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
-      );
-      
-      // Additional verification: Check if the subscription was actually updated in the database
-      const updatedLocalSub = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
-      if (updatedLocalSub) {
-        console.log(`🔍 Database verification: Local subscription status is now: ${updatedLocalSub.status}`);
+      if (existingSubscription) {
+        // Update existing subscription status
+        await subscriptionService.updateSubscriptionStatus(
+          subscriptionId,
+          stripeSubscription.status
+        );
+        console.log(`✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`);
       } else {
-        console.log(`⚠️ Database verification: Could not find local subscription with Stripe ID: ${subscriptionId}`);
+        // Create new subscription record from webhook
+        await subscriptionService.createOrUpdateSubscriptionFromWebhook(
+          stripeSubscription,
+          { userId: paymentIntent.metadata?.userId, planId: paymentIntent.metadata?.planId }
+        );
+        console.log(`✅ Successfully created new subscription ${subscriptionId} from payment intent webhook`);
       }
     } catch (error) {
       console.error(
