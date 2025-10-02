@@ -243,6 +243,14 @@ export interface CreatePaymentIntentData {
   metadata?: Record<string, string>;
 }
 
+// Original implementation interface for backward compatibility
+export interface CreatePaymentIntentDataOriginal {
+  userId: string;
+  planId: string;
+  customerEmail: string;
+  customerName: string;
+}
+
 export interface BillingRecord {
   id: string;
   userId: string;

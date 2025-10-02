@@ -77,8 +77,9 @@ export class VideoModuleService {
   // ==================== MANAGEMENT OPERATIONS ====================
 
   async getUserAvatars(userId: string): Promise<{
-    customAvatars: any[];
-    defaultAvatars: any[];
+    success: boolean;
+    custom: any[];
+    default: any[];
   }> {
     return this.managementService.getUserAvatars(userId);
   }

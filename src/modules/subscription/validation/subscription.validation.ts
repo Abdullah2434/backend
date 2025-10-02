@@ -169,6 +169,13 @@ export const handleValidationErrors = (
       value: error.type === "field" ? (error as any).value : undefined,
     }));
 
+    console.log("❌ Validation failed for payment intent:", {
+      path: req.path,
+      method: req.method,
+      body: req.body,
+      errors: formattedErrors,
+    });
+
     const response: SubscriptionResponse = {
       success: false,
       message: "Validation failed",

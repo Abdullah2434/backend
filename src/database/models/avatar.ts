@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document } from "mongoose";
 
-export type AvatarStatus = 'pending' | 'training' | 'ready';
+export type AvatarStatus = "pending" | "training" | "ready";
 
 export interface IDefaultAvatar extends Document {
   avatar_id: string;
@@ -26,14 +26,17 @@ const DefaultAvatarSchema: Schema = new Schema({
   age_group: { type: String, required: false },
   status: {
     type: String,
-    enum: ['pending', 'training', 'ready'],
-    default: 'pending',
+    enum: ["pending", "training", "ready"],
+    default: "pending",
   },
   userId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: false,
-    },
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    required: false,
+  },
 });
 
-export default mongoose.model<IDefaultAvatar>('DefaultAvatar', DefaultAvatarSchema);
+export default mongoose.model<IDefaultAvatar>(
+  "DefaultAvatar",
+  DefaultAvatarSchema
+);

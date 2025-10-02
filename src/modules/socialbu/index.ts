@@ -1,4 +1,4 @@
-import socialBuRoutes from "./routes/socialbu.routes";
+import { socialBuRoutes } from "./routes/socialbu.routes";
 
 // ==================== SOCIALBU MODULE EXPORTS ====================
 

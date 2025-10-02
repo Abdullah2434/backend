@@ -152,7 +152,8 @@ export const downloadProxy = async (req: any, res: Response): Promise<void> => {
 export const getAvatars = async (req: any, res: Response): Promise<void> => {
   try {
     const result = await videoService.getUserAvatars(req.user!._id);
-    sendResponse(res, 200, "Avatars retrieved successfully", result);
+    // Return the result directly since it already has the success, custom, default format
+    res.status(200).json(result);
   } catch (error: any) {
     logVideoError(error, { userId: req.user?._id, action: "getAvatars" });
     sendResponse(

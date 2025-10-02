@@ -21,8 +21,9 @@ export class VideoManagementService {
   // ==================== AVATAR AND VOICE MANAGEMENT ====================
 
   async getUserAvatars(userId: string): Promise<{
-    customAvatars: any[];
-    defaultAvatars: any[];
+    success: boolean;
+    custom: any[];
+    default: any[];
   }> {
     try {
       const userObjectId = new mongoose.Types.ObjectId(userId);
@@ -34,8 +35,9 @@ export class VideoManagementService {
       });
 
       return {
-        customAvatars,
-        defaultAvatars,
+        success: true,
+        custom: customAvatars,
+        default: defaultAvatars,
       };
     } catch (error) {
       logVideoError(error as Error, { userId, action: "getUserAvatars" });
