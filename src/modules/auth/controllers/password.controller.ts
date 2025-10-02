@@ -34,10 +34,16 @@ export const resetPassword = asyncHandler(
 
 /**
  * Validate reset token
+ * Supports both GET (from email link) and POST (from form)
  */
 export const validateResetToken = asyncHandler(
   async (req: Request, res: Response) => {
-    const { token } = req.body;
+    // Accept token from query params (GET) or body (POST)
+    const token = String(req.query.token || req.body.token || "");
+
+    if (!token) {
+      return ResponseHelper.badRequest(res, "Token is required");
+    }
 
     const result = await passwordService.validateResetToken(token);
 

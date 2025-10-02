@@ -22,15 +22,8 @@ import { authenticate } from "./middleware/auth";
 import { logger } from "./core/utils/logger";
 import { env } from "./config/environment";
 import { databaseManager } from "./config/database";
-import cron from "node-cron";
-import {
-  fetchAndStoreDefaultAvatars,
-  fetchAndStoreDefaultVoices,
-} from "./cron/fetchDefaultAvatars";
-import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
-import "./queues/photoAvatarWorker";
 import { notificationService } from "./services/notification.service";
-// import { generateAndStoreTopicData } from './cron/generateTopicData'; // Removed - now using API endpoint
+import { initializeJobs, shutdownJobs } from "./modules/jobs";
 
 const app = express();
 const server = createServer(app);
@@ -171,26 +164,27 @@ app.use(
   routes
 );
 
-// Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
-cron.schedule("55 14 * * 2", async () => {
-  logger.info("Weekly avatar sync job started...");
-  await fetchAndStoreDefaultAvatars();
-  logger.info("Weekly avatar sync job finished.");
-  logger.info("Weekly voice sync job started...");
-  await fetchAndStoreDefaultVoices();
-  logger.info("Weekly voice sync job finished.");
+// Initialize background jobs and cron tasks
+initializeJobs();
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  logger.info("SIGTERM signal received: closing HTTP server");
+  await shutdownJobs();
+  server.close(() => {
+    logger.info("HTTP server closed");
+    process.exit(0);
+  });
 });
 
-// Schedule avatar status check every 5 minutes
-cron.schedule("*/2 * * * *", async () => {
-  logger.info("Checking pending avatars status...");
-  await checkPendingAvatarsAndUpdate();
+process.on("SIGINT", async () => {
+  logger.info("SIGINT signal received: closing HTTP server");
+  await shutdownJobs();
+  server.close(() => {
+    logger.info("HTTP server closed");
+    process.exit(0);
+  });
 });
-
-// cron.schedule('0 23 * * 6', async () => {
-//   console.log('Updating trend topics...');
-//   await generateAndStoreTopicData();
-// }); // Removed - now using API endpoint
 
 // 404
 app.use((_req, res) => {

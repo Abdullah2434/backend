@@ -213,10 +213,9 @@ export class AuthService {
       }
 
       // Get subscription information
-      const { SubscriptionService } = await import(
-        "../../../services/subscription.service"
+      const { subscriptionService } = await import(
+        "../../subscription/services/subscription.service"
       );
-      const subscriptionService = new SubscriptionService();
       const subscription = await subscriptionService.getActiveSubscription(
         payload.userId
       );

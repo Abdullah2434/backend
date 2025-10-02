@@ -7,21 +7,31 @@ import paymentMethodsRoutes from "./v1/payment-methods";
 import contactRoutes from "./v1/contact";
 import trendsRoutes from "./v1/trends";
 import socialbuRoutes from "./v1/socialbu";
-import socialbuMediaRoutes from "./v1/socialbu-media";
-import socialbuAccountRoutes from "./v1/socialbu-account";
 
 const router = Router();
 
+// Health check route
+router.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "API is healthy",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// API Routes
 router.use("/auth", authRoutes);
 router.use("/video", videoRoutes);
-router.use("/webhook", webhookRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/payment-methods", paymentMethodsRoutes);
 router.use("/contact", contactRoutes);
 router.use("/trends", trendsRoutes);
+
+// SocialBu Routes (consolidated)
 router.use("/socialbu", socialbuRoutes);
-router.use("/socialbu-media", socialbuMediaRoutes);
-router.use("/socialbu-account", socialbuAccountRoutes);
+
+// Webhook Routes (should be last to avoid conflicts)
 router.use("/webhook", webhookRoutes);
 
 export default router;

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import multer from "multer";
 import { videoGenerationService } from "../services/generation.service";
 import { videoService } from "../services/video.service";
-import { photoAvatarQueue } from "../../../queues/photoAvatarQueue";
+import { queueManager } from "../../jobs";
 import { asyncHandler } from "../../../core/errors/ErrorHandler";
 import { ResponseHelper } from "../../../core/utils/response";
 import User from "../../../models/User";
@@ -273,7 +273,7 @@ export const createPhotoAvatar = asyncHandler(
     }
 
     // Add job to BullMQ queue
-    await photoAvatarQueue.add("create-photo-avatar", {
+    await queueManager.addJob("photo-avatar", {
       imagePath: req.file.path,
       age_group,
       name,

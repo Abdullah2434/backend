@@ -39,11 +39,24 @@ export class PasswordService {
       };
     }
 
-    // Generate JWT reset token with short expiration (15 minutes)
+    // Generate JWT reset token with 1 hour expiration
     const resetToken = tokenService.generateResetToken(
       user._id.toString(),
       user.email
     );
+
+    console.log("🔑 Password reset token generated:");
+    console.log("Token:", resetToken);
+    console.log("User:", user.email);
+    console.log("Expires in: 1 hour");
+
+    // Decode to verify expiry
+    const decoded = tokenService.decodeToken(resetToken);
+    if (decoded && "exp" in decoded && "iat" in decoded) {
+      const expiryMinutes =
+        ((decoded.exp as number) - (decoded.iat as number)) / 60;
+      console.log("Actual expiry:", expiryMinutes, "minutes");
+    }
 
     // Send password reset email
     await sendPasswordResetEmail(user.email, resetToken, user.firstName);
@@ -99,10 +112,15 @@ export class PasswordService {
    */
   async validateResetToken(token: string): Promise<{ isValid: boolean }> {
     try {
+      console.log("🔍 Validating reset token...");
+      console.log("Token received:", token.substring(0, 50) + "...");
+
       // Verify JWT reset token
       const payload = tokenService.verifyToken(token);
+      console.log("Token payload:", payload);
 
       if (!payload || payload.type !== "reset") {
+        console.log("❌ Invalid token: wrong type or null payload");
         return { isValid: false };
       }
 
@@ -112,16 +130,20 @@ export class PasswordService {
       );
 
       if (!user) {
+        console.log("❌ Invalid token: user not found");
         return { isValid: false };
       }
 
       // Check if this token has already been used
       if (user.lastUsedResetToken === token) {
+        console.log("❌ Invalid token: already used");
         return { isValid: false };
       }
 
+      console.log("✅ Token is valid");
       return { isValid: true };
     } catch (error) {
+      console.log("❌ Token validation error:", error);
       return { isValid: false };
     }
   }

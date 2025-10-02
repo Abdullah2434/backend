@@ -1,53 +1,34 @@
 import { Router } from "express";
-import {
-  getPlans,
-  getCurrentSubscription,
-  createSubscription,
-  cancelSubscription,
-  reactivateSubscription,
-  getPaymentMethods,
-  checkVideoLimit,
-  createPaymentIntent,
-  confirmPaymentIntent,
-  getPaymentIntentStatus,
-  changePlan,
-  getPlanChangeOptions,
-  getBillingHistory,
-  getBillingSummary,
-  syncSubscriptionFromStripe,
-  debugWebhook,
-} from "../../controllers/subscription.controller";
+import * as subscriptionCtrl from "../../modules/subscription/controllers/subscription.controller";
+import * as paymentCtrl from "../../modules/subscription/controllers/payment.controller";
+import * as billingCtrl from "../../modules/subscription/controllers/billing.controller";
 
 const router = Router();
 
+// SUBSCRIPTION ROUTES
 // Get all available plans (public)
-router.get("/plans", getPlans);
+router.get("/plans", subscriptionCtrl.getPlans);
 
 // Get current subscription (public - works with and without auth)
-router.get("/current", getCurrentSubscription);
+router.get("/current", subscriptionCtrl.getCurrentSubscription);
 
 // Subscription management (requires auth)
-router.post("/create", createSubscription);
-router.post("/cancel", cancelSubscription);
-router.post("/reactivate", reactivateSubscription);
-router.get("/payment-methods", getPaymentMethods);
-router.get("/video-limit", checkVideoLimit);
-router.post("/payment-intent", createPaymentIntent);
-router.post("/confirm-payment-intent", confirmPaymentIntent);
-router.get("/payment-intent/:id/status", getPaymentIntentStatus);
+router.post("/create", subscriptionCtrl.createSubscription);
+router.put("/update", subscriptionCtrl.updateSubscription);
+router.post("/cancel", subscriptionCtrl.cancelSubscription);
+router.get("/usage", subscriptionCtrl.getUsage);
+router.post("/sync-from-stripe", subscriptionCtrl.syncFromStripe);
 
-// Plan changes (requires auth)
-router.post("/change-plan", changePlan);
-router.get("/plan-change-options", getPlanChangeOptions);
+// PAYMENT ROUTES (requires auth)
+router.get("/payment-methods", paymentCtrl.getPaymentMethods);
+router.post("/payment-methods", paymentCtrl.addPaymentMethod);
+router.put("/payment-methods/default", paymentCtrl.setDefaultPaymentMethod);
+router.delete("/payment-methods", paymentCtrl.removePaymentMethod);
+router.post("/payment-intent", paymentCtrl.createPaymentIntent);
 
-// Billing history (requires auth)
-router.get("/billing-history", getBillingHistory);
-router.get("/billing-summary", getBillingSummary);
-
-// Sync subscription from Stripe (requires auth)
-router.post("/sync-from-stripe", syncSubscriptionFromStripe);
-
-// Debug endpoint (requires auth)
-router.post("/debug-webhook", debugWebhook);
+// BILLING ROUTES (requires auth)
+router.get("/billing-history", billingCtrl.getBillingHistory);
+router.get("/billing-summary", billingCtrl.getBillingSummary);
+router.post("/billing/sync-from-stripe", billingCtrl.syncBillingFromStripe);
 
 export default router;

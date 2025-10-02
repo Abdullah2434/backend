@@ -7,8 +7,7 @@ import {
   loginRateLimiter,
   registerRateLimiter,
   passwordResetRateLimiter,
-  authenticate,
-} from "../../middleware";
+} from "../../core/middleware";
 
 const router = Router();
 
@@ -31,7 +30,8 @@ router.post(
   passwordResetRateLimiter.middleware(),
   passwordCtrl.resetPassword
 );
-router.post("/validate-reset-token", passwordCtrl.validateResetToken);
+router.get("/validate-reset-token", passwordCtrl.validateResetToken); // GET for email link
+router.post("/validate-reset-token", passwordCtrl.validateResetToken); // POST for validation
 router.post("/debug-password-hash", passwordCtrl.debugPasswordHash);
 
 // Verification routes

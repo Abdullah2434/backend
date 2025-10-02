@@ -1,22 +1,19 @@
 import { Router } from "express";
 import * as ctrl from "../../controllers/webhook.controller";
-import { handleStripeWebhook } from "../../controllers/stripe-webhook.controller";
-import {
-    testWebhook,
-    handleSocialBuWebhook,
-    getUserSocialBuAccounts,
-    removeUserSocialBuAccount
-  } from '../../controllers/webhooksocialbu.controller';
+import { stripeWebhookHandler } from "../../modules/subscription/webhooks/stripe.webhook";
+import { socialBuWebhookHandler } from "../../modules/socialbu";
+
 const router = Router();
 
 router.post("/video-complete", ctrl.videoComplete);
 router.post("/workflow-error", ctrl.handleWorkflowError);
-router.post("/stripe", handleStripeWebhook);
-router.post('/test', testWebhook); // Test webhook endpoint
-router.post('/socialbu', handleSocialBuWebhook); // Handle SocialBu account webhooks
+router.post("/stripe", (req, res) =>
+  stripeWebhookHandler.handleWebhook(req, res)
+);
 
-// User SocialBu account management routes
-router.get('/users/:userId/socialbu-accounts', getUserSocialBuAccounts); // Get user's SocialBu accounts
-router.delete('/users/:userId/socialbu-accounts', removeUserSocialBuAccount); // Remove SocialBu account from user
+// SocialBu webhook
+router.post("/socialbu", (req, res) =>
+  socialBuWebhookHandler.handleWebhookRequest(req, res)
+);
 
 export default router;

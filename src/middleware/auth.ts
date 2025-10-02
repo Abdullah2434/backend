@@ -24,6 +24,7 @@ const AUTH_ROUTES = {
 
     // Subscription routes (public)
     "/api/subscription/plans", // Get available plans
+    "/api/subscription/current", // Get current subscription (works with or without auth)
     "/api/subscription/debug-webhook", // Debug webhook
 
     // Video routes (public)
@@ -75,19 +76,16 @@ const AUTH_ROUTES = {
     "/api/video/photo-avatar",
 
     // Subscription routes (protected)
-    "/api/subscription/current",
     "/api/subscription/create",
+    "/api/subscription/update",
     "/api/subscription/cancel",
-    "/api/subscription/reactivate",
+    "/api/subscription/usage",
+    "/api/subscription/sync-from-stripe",
     "/api/subscription/payment-methods",
-    "/api/subscription/video-limit",
     "/api/subscription/payment-intent",
-    "/api/subscription/confirm-payment-intent",
-    "/api/subscription/change-plan",
-    "/api/subscription/plan-change-options",
     "/api/subscription/billing-history",
     "/api/subscription/billing-summary",
-    "/api/subscription/sync-from-stripe",
+    "/api/subscription/billing/sync-from-stripe",
 
     // Payment methods (protected)
     "/api/payment-methods",
@@ -137,9 +135,17 @@ export function requiresAuth(pathname: string): boolean {
   }
 
   // Check if explicitly marked as protected
-  return AUTH_ROUTES.PROTECTED.some((route) => {
+  const isProtected = AUTH_ROUTES.PROTECTED.some((route) => {
     return pathname === route || pathname.startsWith(route + "/");
   });
+
+  // If not in protected list, check if it starts with /api/
+  // (default to requiring auth for API routes not explicitly marked public)
+  if (!isProtected && pathname.startsWith("/api/")) {
+    return true;
+  }
+
+  return isProtected;
 }
 
 /**

@@ -17,11 +17,11 @@ export class TokenService {
   }
 
   /**
-   * Generate reset token (15 minutes expiration)
+   * Generate reset token (1 hour expiration)
    */
   generateResetToken(userId: string, email: string): string {
     return jwt.sign({ userId, email, type: "reset" }, this.jwtSecret, {
-      expiresIn: "15m",
+      expiresIn: "1h",
     });
   }
 
