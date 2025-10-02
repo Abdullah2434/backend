@@ -1,33 +1,39 @@
-import { Router, Request, Response } from 'express'
-import * as ctrl from '../../controllers/video.controller'
+import { Router } from "express";
+import * as galleryCtrl from "../../modules/video/controllers/gallery.controller";
+import * as generationCtrl from "../../modules/video/controllers/generation.controller";
+import * as resourcesCtrl from "../../modules/video/controllers/resources.controller";
 
-const router = Router()
+const router = Router();
 
 // PROTECTED ROUTES (authentication required)
-router.get('/gallery', ctrl.gallery)
-router.post('/delete', ctrl.deleteVideo)
-router.get('/download-proxy', ctrl.downloadProxy)
-router.get('/avatars', ctrl.getAvatars)
-router.get('/voices', ctrl.getVoices)
-router.post('/photo-avatar', ctrl.createPhotoAvatarUpload, ctrl.createPhotoAvatar)
-router.get('/pending-workflows/:userId', ctrl.checkPendingWorkflows)
+router.get("/gallery", galleryCtrl.getGallery);
+router.post("/delete", galleryCtrl.deleteVideo);
+router.get("/download-proxy", galleryCtrl.downloadVideoProxy);
 
-// PUBLIC ROUTES (no authentication required)
-router.post('/download', ctrl.download)
-router.post('/status', ctrl.updateStatus)
+// AVATAR & VOICE ROUTES (public - optional authentication for custom resources)
+router.get("/avatars", resourcesCtrl.getAvatars);
+router.get("/voices", resourcesCtrl.getVoices);
+router.post(
+  "/photo-avatar",
+  generationCtrl.createPhotoAvatarUpload,
+  generationCtrl.createPhotoAvatar
+);
 
-// PUBLIC ROUTE: Video creation via webhook
-router.post('/create', ctrl.createVideo);
-router.post('/generate-video', ctrl.generateVideo);
+// WORKFLOW ROUTES (public - no authentication required)
+router.get("/pending-workflows/:userId", generationCtrl.checkPendingWorkflows);
+router.post("/track-execution", generationCtrl.trackExecution);
+
+// VIDEO GENERATION ROUTES (public - no authentication required)
+router.post("/create", generationCtrl.createVideo);
+router.post("/generate-video", generationCtrl.generateVideo);
+router.post("/download", generationCtrl.downloadVideo);
+
+// VIDEO STATUS ROUTES (public - for webhook callbacks)
+router.post("/status", galleryCtrl.updateVideoStatus);
 
 // TOPIC ROUTES (public - no authentication required)
-router.get('/topics', ctrl.getAllTopics);
-router.get('/topics/id/:id', ctrl.getTopicById);
-router.get('/topics/:topic', ctrl.getTopicByType);
+router.get("/topics", resourcesCtrl.getAllTopics);
+router.get("/topics/id/:id", resourcesCtrl.getTopicById);
+router.get("/topics/:topic", resourcesCtrl.getTopicByType);
 
-// EXECUTION TRACKING ROUTE (public - no authentication required)
-router.post('/track-execution', ctrl.trackExecution);
-
-export default router
-
-
+export default router;
