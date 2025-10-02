@@ -245,7 +245,7 @@ export const getVideoConfig = () => {
     maxFileSize: parseInt(process.env.VIDEO_MAX_FILE_SIZE || "10485760"), // 10MB
     allowedMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
     rateLimitWindow: parseInt(process.env.VIDEO_RATE_LIMIT_WINDOW || "900000"), // 15 minutes
-    rateLimitMax: parseInt(process.env.VIDEO_RATE_LIMIT_MAX || "10"),
+    rateLimitMax: parseInt(process.env.VIDEO_RATE_LIMIT_MAX || "100"), // Increased from 10 to 100
     maxVideoSize: parseInt(process.env.VIDEO_MAX_VIDEO_SIZE || "104857600"), // 100MB
     maxTitleLength: parseInt(process.env.VIDEO_MAX_TITLE_LENGTH || "200"),
     maxPromptLength: parseInt(process.env.VIDEO_MAX_PROMPT_LENGTH || "1000"),

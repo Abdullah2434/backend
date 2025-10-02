@@ -135,16 +135,18 @@ export const generateTrendsHash = (data: any): string => {
 export const formatTrendsResponse = (data: any): any => {
   return {
     success: true,
-    message: "Trends generated successfully",
+    message: "Real estate trends generated successfully",
     data: {
-      topic: data.topic || "general",
-      location: data.location || "global",
+      topic: data.topic || "real_estate",
+      location: data.location || "America",
       trends: Array.isArray(data.trends)
-        ? data.trends.map(formatTrendData)
+        ? data.trends.map((trend: any) => ({
+            description:
+              trend.description || trend.title || "Trend description",
+            keypoints: trend.metadata?.keypoints || "Key points not available",
+          }))
         : [],
       count: Array.isArray(data.trends) ? data.trends.length : 0,
-      generatedAt: formatDate(new Date()),
-      metadata: data.metadata || {},
     },
   };
 };

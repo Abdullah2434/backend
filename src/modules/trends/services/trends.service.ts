@@ -1,3 +1,4 @@
+import axios from "axios";
 import {
   TrendsConfig,
   TrendGenerationRequest,
@@ -33,7 +34,8 @@ export class TrendsService implements TrendsServiceInterface {
         limit: this.config.defaultLimit,
       });
 
-      const trends = await this.generateMockRealEstateTrends();
+      // Always generate fresh trends from OpenAI
+      const trends = await this.generateOpenAIRealEstateTrends();
 
       logTrendsEvent("real_estate_trends_generated", {
         count: trends.length,
@@ -52,7 +54,9 @@ export class TrendsService implements TrendsServiceInterface {
       };
     } catch (error: any) {
       logTrendsError(error, { action: "generateRealEstateTrends" });
-      throw error;
+      throw new Error(
+        `Failed to generate real estate trends: ${error.message}`
+      );
     }
   }
 
@@ -96,93 +100,92 @@ export class TrendsService implements TrendsServiceInterface {
     }
   }
 
-  // ==================== MOCK DATA GENERATION ====================
+  // ==================== OPENAI GENERATION ====================
 
-  private async generateMockRealEstateTrends(): Promise<TrendData[]> {
-    const mockTrends = [
-      {
-        id: generateId(),
-        title: "Rising Home Prices in Major Cities",
-        description:
-          "Home prices continue to rise across major metropolitan areas, with some cities seeing double-digit growth year-over-year.",
-        category: "real_estate",
-        location: "America",
-        timestamp: new Date().toISOString(),
-        source: "market_analysis",
-        confidence: 0.85,
-        tags: ["housing", "prices", "market", "growth"],
-        metadata: {
-          priceIncrease: "12.5%",
-          affectedCities: ["New York", "Los Angeles", "Chicago", "Houston"],
-        },
-      },
-      {
-        id: generateId(),
-        title: "Remote Work Impact on Commercial Real Estate",
-        description:
-          "The shift to remote work is significantly impacting commercial real estate demand, with office vacancy rates reaching historic highs.",
-        category: "real_estate",
-        location: "America",
-        timestamp: new Date().toISOString(),
-        source: "commercial_analysis",
-        confidence: 0.78,
-        tags: ["commercial", "remote_work", "office", "vacancy"],
-        metadata: {
-          vacancyRate: "18.2%",
-          trendDirection: "increasing",
-        },
-      },
-      {
-        id: generateId(),
-        title: "Sustainable Building Practices Gaining Traction",
-        description:
-          "Green building certifications and sustainable construction practices are becoming increasingly important for property values.",
-        category: "real_estate",
-        location: "America",
-        timestamp: new Date().toISOString(),
-        source: "sustainability_report",
-        confidence: 0.72,
-        tags: ["sustainability", "green_building", "certification", "value"],
-        metadata: {
-          certificationTypes: ["LEED", "ENERGY STAR", "BREEAM"],
-          valueIncrease: "8.3%",
-        },
-      },
-      {
-        id: generateId(),
-        title: "Suburban Migration Continues Post-Pandemic",
-        description:
-          "Families continue to move from urban centers to suburban areas, driven by space needs and remote work flexibility.",
-        category: "real_estate",
-        location: "America",
-        timestamp: new Date().toISOString(),
-        source: "migration_data",
-        confidence: 0.81,
-        tags: ["migration", "suburban", "families", "remote_work"],
-        metadata: {
-          migrationRate: "15.7%",
-          primaryReasons: ["space", "cost", "quality_of_life"],
-        },
-      },
-      {
-        id: generateId(),
-        title: "Interest Rate Impact on Mortgage Applications",
-        description:
-          "Rising interest rates are affecting mortgage application volumes, with refinancing activity dropping significantly.",
-        category: "real_estate",
-        location: "America",
-        timestamp: new Date().toISOString(),
-        source: "mortgage_data",
-        confidence: 0.89,
-        tags: ["interest_rates", "mortgages", "refinancing", "applications"],
-        metadata: {
-          rateIncrease: "2.1%",
-          applicationDrop: "23.4%",
-        },
-      },
-    ];
+  private async generateOpenAIRealEstateTrends(): Promise<TrendData[]> {
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-    return mockTrends.map(formatTrendData);
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
+    }
+
+    const prompt = `search the latest real estate trends in america
+
+Return the response in this exact JSON format with 5 current trends:
+
+{
+  "trends": [
+    {
+      "description": "Brief description of the trend",
+      "keypoints": "Key points separated by commas"
+    }
+  ]
+}`;
+
+    try {
+      const response = await axios.post(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a real estate market analyst. Generate current, relevant real estate trends with accurate information.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          max_tokens: 1000,
+          temperature: 0.7,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const content = response.data.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content generated from OpenAI API");
+      }
+
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(content);
+      } catch (parseError) {
+        throw new Error("Failed to parse OpenAI response as JSON");
+      }
+
+      // Convert OpenAI response to our TrendData format
+      const trends: TrendData[] = parsedContent.trends.map(
+        (trend: any, index: number) => ({
+          id: generateId(),
+          title: trend.description,
+          description: trend.description,
+          category: "real_estate",
+          location: "America",
+          timestamp: new Date().toISOString(),
+          source: "openai",
+          confidence: 0.85,
+          tags: ["real_estate", "trends", "america"],
+          metadata: {
+            keypoints: trend.keypoints,
+            generatedBy: "openai",
+            model: "gpt-3.5-turbo",
+          },
+        })
+      );
+
+      return trends.map(formatTrendData);
+    } catch (error: any) {
+      console.error("OpenAI API error:", error.message);
+      throw new Error(`OpenAI API failed: ${error.message}`);
+    }
   }
 
   private async generateMockTrends(

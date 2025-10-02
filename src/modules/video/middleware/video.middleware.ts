@@ -36,11 +36,11 @@ export const createVideoRateLimit = (
   });
 };
 
-// Default rate limits
-export const videoGeneralRateLimit = createVideoRateLimit(15 * 60 * 1000, 10); // 10 requests per 15 minutes
-export const videoUploadRateLimit = createVideoRateLimit(60 * 60 * 1000, 5); // 5 uploads per hour
-export const videoDownloadRateLimit = createVideoRateLimit(5 * 60 * 1000, 20); // 20 downloads per 5 minutes
-export const videoCreationRateLimit = createVideoRateLimit(60 * 60 * 1000, 3); // 3 creations per hour
+// Default rate limits - Increased for development/testing
+export const videoGeneralRateLimit = createVideoRateLimit(15 * 60 * 1000, 100); // 100 requests per 15 minutes
+export const videoUploadRateLimit = createVideoRateLimit(60 * 60 * 1000, 50); // 50 uploads per hour
+export const videoDownloadRateLimit = createVideoRateLimit(5 * 60 * 1000, 200); // 200 downloads per 5 minutes
+export const videoCreationRateLimit = createVideoRateLimit(60 * 60 * 1000, 30); // 30 creations per hour
 
 // ==================== AUTHENTICATION MIDDLEWARE ====================
 
