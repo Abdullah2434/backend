@@ -108,6 +108,13 @@ router.get(
   socialBuController.getAccounts
 );
 
+// Get public accounts (no authentication required)
+router.get(
+  "/accounts/public",
+  socialBuGeneralRateLimit,
+  socialBuController.getPublicAccounts
+);
+
 // Connect account (requires authentication)
 router.post(
   "/accounts/connect",

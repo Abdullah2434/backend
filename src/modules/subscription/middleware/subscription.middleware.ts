@@ -282,7 +282,7 @@ export const corsOptions = {
     callback: (err: Error | null, allow?: boolean) => void
   ) => {
     const allowedOrigins = [
-      process.env.FRONTEND_URL || "https://www.edgeairealty.com",
+      process.env.FRONTEND_URL || "http://localhost:3000",
       "http://localhost:3000",
       "http://localhost:3001",
     ];

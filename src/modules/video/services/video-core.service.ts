@@ -1,8 +1,8 @@
-import Video from "../../../models/Video";
-import User from "../../../models/User";
-import WorkflowHistory from "../../../models/WorkflowHistory";
-import { notificationService } from "../../../modules/notification";
-import { getS3 } from "../../../modules/s3";
+import Video from "../../../database/models/Video";
+import User from "../../../database/models/User";
+import WorkflowHistory from "../../../database/models/WorkflowHistory";
+import { notificationService } from "../../shared/notification";
+import { getS3 } from "../../shared/storage/s3";
 import {
   VideoData,
   VideoDownloadData,

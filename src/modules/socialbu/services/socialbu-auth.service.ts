@@ -1,5 +1,5 @@
 import axios from "axios";
-import SocialBuToken from "../../../models/SocialBuToken";
+import SocialBuToken from "../../../database/models/SocialBuToken";
 import {
   SocialBuAuthData,
   SocialBuLoginRequest,

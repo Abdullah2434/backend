@@ -101,7 +101,7 @@ export class EmailConfigService {
   }
 
   public getFrontendUrl(): string {
-    return process.env.FRONTEND_URL || "https://www.edgeairealty.com";
+    return "http://localhost:3000";
   }
 
   public getAdminEmail(): string {

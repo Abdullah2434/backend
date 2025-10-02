@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import axios from "axios";
-import DefaultAvatar from "../../../models/avatar";
+import DefaultAvatar from "../../../../database/models/avatar";
 import fs from "fs";
 import { QueueConfigService } from "../services/queue-config.service";
 import { notificationService } from "../../notification";

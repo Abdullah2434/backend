@@ -87,6 +87,29 @@ export class SocialBuService {
     }
   }
 
+  async getPublicAccounts(): Promise<SocialBuResponse> {
+    try {
+      // Return public account information (no authentication required)
+      // This could return general account statistics or public account data
+      return {
+        success: true,
+        message: "Public accounts retrieved successfully",
+        data: {
+          publicAccounts: [],
+          total: 0,
+          message: "No public accounts available at this time",
+        },
+      };
+    } catch (error) {
+      logSocialBuError(error as Error, { action: "getPublicAccounts" });
+      return {
+        success: false,
+        message: "Failed to retrieve public accounts",
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
   async connectAccount(accountData: any): Promise<SocialBuResponse> {
     try {
       const token = await this.authService.getToken();

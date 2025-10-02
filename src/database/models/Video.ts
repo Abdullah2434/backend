@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { VideoMetadata } from "../types";
+import { VideoMetadata } from "../../types";
 
 export interface IVideo extends Document {
   _id: mongoose.Types.ObjectId;

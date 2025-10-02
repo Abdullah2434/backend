@@ -1,8 +1,9 @@
-import User from "../../../models/User";
+import * as crypto from "crypto";
+import User from "../../../database/models/User";
 import {
   sendResendVerificationEmail,
   sendWelcomeEmail,
-} from "../../../modules/email";
+} from "../../../modules/shared/email";
 import {
   AuthConfig,
   AuthenticationError,
@@ -24,13 +25,25 @@ export class AuthVerificationService {
 
   async verifyEmail(token: string): Promise<{ message: string; user: any }> {
     try {
+      // Hash the incoming token to match what's stored in the database
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      console.log(
+        "🔍 Email verification: Looking for hashed token:",
+        hashedToken.substring(0, 10) + "..."
+      );
+
       // Find user by verification token
       const user = await User.findOne({
-        emailVerificationToken: token,
+        emailVerificationToken: hashedToken,
         emailVerificationExpires: { $gt: new Date() },
       });
 
       if (!user) {
+        console.log("❌ Email verification: No user found with token");
         throw new ValidationError("Invalid or expired verification token");
       }
 

@@ -92,8 +92,18 @@ export const validateGoogleLogin: ValidationChain[] = [
 export const validateForgotPassword: ValidationChain[] = [emailValidation];
 
 export const validateResetPassword: ValidationChain[] = [
-  tokenValidation,
-  passwordValidation,
+  body("resetToken")
+    .notEmpty()
+    .withMessage("Reset token is required")
+    .isLength({ min: 10 })
+    .withMessage("Reset token appears to be invalid"),
+  body("newPassword")
+    .isLength({ min: 8, max: 128 })
+    .withMessage("Password must be between 8 and 128 characters")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage(
+      "Password must contain at least one lowercase letter, one uppercase letter, one number, and one special character"
+    ),
 ];
 
 export const validateProfileUpdate: ValidationChain[] = [
@@ -354,6 +364,15 @@ export const handleValidationErrors = (
       message: error.msg,
       value: error.type === "field" ? (error as any).value : undefined,
     }));
+
+    console.log("❌ Validation failed:", {
+      path: req.path,
+      method: req.method,
+      errors: formattedErrors,
+      query: req.query,
+      body: req.body,
+      bodyKeys: Object.keys(req.body || {}),
+    });
 
     const response: AuthResponse = {
       success: false,

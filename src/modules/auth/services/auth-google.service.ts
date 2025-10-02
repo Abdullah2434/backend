@@ -1,5 +1,5 @@
-import User from "../../../models/User";
-import { sendWelcomeEmail } from "../../../modules/email";
+import User from "../../../database/models/User";
+import { sendWelcomeEmail } from "../../../modules/shared/email";
 import {
   GoogleUserData,
   GoogleAuthResult,
@@ -22,11 +22,14 @@ export class AuthGoogleService {
   async googleLogin(googleData: GoogleUserData): Promise<GoogleAuthResult> {
     try {
       const { googleId, email, firstName, lastName } = googleData;
+      console.log("🔍 Google service: Starting login process");
 
       // Check if user already exists with this Google ID
       let user = await User.findOne({ googleId });
+      console.log("🔍 Google service: Checked existing user by Google ID");
 
       if (user) {
+        console.log("🔍 Google service: Found existing user by Google ID");
         // User exists, generate new token
         const accessToken = this.tokenService.generateToken(
           user._id.toString(),
@@ -41,7 +44,12 @@ export class AuthGoogleService {
 
       // Check if user exists with this email but different Google ID
       const existingUser = await User.findOne({ email });
+      console.log("🔍 Google service: Checked existing user by email");
+
       if (existingUser) {
+        console.log(
+          "🔍 Google service: Found existing user by email, linking Google account"
+        );
         // Link Google account to existing user
         existingUser.googleId = googleId;
         existingUser.isEmailVerified = true; // Google emails are considered verified
@@ -59,6 +67,7 @@ export class AuthGoogleService {
         };
       }
 
+      console.log("🔍 Google service: Creating new user");
       // Create new user
       const newUser = new User({
         googleId,
@@ -70,9 +79,12 @@ export class AuthGoogleService {
       });
 
       await newUser.save();
+      console.log("🔍 Google service: New user saved successfully");
 
       // Send welcome email
+      console.log("🔍 Google service: Sending welcome email");
       await sendWelcomeEmail(newUser.email, newUser.firstName);
+      console.log("🔍 Google service: Welcome email sent successfully");
 
       const accessToken = this.tokenService.generateToken(
         newUser._id.toString(),
@@ -85,6 +97,7 @@ export class AuthGoogleService {
         isNewUser: true,
       };
     } catch (error) {
+      console.log("❌ Google service error:", error);
       throw new AuthenticationError("Google login failed", 500);
     }
   }

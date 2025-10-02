@@ -115,6 +115,7 @@ router.post(
 );
 
 // Utility routes
+router.get("/check-email", generalRateLimit, authController.checkEmail);
 
 router.post(
   "/validate-token",

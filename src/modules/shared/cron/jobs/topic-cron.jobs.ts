@@ -1,6 +1,6 @@
 import axios from "axios";
-import Topic from "../../../models/Topic";
-import { connectMongo } from "../../../config/mongoose";
+import Topic from "../../../../database/models/Topic";
+import { connectMongo } from "../../../../database/connection";
 import {
   CronJob,
   CronJobResult,

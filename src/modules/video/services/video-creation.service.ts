@@ -98,8 +98,8 @@ export class VideoCreationService {
   }> {
     try {
       // Import DefaultAvatar and DefaultVoice here to avoid circular dependencies
-      const DefaultAvatar = (await import("../../../models/avatar")).default;
-      const DefaultVoice = (await import("../../../models/voice")).default;
+      const DefaultAvatar = (await import("../../../database/models/avatar")).default;
+      const DefaultVoice = (await import("../../../database/models/voice")).default;
 
       // Get gender from DefaultAvatar
       const avatarDoc = await DefaultAvatar.findOne({

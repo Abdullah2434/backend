@@ -3,6 +3,7 @@ import AuthUserService from "./auth-user.service";
 import AuthPasswordService from "./auth-password.service";
 import AuthVerificationService from "./auth-verification.service";
 import AuthGoogleService from "./auth-google.service";
+import User from "../../../database/models/User";
 import {
   RegisterData,
   LoginData,
@@ -240,6 +241,17 @@ export class AuthService {
         },
         timestamp: new Date().toISOString(),
       };
+    }
+  }
+
+  // ==================== EMAIL CHECKING ====================
+
+  async checkEmailExists(email: string): Promise<boolean> {
+    try {
+      const user = await User.findOne({ email });
+      return !!user;
+    } catch (error) {
+      return false;
     }
   }
 }

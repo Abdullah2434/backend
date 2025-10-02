@@ -1,6 +1,6 @@
 import Stripe from "stripe";
-import Billing from "../../../models/Billing";
-import Subscription from "../../../models/Subscription";
+import Billing from "../../../database/models/Billing";
+import Subscription from "../../../database/models/Subscription";
 import {
   BillingRecord,
   BillingSummary,

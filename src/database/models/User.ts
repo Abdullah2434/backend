@@ -8,7 +8,7 @@ export interface IUser extends Document {
   lastName: string;
   email: string;
   phone: string;
-  password: string;
+  password?: string; // Optional for Google OAuth users
   isEmailVerified: boolean;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
@@ -38,7 +38,14 @@ const userSchema = new Schema<IUser>(
       match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Invalid email"],
     },
     phone: { type: String, required: false, trim: true },
-    password: { type: String, required: true, minlength: 8, select: false },
+    password: {
+      type: String,
+      required: function () {
+        return !this.googleId;
+      }, // Only required if not a Google user
+      minlength: 8,
+      select: false,
+    },
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String, select: false },
     emailVerificationExpires: { type: Date, select: false },
@@ -57,12 +64,13 @@ userSchema.virtual("fullName").get(function (this: any) {
 });
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || !this.password) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
 userSchema.methods.comparePassword = function (candidate: string) {
+  if (!this.password) return false; // Google users don't have passwords
   return bcrypt.compare(candidate, this.password);
 };
 

@@ -2,8 +2,8 @@ import { Response } from "express";
 import WebhookService from "../services/webhook.service";
 import { WebhookResponse } from "../types/webhook.types";
 import { logWebhookError, logWebhookEvent } from "../utils/webhook.utils";
-import WorkflowHistory from "../../../models/WorkflowHistory";
-import { notificationService } from "../../../modules/notification";
+import WorkflowHistory from "../../../database/models/WorkflowHistory";
+import { notificationService } from "../../shared/notification";
 
 const webhookService = new WebhookService();
 

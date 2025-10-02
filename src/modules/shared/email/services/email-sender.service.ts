@@ -1,5 +1,5 @@
 import * as nodemailer from "nodemailer";
-import { EmailOptions } from "../../../types";
+import { EmailOptions } from "../../../../types";
 import { EmailSendResult, EmailServiceConfig } from "../types/email.types";
 import { EmailTemplateService } from "./email-template.service";
 

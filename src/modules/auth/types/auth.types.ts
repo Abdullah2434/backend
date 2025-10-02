@@ -1,5 +1,5 @@
 import { Request } from "express";
-import { IUser } from "../../../models/User";
+import { IUser } from "../../../database/models/User";
 
 // ==================== REQUEST TYPES ====================
 export interface RegisterRequest extends Request {

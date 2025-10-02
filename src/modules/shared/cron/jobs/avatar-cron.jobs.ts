@@ -1,7 +1,7 @@
 import axios from "axios";
-import DefaultAvatar from "../../../models/avatar";
-import DefaultVoice from "../../../models/voice";
-import { connectMongo } from "../../../config/mongoose";
+import DefaultAvatar from "../../../../database/models/avatar";
+import DefaultVoice from "../../../../database/models/voice";
+import { connectMongo } from "../../../../database/connection";
 import { notificationService } from "../../notification";
 import {
   CronJob,
@@ -36,7 +36,103 @@ export const createAvatarStatusCheckJob = (): CronJob => {
         throw new Error("HEYGEN_API_KEY environment variable is required");
       }
 
+      // Check database connection and collection info
+      const db = DefaultAvatar.db;
+      const collectionName = DefaultAvatar.collection.name;
+      console.log(`🔍 Database: ${db.name}, Collection: ${collectionName}`);
+
+      // Get total count without loading all documents
+      const totalCount = await DefaultAvatar.countDocuments({});
+      console.log(`🔍 Total avatars in database: ${totalCount}`);
+
+      // Check if there are multiple collections with similar names
+      const collections = await db.listCollections();
+      const avatarCollections = collections.filter((c: any) =>
+        c.name.toLowerCase().includes("avatar")
+      );
+      console.log(
+        `🔍 Avatar-related collections:`,
+        avatarCollections.map((c: any) => c.name)
+      );
+
+      // Get a sample of avatars to see their statuses (limit to 20 for debugging)
+      const sampleAvatars = await DefaultAvatar.find({}).limit(20);
+      console.log(
+        `🔍 Sample avatar statuses (first 20):`,
+        sampleAvatars.map((a) => ({
+          avatar_id: a.avatar_id,
+          status: a.status,
+          statusType: typeof a.status,
+          statusValue: JSON.stringify(a.status),
+          default: a.default,
+        }))
+      );
+
+      // Let's also check what the exact query is looking for
+      console.log(
+        `🔍 Looking for avatars with status: "${"pending"}" (type: ${typeof "pending"})`
+      );
+
+      // Try different variations of the query
+      const exactMatch = await DefaultAvatar.find({ status: "pending" });
+      const stringMatch = await DefaultAvatar.find({
+        status: { $eq: "pending" },
+      });
+      const regexMatch = await DefaultAvatar.find({ status: /^pending$/i });
+
+      console.log(`🔍 Exact match query: Found ${exactMatch.length} avatars`);
+      console.log(`🔍 String match query: Found ${stringMatch.length} avatars`);
+      console.log(`🔍 Regex match query: Found ${regexMatch.length} avatars`);
+
+      // Try direct MongoDB query to bypass Mongoose
+      const directQuery = await DefaultAvatar.collection
+        .find({ status: "pending" })
+        .toArray();
+      console.log(
+        `🔍 Direct MongoDB query: Found ${directQuery.length} avatars`
+      );
+
+      // Check if there's a schema issue by looking at the actual documents
+      if (directQuery.length > 0) {
+        console.log(`🔍 First direct query result:`, {
+          _id: directQuery[0]._id,
+          status: directQuery[0].status,
+          statusType: typeof directQuery[0].status,
+          allFields: Object.keys(directQuery[0]),
+        });
+      }
+
+      // Now query for pending avatars (this should work correctly)
       const pendingAvatars = await DefaultAvatar.find({ status: "pending" });
+      const pendingDefaultAvatars = await DefaultAvatar.find({
+        status: "pending",
+        default: true,
+      });
+      const allPendingAvatars = await DefaultAvatar.find({
+        status: { $exists: true },
+      });
+
+      console.log(
+        `🔍 Avatar status check: Found ${pendingAvatars.length} pending avatars`
+      );
+      console.log(
+        `🔍 Pending default avatars: Found ${pendingDefaultAvatars.length} pending default avatars`
+      );
+      console.log(
+        `🔍 All avatars with status field: Found ${allPendingAvatars.length} avatars`
+      );
+
+      if (pendingAvatars.length > 0) {
+        console.log(
+          `🔍 Pending avatars:`,
+          pendingAvatars.map((a) => ({
+            avatar_id: a.avatar_id,
+            avatar_name: a.avatar_name,
+            status: a.status,
+          }))
+        );
+      }
+
       let updatedCount = 0;
       let errorCount = 0;
 
@@ -51,7 +147,16 @@ export const createAvatarStatusCheckJob = (): CronJob => {
           });
 
           const statusData = response.data.data;
+          console.log(`🔍 HeyGen API response for ${avatarId}:`, {
+            currentStatus: avatar.status,
+            apiStatus: statusData?.status,
+            fullResponse: response.data,
+          });
+
           if (statusData && statusData.status !== avatar.status) {
+            console.log(
+              `✅ Updating avatar ${avatarId} status from ${avatar.status} to ${statusData.status}`
+            );
             avatar.status = statusData.status;
             await avatar.save();
             updatedCount++;
@@ -59,8 +164,12 @@ export const createAvatarStatusCheckJob = (): CronJob => {
             // Notify users if avatar is ready
             if (statusData.status === "ready") {
               // You can add user notification logic here
-              console.log(`Avatar ${avatarId} is now ready`);
+              console.log(`🎉 Avatar ${avatarId} is now ready`);
             }
+          } else {
+            console.log(
+              `ℹ️ Avatar ${avatarId} status unchanged: ${avatar.status}`
+            );
           }
         } catch (error: any) {
           console.error(

@@ -1,6 +1,6 @@
 import * as bcrypt from "bcryptjs";
-import User, { IUser } from "../../../models/User";
-import { sendVerificationEmail } from "../../../modules/email";
+import User, { IUser } from "../../../database/models/User";
+import { sendVerificationEmail } from "../../../modules/shared/email";
 import {
   RegisterData,
   LoginData,
@@ -71,12 +71,30 @@ export class AuthUserService {
 
   async login(loginData: LoginData): Promise<AuthResult> {
     try {
+      console.log("🔍 Login attempt:", {
+        email: loginData.email,
+        hasPassword: !!loginData.password,
+      });
+
       // Find user by email and include password
       const user = await User.findOne({ email: loginData.email }).select(
         "+password"
       );
 
+      console.log("🔍 User found:", {
+        userId: user?._id,
+        email: user?.email,
+        hasPassword: !!user?.password,
+        isEmailVerified: user?.isEmailVerified,
+      });
+
       if (!user) {
+        console.log("❌ User not found");
+        throw new AuthenticationError("Invalid email or password");
+      }
+
+      if (!user.password) {
+        console.log("❌ User has no password (Google user?)");
         throw new AuthenticationError("Invalid email or password");
       }
 
@@ -85,7 +103,14 @@ export class AuthUserService {
         loginData.password,
         user.password
       );
+
+      console.log("🔍 Password validation:", {
+        isPasswordValid,
+        providedPasswordLength: loginData.password.length,
+      });
+
       if (!isPasswordValid) {
+        console.log("❌ Invalid password");
         throw new AuthenticationError("Invalid email or password");
       }
 
@@ -99,8 +124,10 @@ export class AuthUserService {
       const userWithoutPassword = user.toObject();
       delete userWithoutPassword.password;
 
+      console.log("✅ Login successful");
       return { user: userWithoutPassword, accessToken };
     } catch (error) {
+      console.log("❌ Login error:", error);
       if (error instanceof AuthenticationError) {
         throw error;
       }

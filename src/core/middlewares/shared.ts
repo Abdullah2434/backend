@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import rateLimit from "express-rate-limit";
-import AuthService from "../modules/auth/services/auth.service";
+import AuthService from "../../modules/auth/services/auth.service";
 
 const authService = new AuthService();
 

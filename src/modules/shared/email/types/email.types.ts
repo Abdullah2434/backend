@@ -1,4 +1,4 @@
-import { EmailOptions } from "../../../types";
+import { EmailOptions } from "../../../../types";
 
 // ==================== EMAIL CONFIGURATION TYPES ====================
 

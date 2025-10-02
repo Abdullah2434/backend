@@ -1,6 +1,6 @@
 import Stripe from "stripe";
-import Subscription, { ISubscription } from "../../../models/Subscription";
-import User from "../../../models/User";
+import Subscription, { ISubscription } from "../../../database/models/Subscription";
+import User from "../../../database/models/User";
 import {
   UserSubscription,
   CreateSubscriptionData,

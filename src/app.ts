@@ -10,18 +10,20 @@ import { json, urlencoded, raw } from "express";
 import mongoose from "mongoose";
 import { createServer } from "http";
 import routes from "./routes/index";
-import { ApiResponse } from "./types";
 import {
   apiRateLimiter,
   securityHeaders,
   validateRequest,
   sanitizeInputs,
   authenticate,
-} from "./middleware";
-import { connectMongo } from "./config/mongoose";
-import { notificationService } from "./modules/notification";
-import { cronService } from "./modules/cron";
-import { queueService } from "./modules/queue";
+} from "./core/middlewares";
+import { errorHandler } from "./core/errors";
+import { notFoundHandler } from "./core/errors/error-handler";
+import { response as ResponseHelper } from "./core/utils";
+import { connectMongo } from "./database/connection";
+import { notificationService } from "./modules/shared/notification";
+import { cronService } from "./modules/shared/cron";
+import { queueService } from "./modules/shared/queue";
 
 const app = express();
 const server = createServer(app);
@@ -80,6 +82,21 @@ app.use((req, res, next) => {
   }
 });
 
+// Debug middleware for auth routes
+app.use("/api/auth/reset-password", (req, res, next) => {
+  console.log("🔍 Raw reset-password request:", {
+    method: req.method,
+    path: req.path,
+    headers: {
+      "content-type": req.headers["content-type"],
+      "content-length": req.headers["content-length"],
+    },
+    body: req.body,
+    bodyKeys: Object.keys(req.body || {}),
+  });
+  next();
+});
+
 // URL encoding for form data (also skip webhooks and file uploads)
 app.use((req, res, next) => {
   if (
@@ -117,11 +134,7 @@ if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
 
 // Health
 app.get("/health", (_req, res) => {
-  const healthResponse: ApiResponse = {
-    success: true,
-    message: "Express backend is running successfully",
-  };
-  res.json(healthResponse);
+  ResponseHelper.success(res, null, "Express backend is running successfully");
 });
 
 // MongoDB status endpoint
@@ -134,11 +147,10 @@ app.get("/mongo-status", async (_req, res) => {
     name: mongoose.connection.name,
     connected: mongoose.connection.readyState === 1,
   };
-  res.json({
-    success: true,
-    data: status,
-    message: status.connected ? "MongoDB connected" : "MongoDB not connected",
-  });
+  const message = status.connected
+    ? "MongoDB connected"
+    : "MongoDB not connected";
+  ResponseHelper.success(res, status, message);
 });
 
 // Always connect before /api routes
@@ -161,33 +173,11 @@ queueService.initialize();
 //   await generateAndStoreTopicData();
 // }); // Removed - now using API endpoint
 
-// 404
-app.use((_req, res) => {
-  const notFoundResponse: ApiResponse = {
-    success: false,
-    message: "Not Found",
-  };
-  res.status(404).json(notFoundResponse);
-});
+// 404 handler
+app.use(notFoundHandler);
 
-// Error handler
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use(
-  (
-    err: any,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction
-  ) => {
-    console.error(err);
-
-    const errorResponse: ApiResponse = {
-      success: false,
-      message: err.message || "Internal server error",
-    };
-    res.status(err.status || 500).json(errorResponse);
-  }
-);
+// Global error handler
+app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 4000;
 server.listen(PORT, "0.0.0.0", () => {

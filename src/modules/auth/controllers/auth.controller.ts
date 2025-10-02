@@ -101,12 +101,25 @@ export const googleLogin = async (
 ): Promise<void> => {
   try {
     const { googleId, email, firstName, lastName } = req.body;
+    console.log("🔍 Google login attempt:", {
+      googleId: googleId?.substring(0, 10) + "...",
+      email,
+      firstName,
+      lastName,
+    });
+
     const result = await authService.googleLogin({
       googleId,
       email,
       firstName,
       lastName,
     });
+
+    console.log("✅ Google login successful:", {
+      isNewUser: result.isNewUser,
+      userId: result.user._id,
+    });
+
     if (!result.isNewUser && !result.user.isEmailVerified) {
       sendResponse(
         res,
@@ -124,6 +137,8 @@ export const googleLogin = async (
       isNewUser: result.isNewUser,
     });
   } catch (error: any) {
+    console.log("❌ Google login failed:", error.message);
+    console.log("❌ Error stack:", error.stack);
     sendResponse(
       res,
       error.statusCode || 500,
@@ -207,10 +222,30 @@ export const resetPassword = async (
   res: Response
 ): Promise<void> => {
   try {
+    console.log("🔍 Reset password request body:", {
+      body: req.body,
+      hasResetToken: !!req.body?.resetToken,
+      hasNewPassword: !!req.body?.newPassword,
+      resetTokenLength: req.body?.resetToken?.length,
+      newPasswordLength: req.body?.newPassword?.length,
+    });
+
     const { resetToken, newPassword } = req.body;
+
+    if (!resetToken || !newPassword) {
+      console.log("❌ Missing required fields:", {
+        resetToken: !!resetToken,
+        newPassword: !!newPassword,
+      });
+      sendResponse(res, 400, "Reset token and new password are required");
+      return;
+    }
+
     const result = await authService.resetPassword({ resetToken, newPassword });
+    console.log("✅ Password reset successful");
     sendResponse(res, 200, result.message);
   } catch (error: any) {
+    console.log("❌ Password reset failed:", error.message);
     sendResponse(
       res,
       error.statusCode || 400,
@@ -225,11 +260,23 @@ export const verifyEmail = async (
 ): Promise<void> => {
   try {
     const { token } = req.query;
+    console.log("🔍 Email verification attempt:", {
+      token: token?.substring(0, 10) + "...",
+    });
+
+    if (!token) {
+      console.log("❌ No token provided");
+      sendResponse(res, 400, "Verification token is required");
+      return;
+    }
+
     const result = await authService.verifyEmail(token);
+    console.log("✅ Email verification successful");
     sendResponse(res, 200, result.message, {
       user: formatUserResponse(result.user),
     });
   } catch (error: any) {
+    console.log("❌ Email verification failed:", error.message);
     sendResponse(
       res,
       error.statusCode || 400,
@@ -261,16 +308,72 @@ export const validateToken = async (
 ): Promise<void> => {
   try {
     const { token } = req.body;
+    console.log("🔍 Token validation attempt:", {
+      token: token?.substring(0, 10) + "...",
+      hasToken: !!token,
+    });
+
+    if (!token) {
+      console.log("❌ No token provided for validation");
+      sendResponse(res, 400, "Token is required");
+      return;
+    }
+
     const result = await authService.validateToken(token);
+    console.log("🔍 Token validation result:", {
+      isValid: result.isValid,
+      tokenType: result.tokenType,
+      hasUser: !!result.user,
+    });
+
     if (!result.isValid) {
       sendResponse(res, 401, "Invalid or expired token");
       return;
     }
+
+    // For reset tokens, we don't need to return user data
+    if (result.tokenType === "reset") {
+      sendResponse(res, 200, "Token is valid", {
+        tokenType: result.tokenType,
+        message: "Reset token is valid",
+      });
+      return;
+    }
+
+    // For access tokens, we need user data
+    if (!result.user) {
+      console.log("❌ Valid token but no user data returned");
+      sendResponse(res, 401, "Token is valid but user data is missing");
+      return;
+    }
+
     sendResponse(res, 200, "Token is valid", {
-      user: formatUserResponse(result.user!),
+      user: formatUserResponse(result.user),
       tokenType: result.tokenType,
     });
   } catch (error: any) {
+    console.log("❌ Token validation failed:", error.message);
+    console.log("❌ Error stack:", error.stack);
     sendResponse(res, 500, error.message || "Token validation failed");
+  }
+};
+
+export const checkEmail = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      sendResponse(res, 400, "Email parameter is required");
+      return;
+    }
+
+    const exists = await authService.checkEmailExists(email as string);
+
+    sendResponse(res, 200, "Email check completed", {
+      email,
+      exists,
+    });
+  } catch (error: any) {
+    sendResponse(res, 500, error.message || "Email check failed");
   }
 };

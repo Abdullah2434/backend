@@ -1,6 +1,6 @@
 import Stripe from "stripe";
-import Subscription from "../../../models/Subscription";
-import User from "../../../models/User";
+import Subscription from "../../../database/models/Subscription";
+import User from "../../../database/models/User";
 import {
   PaymentMethod,
   SetupIntentData,

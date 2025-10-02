@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import AuthService from "../modules/auth/services/auth.service";
-import { JwtPayload, AuthenticatedRequest } from "../types";
+import AuthService from "../../modules/auth/services/auth.service";
+import { JwtPayload, AuthenticatedRequest } from "../../types";
 
 const authService = new AuthService();
 
@@ -174,3 +174,5 @@ export function optionalAuthenticate() {
     next();
   };
 }
+
+export default authenticate;

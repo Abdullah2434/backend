@@ -1,6 +1,6 @@
 import * as bcrypt from "bcryptjs";
-import User from "../../../models/User";
-import { sendPasswordResetEmail } from "../../../modules/email";
+import User from "../../../database/models/User";
+import { sendPasswordResetEmail } from "../../../modules/shared/email";
 import {
   ResetPasswordData,
   AuthConfig,
@@ -23,8 +23,17 @@ export class AuthPasswordService {
 
   async forgotPassword(email: string): Promise<{ message: string }> {
     try {
+      console.log("🔍 Forgot password request:", { email });
+
       const user = await User.findOne({ email });
+      console.log("🔍 User found for forgot password:", {
+        userId: user?._id,
+        email: user?.email,
+        hasExistingResetToken: !!user?.resetPasswordToken,
+      });
+
       if (!user) {
+        console.log("❌ User not found for forgot password");
         // Don't reveal if user exists or not for security
         return {
           message:
@@ -37,22 +46,36 @@ export class AuthPasswordService {
         user._id.toString(),
         user.email
       );
+      console.log("🔍 Generated reset token:", {
+        token: resetToken.substring(0, 20) + "...",
+        tokenLength: resetToken.length,
+      });
 
       // Save reset token to user
-      user.passwordResetToken = resetToken;
-      user.passwordResetExpires = new Date(
+      user.resetPasswordToken = resetToken;
+      user.resetPasswordExpires = new Date(
         Date.now() + this.config.passwordResetExpiry
       );
+
+      console.log("🔍 Saving reset token to user:", {
+        userId: user._id,
+        resetTokenLength: user.resetPasswordToken.length,
+        resetTokenExpires: user.resetPasswordExpires,
+      });
+
       await user.save();
+      console.log("✅ Reset token saved successfully");
 
       // Send password reset email
       await sendPasswordResetEmail(user.email, resetToken, user.firstName);
+      console.log("✅ Password reset email sent");
 
       return {
         message:
           "If an account with that email exists, a password reset link has been sent.",
       };
     } catch (error) {
+      console.log("❌ Forgot password error:", error);
       throw new AuthenticationError("Password reset request failed", 500);
     }
   }
@@ -62,34 +85,70 @@ export class AuthPasswordService {
   ): Promise<{ message: string }> {
     try {
       const { resetToken, newPassword } = resetData;
+      console.log("🔍 Password reset attempt:", {
+        resetToken: resetToken?.substring(0, 20) + "...",
+        hasNewPassword: !!newPassword,
+      });
 
       // Verify reset token
       const payload = this.tokenService.verifyToken(resetToken);
+      console.log("🔍 Token payload:", {
+        userId: payload?.userId,
+        email: payload?.email,
+        type: payload?.type,
+      });
+
       if (!payload || payload.type !== "reset") {
+        console.log("❌ Invalid token payload");
         throw new ValidationError("Invalid or expired reset token");
       }
 
-      // Find user by reset token
-      const user = await User.findOne({
-        passwordResetToken: resetToken,
-        passwordResetExpires: { $gt: new Date() },
+      // Find user by ID from token payload
+      const user = await User.findById(payload.userId);
+      console.log("🔍 User found:", {
+        userId: user?._id,
+        email: user?.email,
+        hasResetToken: !!user?.resetPasswordToken,
+        resetTokenExpires: user?.resetPasswordExpires,
+        // Debug: Check if there are any old field names still in use
+        hasOldPasswordResetToken: !!(user as any)?.passwordResetToken,
+        hasOldPasswordResetExpires: !!(user as any)?.passwordResetExpires,
       });
 
       if (!user) {
+        console.log("❌ User not found");
         throw new ValidationError("Invalid or expired reset token");
+      }
+
+      // Check if the stored reset token matches and is not expired
+      if (
+        !user.resetPasswordToken ||
+        user.resetPasswordToken !== resetToken ||
+        !user.resetPasswordExpires ||
+        user.resetPasswordExpires < new Date()
+      ) {
+        console.log("❌ Reset token mismatch or expired");
+        console.log(
+          "💡 This might be an old token. User should request a new forgot password email."
+        );
+        throw new ValidationError(
+          "Invalid or expired reset token. Please request a new password reset email."
+        );
       }
 
       // Update password
       user.password = newPassword;
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
       await user.save();
+      console.log("✅ Password updated successfully");
 
       return {
         message:
           "Password has been reset successfully. You can now log in with your new password.",
       };
     } catch (error) {
+      console.log("❌ Password reset error:", error);
       if (error instanceof ValidationError) {
         throw error;
       }

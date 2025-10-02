@@ -158,6 +158,29 @@ export const getAccounts = async (req: any, res: Response): Promise<void> => {
   }
 };
 
+export const getPublicAccounts = async (
+  req: any,
+  res: Response
+): Promise<void> => {
+  try {
+    // Return public account information (no sensitive data)
+    const result = await socialBuService.getPublicAccounts();
+
+    if (result.success) {
+      sendResponse(res, 200, result.message, result.data);
+    } else {
+      sendResponse(res, 400, result.message);
+    }
+  } catch (error: any) {
+    logSocialBuError(error, { action: "getPublicAccounts" });
+    sendResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to retrieve public accounts"
+    );
+  }
+};
+
 export const connectAccount = async (
   req: any,
   res: Response

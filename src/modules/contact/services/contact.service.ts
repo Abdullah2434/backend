@@ -2,7 +2,7 @@ import * as crypto from "crypto";
 import {
   sendContactFormNotification,
   sendContactFormConfirmation,
-} from "../../../modules/email";
+} from "../../../modules/shared/email";
 import {
   ContactFormData,
   ContactSubmissionResult,

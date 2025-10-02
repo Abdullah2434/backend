@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-import DefaultAvatar from "../../../models/avatar";
-import DefaultVoice from "../../../models/voice";
-import WorkflowHistory from "../../../models/WorkflowHistory";
-import { addPhotoAvatarJob } from "../../../modules/queue";
-import { notificationService } from "../../../modules/notification";
-import Topic from "../../../models/Topic";
-import User from "../../../models/User";
+import DefaultAvatar from "../../../database/models/avatar";
+import DefaultVoice from "../../../database/models/voice";
+import WorkflowHistory from "../../../database/models/WorkflowHistory";
+import { addPhotoAvatarJob } from "../../shared/queue";
+import { notificationService } from "../../shared/notification";
+import Topic from "../../../database/models/Topic";
+import User from "../../../database/models/User";
 import {
   PhotoAvatarData,
   VideoError,
