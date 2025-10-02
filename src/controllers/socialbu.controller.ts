@@ -1,35 +1,35 @@
-import { Request, Response } from 'express';
-import socialBuService from '../services/socialbu.service';
-import webhookService from '../services/webhooksocialbu.service';
+import { Request, Response } from "express";
+import socialBuService from "../services/socialbu.service";
+import webhookService from "../services/webhooksocialbu.service";
 
 /**
  * Manual login to SocialBu and save token
  */
 export const manualLogin = async (req: Request, res: Response) => {
   try {
-    console.log('Manual SocialBu login requested');
+    console.log("Manual SocialBu login requested");
 
     const result = await socialBuService.manualLogin();
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        message: result.message
+        message: result.message,
       });
     }
 
     res.status(200).json({
       success: true,
       message: result.message,
-      data: result.data
+      data: result.data,
     });
   } catch (error) {
-    console.error('Error in manual login:', error);
-    
+    console.error("Error in manual login:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to login to SocialBu',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to login to SocialBu",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -44,46 +44,46 @@ export const saveToken = async (req: Request, res: Response) => {
     if (!authToken || !id || !name || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: authToken, id, name, email'
+        message: "Missing required fields: authToken, id, name, email",
       });
     }
 
-    console.log('Saving SocialBu token manually');
+    console.log("Saving SocialBu token manually");
 
     const result = await socialBuService.saveToken({
       authToken,
       id,
       name,
       email,
-      verified: verified || false
+      verified: verified || false,
     });
 
     if (!result) {
       return res.status(500).json({
         success: false,
-        message: 'Failed to save token'
+        message: "Failed to save token",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Token saved successfully',
+      message: "Token saved successfully",
       data: {
         id: result.id,
         name: result.name,
         email: result.email,
         verified: result.verified,
         isActive: result.isActive,
-        createdAt: result.createdAt
-      }
+        createdAt: result.createdAt,
+      },
     });
   } catch (error) {
-    console.error('Error saving token:', error);
-    
+    console.error("Error saving token:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to save token',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to save token",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -93,7 +93,7 @@ export const saveToken = async (req: Request, res: Response) => {
  */
 export const getAccounts = async (req: Request, res: Response) => {
   try {
-    console.log('Getting SocialBu accounts');
+    console.log("Getting SocialBu accounts");
 
     const result = await socialBuService.getAccounts();
 
@@ -101,22 +101,22 @@ export const getAccounts = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: result.message,
-        error: result.error
+        error: result.error,
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Accounts retrieved successfully',
-      data: result.data
+      message: "Accounts retrieved successfully",
+      data: result.data,
     });
   } catch (error) {
-    console.error('Error getting accounts:', error);
-    
+    console.error("Error getting accounts:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to get accounts',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to get accounts",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -128,29 +128,29 @@ export const getAccounts = async (req: Request, res: Response) => {
 export const getAccountsPublic = async (req: Request, res: Response) => {
   try {
     // For testing purposes, use a hardcoded user ID
-    const userId = req.user?._id || "68b19f13b732018f898d7046";
+    const userId = req.user?.id || "68b19f13b732018f898d7046";
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: 'User authentication required'
+        message: "User authentication required",
       });
     }
 
-    console.log('Getting SocialBu accounts for user:', userId);
+    console.log("Getting SocialBu accounts for user:", userId);
 
     // Get all SocialBu accounts
     let socialBuResult = await socialBuService.getAccounts();
 
     // If still not successful, try one more time with fresh login
     if (!socialBuResult.success) {
-      console.log('First attempt failed, trying fresh login...');
-      
+      console.log("First attempt failed, trying fresh login...");
+
       // Try to login and get fresh token
       const loginResult = await socialBuService.manualLogin();
-      
+
       if (loginResult.success) {
-        console.log('Fresh login successful, retrying accounts...');
+        console.log("Fresh login successful, retrying accounts...");
         // Try again with fresh token
         socialBuResult = await socialBuService.getAccounts();
       }
@@ -158,53 +158,56 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
 
     // Get user's connected account IDs
     const userResult = await webhookService.getUserSocialBuAccounts(userId);
-    
+
     if (!userResult.success) {
       return res.status(400).json({
         success: false,
-        message: userResult.message
+        message: userResult.message,
       });
     }
 
     const userAccountIds = userResult.data?.socialbu_account_ids || [];
-    
+
     // If SocialBu accounts are not available, return user's account IDs
     if (!socialBuResult.success) {
-      console.log('SocialBu accounts not available, returning user account IDs');
+      console.log(
+        "SocialBu accounts not available, returning user account IDs"
+      );
       return res.status(200).json({
         success: true,
-        message: 'User connected accounts retrieved successfully',
+        message: "User connected accounts retrieved successfully",
         data: {
           connected_accounts: [],
           user_account_ids: userAccountIds,
           total_connected: userAccountIds.length,
-          socialbu_status: 'unavailable'
-        }
+          socialbu_status: "unavailable",
+        },
       });
     }
 
     // Filter SocialBu accounts to only show user's connected accounts
-    const connectedAccounts = socialBuResult.data?.filter((account: any) => 
-      userAccountIds.includes(account.id)
-    ) || [];
+    const connectedAccounts =
+      socialBuResult.data?.filter((account: any) =>
+        userAccountIds.includes(account.id)
+      ) || [];
 
     res.status(200).json({
       success: true,
-      message: 'User SocialBu accounts retrieved successfully',
+      message: "User SocialBu accounts retrieved successfully",
       data: {
         connected_accounts: connectedAccounts,
         user_account_ids: userAccountIds,
         total_connected: connectedAccounts.length,
-        socialbu_status: 'available'
-      }
+        socialbu_status: "available",
+      },
     });
   } catch (error) {
-    console.error('Error getting user SocialBu accounts:', error);
-    
+    console.error("Error getting user SocialBu accounts:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to get user SocialBu accounts',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to get user SocialBu accounts",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -215,56 +218,61 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
 export const connectAccount = async (req: Request, res: Response) => {
   try {
     const { provider, postback_url, account_id, user_id } = req.body;
-    const userId = req.user?._id || user_id; // Get user ID from authenticated request or body
+    const userId = req.user?.id || user_id; // Get user ID from authenticated request or body
 
     if (!provider) {
       return res.status(400).json({
         success: false,
-        message: 'Provider is required'
+        message: "Provider is required",
       });
     }
 
     if (!userId) {
       return res.status(400).json({
         success: false,
-        message: 'User ID is required (either through authentication or user_id in body)'
+        message:
+          "User ID is required (either through authentication or user_id in body)",
       });
     }
 
     // Create user-specific postback URL that includes user ID
-    const userSpecificPostbackUrl = postback_url 
+    const userSpecificPostbackUrl = postback_url
       ? `${postback_url}?user_id=${userId}`
       : `http://localhost:4000/api/webhook/socialbu?user_id=${userId}`;
 
-    console.log('Connecting new account:', { 
-      provider, 
-      postback_url: userSpecificPostbackUrl, 
-      account_id, 
-      userId 
+    console.log("Connecting new account:", {
+      provider,
+      postback_url: userSpecificPostbackUrl,
+      account_id,
+      userId,
     });
 
-    const result = await socialBuService.connectAccount(provider, userSpecificPostbackUrl, account_id);
+    const result = await socialBuService.connectAccount(
+      provider,
+      userSpecificPostbackUrl,
+      account_id
+    );
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
         message: result.message,
-        error: result.error
+        error: result.error,
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Account connected successfully',
-      data: result.data
+      message: "Account connected successfully",
+      data: result.data,
     });
   } catch (error) {
-    console.error('Error connecting account:', error);
-    
+    console.error("Error connecting account:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to connect account',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to connect account",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -275,33 +283,33 @@ export const connectAccount = async (req: Request, res: Response) => {
 export const testAuth = async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    const accessToken = authHeader?.replace('Bearer ', '');
-    
-    console.log('Test auth request:', {
+    const accessToken = authHeader?.replace("Bearer ", "");
+
+    console.log("Test auth request:", {
       user: req.user,
       hasUser: !!req.user,
-      userId: req.user?._id,
+      userId: req.user?.id,
       hasToken: !!accessToken,
-      tokenLength: accessToken?.length
+      tokenLength: accessToken?.length,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Authentication test successful',
+      message: "Authentication test successful",
       data: {
         user: req.user,
         hasUser: !!req.user,
-        userId: req.user?._id,
+        userId: req.user?.id,
         hasToken: !!accessToken,
-        tokenLength: accessToken?.length
-      }
+        tokenLength: accessToken?.length,
+      },
     });
   } catch (error) {
-    console.error('Error in test auth:', error);
+    console.error("Error in test auth:", error);
     res.status(500).json({
       success: false,
-      message: 'Test auth failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Test auth failed",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -311,7 +319,7 @@ export const testAuth = async (req: Request, res: Response) => {
  */
 export const testConnection = async (req: Request, res: Response) => {
   try {
-    console.log('Testing SocialBu API connection');
+    console.log("Testing SocialBu API connection");
 
     // Try to get a valid token
     const token = await socialBuService.getValidToken();
@@ -319,25 +327,25 @@ export const testConnection = async (req: Request, res: Response) => {
     if (!token) {
       return res.status(400).json({
         success: false,
-        message: 'No valid token available. Please login first.'
+        message: "No valid token available. Please login first.",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'SocialBu API connection successful',
+      message: "SocialBu API connection successful",
       data: {
         hasToken: true,
-        tokenLength: token.length
-      }
+        tokenLength: token.length,
+      },
     });
   } catch (error) {
-    console.error('Error testing connection:', error);
-    
+    console.error("Error testing connection:", error);
+
     res.status(500).json({
       success: false,
-      message: 'Failed to test connection',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: "Failed to test connection",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };

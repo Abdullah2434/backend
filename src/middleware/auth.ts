@@ -1,72 +1,145 @@
-import { Request, Response, NextFunction } from 'express'
-import AuthService from '../services/auth.service'
-import { JwtPayload, AuthenticatedRequest } from '../types'
-
-const authService = new AuthService()
+import { Request, Response, NextFunction } from "express";
+import { authService } from "../modules/auth/services/auth.service";
+import { tokenService } from "../modules/auth/services/token.service";
+import { JwtPayload, AuthenticatedRequest } from "../types";
 
 // Route configurations matching Next.js
 const AUTH_ROUTES = {
-  // Public routes (no auth required, but rate limited)
+  // Public routes (no auth required, accessible to everyone)
   PUBLIC: [
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/forgot-password',
-    '/api/auth/reset-password',
-    '/api/auth/verify-email',
-    '/api/auth/resend-verification',
-    '/api/auth/check-email',
-    '/api/auth/check-email-verification',
-    '/api/auth/validate-token',
-    '/api/auth/google',
-    '/api/auth/csrf-token',
-    '/api/video/track-execution',
-    '/api/webhook/workflow-error',
-    '/api/webhook/stripe',
-    '/api/socialbu/login',
-    '/api/socialbu/save-token',
-    '/api/socialbu/test',
-    '/api/socialbu/accounts/connect',
-    '/api/webhook/socialbu',
-    '/api/webhook/test'
+    // Auth routes (public)
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/verify-email",
+    "/api/auth/resend-verification",
+    "/api/auth/check-email",
+    "/api/auth/check-email-verification",
+    "/api/auth/validate-token",
+    "/api/auth/validate-reset-token",
+    "/api/auth/google",
+    "/api/auth/csrf-token",
+    "/api/auth/debug-password-hash",
+
+    // Subscription routes (public)
+    "/api/subscription/plans", // Get available plans
+    "/api/subscription/debug-webhook", // Debug webhook
+
+    // Video routes (public)
+    "/api/video/track-execution",
+    "/api/video/avatars", // Get available avatars
+    "/api/video/voices", // Get available voices
+    "/api/video/topics", // Get all topics
+    "/api/video/topics/id/", // Get topic by ID
+    "/api/video/topics/", // Get topic by type
+    "/api/video/pending-workflows/", // Check pending workflows
+
+    // Webhook routes (public)
+    "/api/webhook/workflow-error",
+    "/api/webhook/stripe",
+    "/api/webhook/socialbu",
+    "/api/webhook/test",
+    "/api/webhook/video-complete",
+
+    // SocialBu routes (public)
+    "/api/socialbu/login",
+    "/api/socialbu/save-token",
+    "/api/socialbu/test",
+    "/api/socialbu/accounts/connect",
+    "/api/socialbu/accounts/public", // Public accounts endpoint
+
+    // Contact route (public)
+    "/api/contact",
+
+    // Health check routes
+    "/health",
+    "/mongo-status",
   ],
-  
+
   // Protected routes (auth required)
   PROTECTED: [
-    '/api/auth/me',
-    '/api/auth/profile',
-    '/api/auth/clear-expired-tokens',
-    '/api/video/topics/:id',
-    '/api/video/topics',
-    '/api/video/topics/:topic',
-    '/api/trends/real-estate',
-    '/api/socialbu/accounts',
-    '/api/socialbu/accounts/public',
-    '/api/socialbu/test-auth',
-    '/api/socialbu-media',
-    '/api/socialbu-account'
+    "/api/auth/me",
+    "/api/auth/profile",
+    "/api/auth/logout",
+    "/api/auth/clear-expired-tokens",
+
+    // Video routes (protected)
+    "/api/video/gallery",
+    "/api/video/delete",
+    "/api/video/download-proxy",
+    "/api/video/download",
+    "/api/video/status",
+    "/api/video/create",
+    "/api/video/generate-video",
+    "/api/video/photo-avatar",
+
+    // Subscription routes (protected)
+    "/api/subscription/current",
+    "/api/subscription/create",
+    "/api/subscription/cancel",
+    "/api/subscription/reactivate",
+    "/api/subscription/payment-methods",
+    "/api/subscription/video-limit",
+    "/api/subscription/payment-intent",
+    "/api/subscription/confirm-payment-intent",
+    "/api/subscription/change-plan",
+    "/api/subscription/plan-change-options",
+    "/api/subscription/billing-history",
+    "/api/subscription/billing-summary",
+    "/api/subscription/sync-from-stripe",
+
+    // Payment methods (protected)
+    "/api/payment-methods",
+
+    // Trends (protected)
+    "/api/trends/real-estate",
+
+    // SocialBu routes (protected)
+    "/api/socialbu/accounts", // User's accounts
+    "/api/socialbu/test-auth",
+
+    // SocialBu Media (protected)
+    "/api/socialbu-media",
+
+    // SocialBu Account management (protected)
+    "/api/socialbu-account",
   ],
-  
-  // Video routes (auth required)
-  VIDEO: [
-    '/api/video/gallery',
-    '/api/video/delete',
-    '/api/video/download-proxy'
-  ]
+};
+
+/**
+ * Check if route is public (no auth required)
+ */
+export function isPublicRoute(pathname: string): boolean {
+  // Direct match for exact routes
+  if (AUTH_ROUTES.PUBLIC.includes(pathname)) {
+    return true;
+  }
+
+  // Check if path starts with any public route
+  return AUTH_ROUTES.PUBLIC.some((route) => {
+    // Handle trailing slashes for pattern matching
+    if (route.endsWith("/")) {
+      return pathname.startsWith(route);
+    }
+    // Exact match or starts with route followed by /
+    return pathname === route || pathname.startsWith(route + "/");
+  });
 }
 
 /**
  * Check if route requires authentication
  */
 export function requiresAuth(pathname: string): boolean {
-  return AUTH_ROUTES.PROTECTED.some(route => pathname.startsWith(route)) ||
-         AUTH_ROUTES.VIDEO.some(route => pathname.startsWith(route))
-}
+  // First check if it's a public route
+  if (isPublicRoute(pathname)) {
+    return false;
+  }
 
-/**
- * Check if route is public
- */
-export function isPublicRoute(pathname: string): boolean {
-  return AUTH_ROUTES.PUBLIC.some(route => pathname.startsWith(route))
+  // Check if explicitly marked as protected
+  return AUTH_ROUTES.PROTECTED.some((route) => {
+    return pathname === route || pathname.startsWith(route + "/");
+  });
 }
 
 /**
@@ -74,14 +147,14 @@ export function isPublicRoute(pathname: string): boolean {
  */
 async function extractUserFromToken(token: string) {
   try {
-    const payload = authService.verifyToken(token) as JwtPayload
-    if (!payload) return null
-    
-    const user = await authService.getCurrentUser(token)
-    return user
+    const payload = tokenService.verifyToken(token) as JwtPayload;
+    if (!payload) return null;
+
+    const user = await authService.getCurrentUser(token);
+    return user;
   } catch (error) {
-    console.error('Token extraction error:', error)
-    return null
+    console.error("Token extraction error:", error);
+    return null;
   }
 }
 
@@ -89,78 +162,82 @@ async function extractUserFromToken(token: string) {
  * Authentication middleware
  */
 export function authenticate() {
-  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    const { path } = req
-    
-    console.log(`🔐 Auth Middleware: Processing ${req.method} ${path}`)
-    
+  return async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const { path } = req;
+
+    console.log(`🔐 Auth Middleware: Processing ${req.method} ${path}`);
+
     // Skip auth for public routes
     if (isPublicRoute(path)) {
-      console.log(`🔐 Auth Middleware: Public route ${path}`)
-      return next()
+      console.log(`🔐 Auth Middleware: Public route ${path}`);
+      return next();
     }
-    
+
     // Check if route requires authentication
     if (!requiresAuth(path)) {
-      console.log(`🔐 Auth Middleware: No auth required for ${path}`)
-      return next()
+      console.log(`🔐 Auth Middleware: No auth required for ${path}`);
+      return next();
     }
-    
+
     // Extract access token
-    const authHeader = req.headers.authorization
-    const accessToken = authHeader?.replace('Bearer ', '')
-    
+    const authHeader = req.headers.authorization;
+    const accessToken = authHeader?.replace("Bearer ", "");
+
     if (!accessToken) {
-      console.log(`🔐 Auth Middleware: No access token for ${path}`)
+      console.log(`🔐 Auth Middleware: No access token for ${path}`);
       return res.status(401).json({
         success: false,
-        message: 'Access token is required'
-      })
+        message: "Access token is required",
+      });
     }
-    
+
     // Validate token and extract user
-    const user = await extractUserFromToken(accessToken)
+    const user = await extractUserFromToken(accessToken);
     if (!user) {
-      console.log(`🔐 Auth Middleware: Invalid access token for ${path}`)
+      console.log(`🔐 Auth Middleware: Invalid access token for ${path}`);
       return res.status(401).json({
         success: false,
-        message: 'Invalid or expired access token'
-      })
+        message: "Invalid or expired access token",
+      });
     }
-    
+
     // Add user to request object
     req.user = {
-      _id: user._id.toString(),
+      id: user._id.toString(),
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName
-    }
-    
-    console.log(`🔐 Auth Middleware: Authentication successful for ${path}`)
-    next()
-  }
+    };
+
+    console.log(`🔐 Auth Middleware: Authentication successful for ${path}`);
+    next();
+  };
 }
 
 /**
  * Optional authentication middleware (doesn't block if no token)
  */
 export function optionalAuthenticate() {
-  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization
-    const accessToken = authHeader?.replace('Bearer ', '')
-    
+  return async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    const authHeader = req.headers.authorization;
+    const accessToken = authHeader?.replace("Bearer ", "");
+
     if (accessToken) {
-      const user = await extractUserFromToken(accessToken)
+      const user = await extractUserFromToken(accessToken);
       if (user) {
         req.user = {
-          _id: user._id.toString(),
+          id: user._id.toString(),
           email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName
-        }
+        };
       }
     }
-    
-    next()
-  }
+
+    next();
+  };
 }

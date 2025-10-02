@@ -1,34 +1,47 @@
-import { Router } from 'express'
-import * as ctrl from '../../controllers/auth.controller'
-import { 
-  loginRateLimiter, 
-  registerRateLimiter, 
+import { Router } from "express";
+import * as authCtrl from "../../modules/auth/controllers/auth.controller";
+import * as profileCtrl from "../../modules/auth/controllers/profile.controller";
+import * as passwordCtrl from "../../modules/auth/controllers/password.controller";
+import * as verificationCtrl from "../../modules/auth/controllers/verification.controller";
+import {
+  loginRateLimiter,
+  registerRateLimiter,
   passwordResetRateLimiter,
-  authenticate
-} from '../../middleware'
+  authenticate,
+} from "../../middleware";
 
-const router = Router()
+const router = Router();
 
 // PUBLIC ROUTES (no authentication required)
-router.post('/register', registerRateLimiter.middleware(), ctrl.register)
-router.post('/login', loginRateLimiter.middleware(), ctrl.login)
-router.post('/forgot-password', passwordResetRateLimiter.middleware(), ctrl.forgotPassword)
-router.post('/reset-password', passwordResetRateLimiter.middleware(), ctrl.resetPassword)
-router.post('/validate-reset-token', ctrl.validateResetToken)
-router.post('/debug-password-hash', ctrl.debugPasswordHash)
-router.get('/verify-email', ctrl.verifyEmail)
-router.post('/resend-verification', ctrl.resendVerification)
-router.get('/check-email', ctrl.checkEmail)
-router.post('/check-email-verification', ctrl.checkEmailVerification)
-router.post('/validate-token', ctrl.validateToken)
-router.post('/google', ctrl.googleLogin)
+router.post("/register", registerRateLimiter.middleware(), authCtrl.register);
+router.post("/login", loginRateLimiter.middleware(), authCtrl.login);
+router.post("/google", authCtrl.googleLogin);
+router.get("/check-email", authCtrl.checkEmail);
+router.post("/check-email-verification", authCtrl.checkEmailVerification);
+router.post("/validate-token", authCtrl.validateToken);
+
+// Password routes
+router.post(
+  "/forgot-password",
+  passwordResetRateLimiter.middleware(),
+  passwordCtrl.forgotPassword
+);
+router.post(
+  "/reset-password",
+  passwordResetRateLimiter.middleware(),
+  passwordCtrl.resetPassword
+);
+router.post("/validate-reset-token", passwordCtrl.validateResetToken);
+router.post("/debug-password-hash", passwordCtrl.debugPasswordHash);
+
+// Verification routes
+router.get("/verify-email", verificationCtrl.verifyEmail);
+router.post("/resend-verification", verificationCtrl.resendVerification);
 
 // PROTECTED ROUTES (authentication required)
-router.get('/me', ctrl.me)
-router.put('/profile', ctrl.updateProfile)
-router.post('/logout', ctrl.logout)
-router.post('/clear-expired-tokens', ctrl.clearExpiredTokens)
+router.get("/me", profileCtrl.me);
+router.put("/profile", profileCtrl.updateProfile);
+router.post("/logout", authCtrl.logout);
+router.post("/clear-expired-tokens", authCtrl.clearExpiredTokens);
 
-export default router
-
-
+export default router;

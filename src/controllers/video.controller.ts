@@ -1,39 +1,46 @@
-import { Request, Response } from 'express'
-import AuthService from '../services/auth.service'
-import VideoService from '../services/video.service'
-import DefaultAvatar from '../models/avatar';
-import DefaultVoice from '../models/voice';
-import WorkflowHistory from '../models/WorkflowHistory';
-import { photoAvatarQueue } from '../queues/photoAvatarQueue';
-import { notificationService } from '../services/notification.service';
-import multer from 'multer';
-import https from 'https';
-import url from 'url';
-import User from '../models/User';
-import mongoose from 'mongoose';
+import { Request, Response } from "express";
+import { authService } from "../modules/auth/services/auth.service";
+import { tokenService } from "../modules/auth/services/token.service";
+import VideoService from "../services/video.service";
+import DefaultAvatar from "../models/avatar";
+import DefaultVoice from "../models/voice";
+import WorkflowHistory from "../models/WorkflowHistory";
+import { photoAvatarQueue } from "../queues/photoAvatarQueue";
+import { notificationService } from "../services/notification.service";
+import multer from "multer";
+import https from "https";
+import url from "url";
+import User from "../models/User";
+import mongoose from "mongoose";
 
-const authService = new AuthService()
-const videoService = new VideoService()
-const upload = multer({ dest: '/tmp' });
+const videoService = new VideoService();
+const upload = multer({ dest: "/tmp" });
 
-function requireAuth(req: Request) {
-  const token = (req.headers.authorization || '').replace('Bearer ', '')
-  if (!token) throw new Error('Access token is required')
-  const payload = authService.verifyToken(token)
-  if (!payload) throw new Error('Invalid or expired access token')
-  return payload
+async function requireAuth(req: Request) {
+  const token = (req.headers.authorization || "").replace("Bearer ", "");
+  if (!token) throw new Error("Access token is required");
+  // Note: authService and tokenService are now imported from the new modular structure
+  const payload = tokenService.verifyToken(token);
+  if (!payload) throw new Error("Invalid or expired access token");
+  return payload;
 }
 
 export async function gallery(req: Request, res: Response) {
   try {
-    const payload = requireAuth(req)
-    const user = await authService.getCurrentUser(req.headers.authorization?.replace('Bearer ', '') || '')
+    const payload = await requireAuth(req);
+    const user = await authService.getCurrentUser(
+      req.headers.authorization?.replace("Bearer ", "") || ""
+    );
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired access token' })
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid or expired access token" });
     }
 
-    const videosWithUrls = await videoService.getUserVideosWithDownloadUrls(user._id.toString())
-    const stats = await videoService.getUserVideoStats(user._id.toString())
+    const videosWithUrls = await videoService.getUserVideosWithDownloadUrls(
+      user._id.toString()
+    );
+    const stats = await videoService.getUserVideoStats(user._id.toString());
 
     const formattedVideos = videosWithUrls.map((video: any) => ({
       id: video._id.toString(),
@@ -44,23 +51,25 @@ export async function gallery(req: Request, res: Response) {
       updatedAt: video.updatedAt,
       metadata: video.metadata,
       downloadUrl: video.downloadUrl || null,
-      videoUrl: video.videoUrl || null
-    }))
+      videoUrl: video.videoUrl || null,
+    }));
 
     return res.json({
       success: true,
-      message: 'Video gallery retrieved successfully',
+      message: "Video gallery retrieved successfully",
       data: {
         videos: formattedVideos,
         totalCount: stats.totalCount,
         readyCount: stats.readyCount,
         processingCount: stats.processingCount,
-        failedCount: stats.failedCount
-      }
-    })
+        failedCount: stats.failedCount,
+      },
+    });
   } catch (e: any) {
-    const status = e.message.includes('Access token') ? 401 : 500
-    return res.status(status).json({ success: false, message: e.message || 'Internal server error' })
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res
+      .status(status)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
@@ -72,7 +81,7 @@ export async function trackExecution(req: Request, res: Response) {
     if (!executionId || !email) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: executionId, email'
+        message: "Missing required fields: executionId, email",
       });
     }
 
@@ -81,7 +90,7 @@ export async function trackExecution(req: Request, res: Response) {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -89,7 +98,7 @@ export async function trackExecution(req: Request, res: Response) {
     const workflowHistory = new WorkflowHistory({
       executionId,
       userId: user._id,
-      email
+      email,
     });
 
     await workflowHistory.save();
@@ -98,19 +107,19 @@ export async function trackExecution(req: Request, res: Response) {
 
     return res.json({
       success: true,
-      message: 'Execution tracked successfully',
+      message: "Execution tracked successfully",
       data: {
         executionId,
         userId: user._id,
         email,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     });
   } catch (e: any) {
-    console.error('Error tracking execution:', e);
+    console.error("Error tracking execution:", e);
     return res.status(500).json({
       success: false,
-      message: e.message || 'Internal server error'
+      message: e.message || "Internal server error",
     });
   }
 }
@@ -123,7 +132,7 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
     if (!userId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required parameter: userId'
+        message: "Missing required parameter: userId",
       });
     }
 
@@ -131,7 +140,7 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid userId format'
+        message: "Invalid userId format",
       });
     }
 
@@ -141,7 +150,7 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
     // Find all pending workflows for this user
     const pendingWorkflows = await WorkflowHistory.find({
       userId: userObjectId,
-      status: 'pending'
+      status: "pending",
     });
 
     console.log(`🔍 Checking pending workflows for user: ${userId}`);
@@ -150,67 +159,72 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
     if (pendingWorkflows.length === 0) {
       return res.json({
         success: true,
-        message: 'No pending workflows found',
+        message: "No pending workflows found",
         data: {
           hasPendingWorkflows: false,
           pendingCount: 0,
-          message: null
-        }
+          message: null,
+        },
       });
     }
 
     // Send socket notification for each pending workflow
     for (const workflow of pendingWorkflows) {
       try {
-        notificationService.notifyUser(userId, 'video-download-update', {
-          type: 'progress',
-          status: 'processing',
-          message: 'Your video creation is in progress',
-          timestamp: new Date().toISOString()
+        notificationService.notifyUser(userId, "video-download-update", {
+          type: "progress",
+          status: "processing",
+          message: "Your video creation is in progress",
+          timestamp: new Date().toISOString(),
         });
 
-        console.log(`📤 Sent pending workflow notification for execution ${workflow.executionId}`);
+        console.log(
+          `📤 Sent pending workflow notification for execution ${workflow.executionId}`
+        );
       } catch (notificationError) {
-        console.error(`❌ Error sending notification for workflow ${workflow.executionId}:`, notificationError);
+        console.error(
+          `❌ Error sending notification for workflow ${workflow.executionId}:`,
+          notificationError
+        );
       }
     }
 
     // Return pending workflow information
     return res.json({
       success: true,
-      message: 'Pending workflows found',
+      message: "Pending workflows found",
       data: {
         hasPendingWorkflows: true,
         pendingCount: pendingWorkflows.length,
-        message: 'Your video creation is in progress',
-        workflows: pendingWorkflows.map(workflow => ({
+        message: "Your video creation is in progress",
+        workflows: pendingWorkflows.map((workflow) => ({
           executionId: workflow.executionId,
           createdAt: workflow.createdAt,
-          email: workflow.email
-        }))
-      }
+          email: workflow.email,
+        })),
+      },
     });
   } catch (e: any) {
-    console.error('Error checking pending workflows:', e);
+    console.error("Error checking pending workflows:", e);
     return res.status(500).json({
       success: false,
-      message: e.message || 'Internal server error'
+      message: e.message || "Internal server error",
     });
   }
 }
 
 export async function download(req: Request, res: Response) {
   try {
-    const { videoUrl, email, title, executionId } = req.body
-    
+    const { videoUrl, email, title, executionId } = req.body;
+
     // Validate required fields
-    const requiredFields = ['videoUrl', 'email', 'title']
+    const requiredFields = ["videoUrl", "email", "title"];
     for (const field of requiredFields) {
-      if (!req.body[field] || String(req.body[field]).trim() === '') {
+      if (!req.body[field] || String(req.body[field]).trim() === "") {
         return res.status(400).json({
           success: false,
-          message: `Missing required field: ${field}`
-        })
+          message: `Missing required field: ${field}`,
+        });
       }
     }
 
@@ -219,46 +233,65 @@ export async function download(req: Request, res: Response) {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
-      })
+        message: "User not found",
+      });
     }
 
     // Send initial notification
-    notificationService.notifyVideoDownloadProgress(user._id.toString(), 'download', 'progress', {
-      message: 'Starting video download...'
-    });
+    notificationService.notifyVideoDownloadProgress(
+      user._id.toString(),
+      "download",
+      "progress",
+      {
+        message: "Starting video download...",
+      }
+    );
 
-    const result = await videoService.downloadAndUploadVideo(videoUrl, email, title)
+    const result = await videoService.downloadAndUploadVideo(
+      videoUrl,
+      email,
+      title
+    );
 
     // Update workflow history if executionId is provided
     if (executionId) {
       try {
         await WorkflowHistory.findOneAndUpdate(
           { executionId },
-          { 
-            status: 'completed',
-            completedAt: new Date()
+          {
+            status: "completed",
+            completedAt: new Date(),
           }
-        )
-        console.log(`Workflow history updated for execution ${executionId}: completed`)
+        );
+        console.log(
+          `Workflow history updated for execution ${executionId}: completed`
+        );
       } catch (workflowError) {
-        console.error(`Error updating workflow history for execution ${executionId}:`, workflowError)
+        console.error(
+          `Error updating workflow history for execution ${executionId}:`,
+          workflowError
+        );
       }
     }
 
     // Send success notification
-    notificationService.notifyVideoDownloadProgress(user._id.toString(), 'complete', 'success', {
-      message: 'Video downloaded and uploaded successfully!',
-      videoId: result.videoId,
-      title: result.title,
-      size: result.size
-    });
+    notificationService.notifyVideoDownloadProgress(
+      user._id.toString(),
+      "complete",
+      "success",
+      {
+        message: "Video downloaded and uploaded successfully!",
+        videoId: result.videoId,
+        title: result.title,
+        size: result.size,
+      }
+    );
 
     return res.json({
       success: true,
-      message: 'Video downloaded and uploaded successfully',
-      data: result
-    })
+      message: "Video downloaded and uploaded successfully",
+      data: result,
+    });
   } catch (e: any) {
     // Update workflow history as failed if executionId is provided
     try {
@@ -266,16 +299,21 @@ export async function download(req: Request, res: Response) {
       if (executionId) {
         await WorkflowHistory.findOneAndUpdate(
           { executionId },
-          { 
-            status: 'failed',
+          {
+            status: "failed",
             completedAt: new Date(),
-            errorMessage: e.message || 'Video download failed'
+            errorMessage: e.message || "Video download failed",
           }
-        )
-        console.log(`Workflow history updated for execution ${executionId}: failed`)
+        );
+        console.log(
+          `Workflow history updated for execution ${executionId}: failed`
+        );
       }
     } catch (workflowError) {
-      console.error(`Error updating workflow history for execution:`, workflowError)
+      console.error(
+        `Error updating workflow history for execution:`,
+        workflowError
+      );
     }
 
     // Send error notification if we have user info
@@ -284,205 +322,248 @@ export async function download(req: Request, res: Response) {
       if (email) {
         const user = await videoService.getUserByEmail(email);
         if (user) {
-          notificationService.notifyVideoDownloadProgress(user._id.toString(), 'error', 'error', {
-            message: 'Failed to download video. Please try again.',
-            error: e.message || 'Unknown error occurred'
-          });
+          notificationService.notifyVideoDownloadProgress(
+            user._id.toString(),
+            "error",
+            "error",
+            {
+              message: "Failed to download video. Please try again.",
+              error: e.message || "Unknown error occurred",
+            }
+          );
         }
       }
     } catch (notificationError) {
-      console.error('Error sending notification:', notificationError);
+      console.error("Error sending notification:", notificationError);
     }
 
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' })
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function updateStatus(req: Request, res: Response) {
   try {
-    const { videoId, status, metadata } = req.body
-    
+    const { videoId, status, metadata } = req.body;
+
     if (!videoId || !status) {
       return res.status(400).json({
         success: false,
-        message: 'Video ID and status are required'
-      })
-    }
-    
-    if (!['processing', 'ready', 'failed'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid status. Must be processing, ready, or failed'
-      })
+        message: "Video ID and status are required",
+      });
     }
 
-    const updatedVideo = await videoService.updateVideoStatus(videoId, status)
-    
+    if (!["processing", "ready", "failed"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Must be processing, ready, or failed",
+      });
+    }
+
+    const updatedVideo = await videoService.updateVideoStatus(videoId, status);
+
     if (!updatedVideo) {
       return res.status(404).json({
         success: false,
-        message: 'Video not found'
-      })
+        message: "Video not found",
+      });
     }
 
     // Update metadata if provided
     if (metadata) {
-      await videoService.updateVideoMetadata(videoId, metadata)
+      await videoService.updateVideoMetadata(videoId, metadata);
     }
 
     return res.json({
       success: true,
-      message: 'Video status updated successfully',
+      message: "Video status updated successfully",
       data: {
         videoId: updatedVideo.videoId,
         status: updatedVideo.status,
-        updatedAt: updatedVideo.updatedAt
-      }
-    })
+        updatedAt: updatedVideo.updatedAt,
+      },
+    });
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' })
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function deleteVideo(req: Request, res: Response) {
   try {
-    const payload = requireAuth(req)
-    const { videoId } = req.body
-    
+    const payload = await requireAuth(req);
+    const { videoId } = req.body;
+
     if (!videoId) {
       return res.status(400).json({
         success: false,
-        message: 'Video ID is required'
-      })
+        message: "Video ID is required",
+      });
     }
 
-    const video = await videoService.getVideo(videoId)
+    const video = await videoService.getVideo(videoId);
     if (!video) {
       return res.status(404).json({
         success: false,
-        message: 'Video not found'
-      })
+        message: "Video not found",
+      });
     }
 
     // Verify video belongs to user
     if (video.userId && video.userId.toString() !== payload.userId) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to delete this video'
-      })
+        message: "Unauthorized to delete this video",
+      });
     }
 
-    const deleted = await videoService.deleteVideo(videoId)
-    
+    const deleted = await videoService.deleteVideo(videoId);
+
     if (!deleted) {
       return res.status(500).json({
         success: false,
-        message: 'Failed to delete video'
-      })
+        message: "Failed to delete video",
+      });
     }
 
     return res.json({
       success: true,
-      message: 'Video deleted successfully'
-    })
+      message: "Video deleted successfully",
+    });
   } catch (e: any) {
-    const status = e.message.includes('Access token') ? 401 : 500
-    return res.status(status).json({ success: false, message: e.message || 'Internal server error' })
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res
+      .status(status)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function downloadProxy(req: Request, res: Response) {
   try {
-    const videoUrl = String(req.query.url || '')
+    const videoUrl = String(req.query.url || "");
     if (!videoUrl) {
       return res.status(400).json({
         success: false,
-        message: 'Video URL is required'
-      })
+        message: "Video URL is required",
+      });
     }
 
-    console.log('Proxying video download from:', videoUrl)
+    console.log("Proxying video download from:", videoUrl);
 
     // Fetch the video from S3 (server-side, no CORS issues)
-    const videoResponse = await fetch(videoUrl)
-    
+    const videoResponse = await fetch(videoUrl);
+
     if (!videoResponse.ok) {
-      throw new Error(`Failed to fetch video: ${videoResponse.status}`)
+      throw new Error(`Failed to fetch video: ${videoResponse.status}`);
     }
 
     // Get video data
-    const videoBuffer = await videoResponse.arrayBuffer()
-    const contentType = videoResponse.headers.get('content-type') || 'video/mp4'
+    const videoBuffer = await videoResponse.arrayBuffer();
+    const contentType =
+      videoResponse.headers.get("content-type") || "video/mp4";
 
     // Return the video as a downloadable file
-    res.setHeader('Content-Type', contentType)
-    res.setHeader('Content-Disposition', 'attachment; filename="video.mp4"')
-    res.setHeader('Content-Length', videoBuffer.byteLength.toString())
-    res.setHeader('Cache-Control', 'no-cache')
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', '*')
-    res.setHeader('Access-Control-Allow-Headers', '*')
-    
-    return res.status(200).send(Buffer.from(videoBuffer))
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", 'attachment; filename="video.mp4"');
+    res.setHeader("Content-Length", videoBuffer.byteLength.toString());
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+
+    return res.status(200).send(Buffer.from(videoBuffer));
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' })
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function getAvatars(req: Request, res: Response) {
   try {
-    const user = await authService.getCurrentUser(req.headers.authorization?.replace('Bearer ', '') || '')
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired access token' })
+    // This endpoint is public - optionally include user avatars if authenticated
+    let customAvatars: any[] = [];
+
+    // Try to get user if token is provided
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (token) {
+      const user = await authService.getCurrentUser(token);
+      if (user) {
+        // Fetch custom avatars for authenticated user
+        customAvatars = await DefaultAvatar.find({ userId: user._id });
+      }
     }
-    const userObjectId = user._id;
-    // Fetch custom avatars for user
-    const customAvatars = await DefaultAvatar.find({ userId: userObjectId });
-    // Fetch default avatars (no userId)
-    const defaultAvatars = await DefaultAvatar.find({ userId: { $exists: false } , default: true });
+
+    // Always fetch default avatars (public)
+    const defaultAvatars = await DefaultAvatar.find({
+      userId: { $exists: false },
+      default: true,
+    });
+
     return res.json({
       success: true,
       custom: customAvatars,
       default: defaultAvatars,
     });
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function getVoices(req: Request, res: Response) {
   try {
-    const user = await authService.getCurrentUser(req.headers.authorization?.replace('Bearer ', '') || '')
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired access token' })
+    // This endpoint is public - optionally include user voices if authenticated
+    let customVoices: any[] = [];
+
+    // Try to get user if token is provided
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (token) {
+      const user = await authService.getCurrentUser(token);
+      if (user) {
+        // Fetch custom voices for authenticated user
+        customVoices = await DefaultVoice.find({ userId: user._id });
+      }
     }
-    const userObjectId = user._id;
-    // Fetch custom voices for user
-    const customVoices = await DefaultVoice.find({ userId: userObjectId });
-    // Fetch default voices (no userId)
-    const defaultVoices = await DefaultVoice.find({ userId: { $exists: false } , default: true  });
+
+    // Always fetch default voices (public)
+    const defaultVoices = await DefaultVoice.find({
+      userId: { $exists: false },
+      default: true,
+    });
+
     return res.json({
       success: true,
       custom: customVoices,
       default: defaultVoices,
     });
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
-export const createPhotoAvatarUpload = upload.single('image');
+export const createPhotoAvatarUpload = upload.single("image");
 
-export async function createPhotoAvatar(req: Request & { file?: Express.Multer.File }, res: Response) {
+export async function createPhotoAvatar(
+  req: Request & { file?: Express.Multer.File },
+  res: Response
+) {
   try {
     const { age_group, name, gender, userId, ethnicity } = req.body;
     if (!req.file || !age_group || !name || !gender || !userId) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing required fields" });
     }
     // Use uploaded file path
     const tempImagePath = req.file.path;
     // Add job to BullMQ queue
-    await photoAvatarQueue.add('create-photo-avatar', {
+    await photoAvatarQueue.add("create-photo-avatar", {
       imagePath: tempImagePath,
       age_group,
       name,
@@ -491,31 +572,53 @@ export async function createPhotoAvatar(req: Request & { file?: Express.Multer.F
       ethnicity,
       mimeType: req.file.mimetype, // Pass the correct MIME type
     });
-    return res.json({ success: true, message: 'Photo avatar creation started. You will be notified when ready.' });
+    return res.json({
+      success: true,
+      message:
+        "Photo avatar creation started. You will be notified when ready.",
+    });
   } catch (e: any) {
-    return res.status(500).json({ success: false, message: e.message || 'Internal server error' });
+    return res
+      .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
   }
 }
 
 export async function createVideo(req: Request, res: Response) {
   try {
     const requiredFields = [
-      'prompt', 'avatar', 'name', 'position', 'companyName', 
-      'license', 'tailoredFit', 'socialHandles', 'videoTopic', 
-      'topicKeyPoints', 'city', 'preferredTone', 'callToAction', 'email'
+      "prompt",
+      "avatar",
+      "name",
+      "position",
+      "companyName",
+      "license",
+      "tailoredFit",
+      "socialHandles",
+      "videoTopic",
+      "topicKeyPoints",
+      "city",
+      "preferredTone",
+      "callToAction",
+      "email",
     ];
     for (const field of requiredFields) {
-      if (!req.body[field] || String(req.body[field]).trim() === '') {
+      if (!req.body[field] || String(req.body[field]).trim() === "") {
         return res.status(400).json({
           success: false,
-          message: `${field} is required`
+          message: `${field} is required`,
         });
       }
     }
     const webhookUrl = process.env.VIDEO_CREATION_WEBHOOK_URL;
     if (!webhookUrl) {
-      console.error('VIDEO_CREATION_WEBHOOK_URL environment variable is not set');
-      return res.status(500).json({ success: false, message: 'Video creation service is not configured' });
+      console.error(
+        "VIDEO_CREATION_WEBHOOK_URL environment variable is not set"
+      );
+      return res.status(500).json({
+        success: false,
+        message: "Video creation service is not configured",
+      });
     }
     const body = req.body;
     const webhookData = {
@@ -532,68 +635,76 @@ export async function createVideo(req: Request, res: Response) {
       city: body.city,
       preferredTone: body.preferredTone,
       zipCode: 90014,
-      zipKeyPoints: 'new bars and restaurants',
+      zipKeyPoints: "new bars and restaurants",
       callToAction: body.callToAction,
       email: body.email,
       timestamp: new Date().toISOString(),
-      requestId: `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      requestId: `video_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`,
     };
     // Use native node http(s) for webhook POST
-    const https = require('https');
-    const url = require('url');
+    const https = require("https");
+    const url = require("url");
     const parsedUrl = url.parse(webhookUrl);
     const postData = JSON.stringify(webhookData);
     const options = {
       hostname: parsedUrl.hostname,
       path: parsedUrl.path,
       port: parsedUrl.port || 443,
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(postData),
+      },
     };
     const webhookReq = https.request(options, (webhookRes: any) => {
-      let data = '';
-      webhookRes.on('data', (chunk: any) => { data += chunk; });
-      webhookRes.on('end', () => {
+      let data = "";
+      webhookRes.on("data", (chunk: any) => {
+        data += chunk;
+      });
+      webhookRes.on("end", () => {
         let webhookResult;
-        try { webhookResult = JSON.parse(data); } catch { webhookResult = data; }
+        try {
+          webhookResult = JSON.parse(data);
+        } catch {
+          webhookResult = data;
+        }
         if (webhookRes.statusCode < 200 || webhookRes.statusCode >= 300) {
           return res.status(502).json({
             success: false,
-            message: 'Failed to create video. Please try again later.',
-            error: `Webhook error: ${webhookRes.statusCode}`
+            message: "Failed to create video. Please try again later.",
+            error: `Webhook error: ${webhookRes.statusCode}`,
           });
         }
         return res.status(200).json({
           success: true,
-          message: 'Video creation request submitted successfully',
+          message: "Video creation request submitted successfully",
           data: {
             requestId: webhookData.requestId,
             webhookResponse: webhookResult,
             timestamp: webhookData.timestamp,
-            status: 'pending'
-          }
+            status: "pending",
+          },
         });
       });
     });
-    webhookReq.on('error', (error: any) => {
-      console.error('Create video API Error:', error);
+    webhookReq.on("error", (error: any) => {
+      console.error("Create video API Error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Internal server error. Please try again later.',
-        error: error.message || error
+        message: "Internal server error. Please try again later.",
+        error: error.message || error,
       });
     });
     webhookReq.write(postData);
     webhookReq.end();
   } catch (error: any) {
-    console.error('Create video API Error:', error);
+    console.error("Create video API Error:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error. Please try again later.',
-      error: error.message
+      message: "Internal server error. Please try again later.",
+      error: error.message,
     });
   }
 }
@@ -602,19 +713,27 @@ export async function generateVideo(req: Request, res: Response) {
   try {
     const body = req.body;
     const requiredFields = [
-      'hook', 'body', 'conclusion', 'company_name', 
-      'social_handles', 'license', 'avatar_title','avatar_body','avatar_conclusion', 'email', 
-      'title'
+      "hook",
+      "body",
+      "conclusion",
+      "company_name",
+      "social_handles",
+      "license",
+      "avatar_title",
+      "avatar_body",
+      "avatar_conclusion",
+      "email",
+      "title",
     ];
     for (const field of requiredFields) {
       console.log(`Checking field ${field}:`, body[field]);
-      if (!body[field] || String(body[field]).trim() === '') {
+      if (!body[field] || String(body[field]).trim() === "") {
         console.log(`Field ${field} is missing or empty`);
         return res.status(400).json({
           success: false,
           message: `Missing or empty required field: ${field}`,
           error: `Field ${field} is required and cannot be empty`,
-          receivedData: body
+          receivedData: body,
         });
       }
     }
@@ -622,22 +741,24 @@ export async function generateVideo(req: Request, res: Response) {
     if (!webhookUrl) {
       return res.status(500).json({
         success: false,
-        message: 'GENERATE_VIDEO_WEBHOOK_URL environment variable is not set'
+        message: "GENERATE_VIDEO_WEBHOOK_URL environment variable is not set",
       });
     }
     // Get gender from DefaultAvatar
-    const avatarDoc = await DefaultAvatar.findOne({ avatar_id: body.avatar_title });
-    console.log('Found avatar document:', avatarDoc);
+    const avatarDoc = await DefaultAvatar.findOne({
+      avatar_id: body.avatar_title,
+    });
+    console.log("Found avatar document:", avatarDoc);
     const gender = avatarDoc ? avatarDoc.gender : undefined;
     // Get voice_id from DefaultVoice by gender
     let voice_id: string | undefined = undefined;
     if (gender) {
       const voiceDoc = await DefaultVoice.findOne({ gender });
-      console.log('Found voice document:', voiceDoc);
+      console.log("Found voice document:", voiceDoc);
       voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
     }
-    console.log('Using voice_id:', voice_id);
-    console.log(body.body,"body body");
+    console.log("Using voice_id:", voice_id);
+    console.log(body.body, "body body");
     const webhookData = {
       hook: body.hook,
       body: body.body,
@@ -651,54 +772,59 @@ export async function generateVideo(req: Request, res: Response) {
       email: body.email,
       title: body.title,
       voice: voice_id,
-      isDefault : avatarDoc?.default,
-      timestamp: new Date().toISOString()
+      isDefault: avatarDoc?.default,
+      timestamp: new Date().toISOString(),
     };
     // Fire and forget: send request to n8n webhook and return immediately
-    const https = require('https');
-    const url = require('url');
+    const https = require("https");
+    const url = require("url");
     const parsedUrl = url.parse(webhookUrl);
     const postData = JSON.stringify(webhookData);
     const options = {
       hostname: parsedUrl.hostname,
       path: parsedUrl.path,
       port: parsedUrl.port || 443,
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(postData),
+      },
     };
     const webhookReq = https.request(options, (webhookRes: any) => {
-      webhookRes.on('data', () => {}); // ignore data
-      webhookRes.on('end', () => {
-        console.log('N8n webhook request sent successfully, status:', webhookRes.statusCode);
+      webhookRes.on("data", () => {}); // ignore data
+      webhookRes.on("end", () => {
+        console.log(
+          "N8n webhook request sent successfully, status:",
+          webhookRes.statusCode
+        );
       });
     });
-    webhookReq.on('error', (error: any) => {
-      console.error('N8n webhook request failed:', error);
+    webhookReq.on("error", (error: any) => {
+      console.error("N8n webhook request failed:", error);
     });
     webhookReq.write(postData);
     webhookReq.end();
     // Return immediately with request info
     const response = {
       success: true,
-      message: 'Video generation started successfully',
+      message: "Video generation started successfully",
       data: {
-        status: 'processing',
+        status: "processing",
         timestamp: new Date().toISOString(),
-        estimated_completion: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        note: 'Video generation is running in the background. The video will be available when ready.'
-      }
+        estimated_completion: new Date(
+          Date.now() + 15 * 60 * 1000
+        ).toISOString(),
+        note: "Video generation is running in the background. The video will be available when ready.",
+      },
     };
-    console.log('Returning response:', response);
+    console.log("Returning response:", response);
     return res.json(response);
   } catch (error: any) {
-    console.error('Error in video generation API:', error);
+    console.error("Error in video generation API:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error. Please try again later.',
-      error: error.message || 'Unknown error occurred'
+      message: "Internal server error. Please try again later.",
+      error: error.message || "Unknown error occurred",
     });
   }
 }
@@ -707,16 +833,16 @@ export async function generateVideo(req: Request, res: Response) {
 export async function getAllTopics(req: Request, res: Response) {
   try {
     const topics = await videoService.getAllTopics();
-    
+
     return res.json({
       success: true,
-      message: 'Topics retrieved successfully',
-      data: topics
+      message: "Topics retrieved successfully",
+      data: topics,
     });
   } catch (e: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: e.message || 'Internal server error' 
+    return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
     });
   }
 }
@@ -724,32 +850,32 @@ export async function getAllTopics(req: Request, res: Response) {
 export async function getTopicByType(req: Request, res: Response) {
   try {
     const { topic } = req.params;
-    
+
     if (!topic) {
       return res.status(400).json({
         success: false,
-        message: 'Topic parameter is required'
+        message: "Topic parameter is required",
       });
     }
 
     const topicData = await videoService.getTopicByType(topic);
-    
+
     if (!topicData) {
       return res.status(404).json({
         success: false,
-        message: 'Topic not found'
+        message: "Topic not found",
       });
     }
 
     return res.json({
       success: true,
-      message: 'Topic retrieved successfully',
-      data: topicData
+      message: "Topic retrieved successfully",
+      data: topicData,
     });
   } catch (e: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: e.message || 'Internal server error' 
+    return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
     });
   }
 }
@@ -757,33 +883,32 @@ export async function getTopicByType(req: Request, res: Response) {
 export async function getTopicById(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    
+
     if (!id) {
       return res.status(400).json({
         success: false,
-        message: 'ID parameter is required'
+        message: "ID parameter is required",
       });
     }
 
     const topicData = await videoService.getTopicById(id);
-    
+
     if (!topicData) {
       return res.status(404).json({
         success: false,
-        message: 'Topic not found'
+        message: "Topic not found",
       });
     }
 
     return res.json({
       success: true,
-      message: 'Topic retrieved successfully',
-      data: topicData
+      message: "Topic retrieved successfully",
+      data: topicData,
     });
   } catch (e: any) {
-    return res.status(500).json({ 
-      success: false, 
-      message: e.message || 'Internal server error' 
+    return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
     });
   }
 }
-

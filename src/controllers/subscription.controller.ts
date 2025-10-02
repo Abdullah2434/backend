@@ -1,15 +1,15 @@
 import { Request, Response } from "express";
-import AuthService from "../services/auth.service";
+import { authService } from "../modules/auth/services/auth.service";
+import { tokenService } from "../modules/auth/services/token.service";
 import { SubscriptionService } from "../services/subscription.service";
 import { ApiResponse } from "../types";
 
-const authService = new AuthService();
 const subscriptionService = new SubscriptionService();
 
 function requireAuth(req: Request) {
   const token = (req.headers.authorization || "").replace("Bearer ", "");
   if (!token) throw new Error("Access token is required");
-  const payload = authService.verifyToken(token);
+  const payload = tokenService.verifyToken(token);
   if (!payload) throw new Error("Invalid or expired access token");
   return payload;
 }
@@ -42,7 +42,7 @@ export async function getCurrentSubscription(req: Request, res: Response) {
   try {
     // Try to get authentication, but don't require it
     const token = (req.headers.authorization || "").replace("Bearer ", "");
-    
+
     if (!token) {
       // No token provided - return no subscription (guest user)
       return res.json({
@@ -53,7 +53,7 @@ export async function getCurrentSubscription(req: Request, res: Response) {
     }
 
     // Verify token if provided
-    const payload = authService.verifyToken(token);
+    const payload = tokenService.verifyToken(token);
     if (!payload) {
       // Invalid token - return no subscription
       return res.json({
@@ -530,14 +530,19 @@ export async function debugWebhook(req: Request, res: Response) {
       });
     }
 
-    const stripe = new (await import("stripe")).default(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2023-10-16",
-    });
+    const stripe = new (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY!,
+      {
+        apiVersion: "2023-10-16",
+      }
+    );
 
     let debugInfo: any = {};
 
     if (paymentIntentId) {
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntentId
+      );
       debugInfo.paymentIntent = {
         id: paymentIntent.id,
         status: paymentIntent.status,

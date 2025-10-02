@@ -259,10 +259,8 @@ export interface DatabaseConfig {
 // ==================== REQUEST/RESPONSE TYPES ====================
 export interface AuthenticatedRequest extends Request {
   user?: {
-    _id: string;
+    id: string;
     email: string;
-    firstName: string;
-    lastName: string;
   };
 }
 

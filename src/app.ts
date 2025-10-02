@@ -1,5 +1,5 @@
 // Load environment variables first
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
@@ -10,20 +10,26 @@ import { json, urlencoded, raw } from "express";
 import mongoose from "mongoose";
 import { createServer } from "http";
 import routes from "./routes/index";
-import { ApiResponse } from "./types";
+import { ApiResponse } from "./core/types";
 import {
   apiRateLimiter,
   securityHeaders,
-  validateRequest,
+  validateRequestSecurity,
   sanitizeInputs,
-  authenticate,
-} from "./middleware";
-import cron from 'node-cron';
-import { fetchAndStoreDefaultAvatars, fetchAndStoreDefaultVoices } from './cron/fetchDefaultAvatars';
-import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
-import './queues/photoAvatarWorker';
-import { connectMongo } from './config/mongoose';
-import { notificationService } from './services/notification.service';
+  errorHandler,
+} from "./core/middleware";
+import { authenticate } from "./middleware/auth";
+import { logger } from "./core/utils/logger";
+import { env } from "./config/environment";
+import { databaseManager } from "./config/database";
+import cron from "node-cron";
+import {
+  fetchAndStoreDefaultAvatars,
+  fetchAndStoreDefaultVoices,
+} from "./cron/fetchDefaultAvatars";
+import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
+import "./queues/photoAvatarWorker";
+import { notificationService } from "./services/notification.service";
 // import { generateAndStoreTopicData } from './cron/generateTopicData'; // Removed - now using API endpoint
 
 const app = express();
@@ -40,43 +46,43 @@ app.use(
   cors({
     origin: "*", // or whitelist your frontends for production
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-    ],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     credentials: false,
   })
 );
 
-
 // Security middleware (must be after CORS)
 app.use(securityHeaders());
-app.use(validateRequest());
+app.use(validateRequestSecurity());
 
 // Basic Express middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 
-if (process.env.NODE_ENV !== "production") {
+if (env.isDevelopment()) {
   app.use(morgan("dev"));
 }
 
 // Configure body parsing with webhook-specific handling
 // First, handle webhooks with raw body parsing
-app.use('/api/webhook/stripe', raw({ type: 'application/json' }));
+app.use("/api/webhook/stripe", raw({ type: "application/json" }));
 
 // Handle workflow error webhook with JSON parsing
-app.use('/api/webhook/workflow-error', json({ limit: "10mb" }));
+app.use("/api/webhook/workflow-error", json({ limit: "10mb" }));
 
 // Handle SocialBu webhook with JSON parsing
-app.use('/api/webhook/socialbu', json({ limit: "10mb" }));
-app.use('/api/webhook/test', json({ limit: "10mb" }));
-app.use('/api/video/generate-video', json({ limit: "1gb" }));
+app.use("/api/webhook/socialbu", json({ limit: "10mb" }));
+app.use("/api/webhook/test", json({ limit: "10mb" }));
+app.use("/api/video/generate-video", json({ limit: "1gb" }));
 
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next();
   } else {
     json({ limit: "10mb" })(req, res, next);
@@ -85,7 +91,12 @@ app.use((req, res, next) => {
 
 // URL encoding for form data (also skip webhooks and file uploads)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next();
   } else {
     urlencoded({ extended: true })(req, res, next);
@@ -94,7 +105,12 @@ app.use((req, res, next) => {
 
 // Input sanitization (skip webhooks and file uploads to preserve raw data)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next(); // Skip sanitization for webhooks and file uploads
   } else {
     sanitizeInputs()(req, res, next);
@@ -102,8 +118,8 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting - Disable in serverless
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  app.use("/api", apiRateLimiter.middleware());
+if (!env.isProduction() || !process.env.VERCEL) {
+  app.use("/api", apiRateLimiter);
 }
 
 // ---------- Routes ----------
@@ -119,45 +135,55 @@ app.get("/health", (_req, res) => {
 
 // MongoDB status endpoint
 app.get("/mongo-status", async (_req, res) => {
-  await connectMongo();
-  const status = {
-    readyState: mongoose.connection.readyState,
-    host: mongoose.connection.host,
-    port: mongoose.connection.port,
-    name: mongoose.connection.name,
-    connected: mongoose.connection.readyState === 1,
-  };
-  res.json({
-    success: true,
-    data: status,
-    message: status.connected ? "MongoDB connected" : "MongoDB not connected",
-  });
+  try {
+    await databaseManager.connect();
+    const status = databaseManager.getConnectionStatus();
+    res.json({
+      success: true,
+      data: status,
+      message: status.connected ? "MongoDB connected" : "MongoDB not connected",
+    });
+  } catch (error) {
+    logger.error("MongoDB status check failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check MongoDB status",
+    });
+  }
 });
 
 // Always connect before /api routes
 app.use(
   "/api",
   async (req, res, next) => {
-    await connectMongo();
-    next();
+    try {
+      await databaseManager.connect();
+      next();
+    } catch (error) {
+      logger.error("Database connection failed:", error);
+      res.status(500).json({
+        success: false,
+        message: "Database connection failed",
+      });
+    }
   },
   authenticate(),
   routes
 );
 
 // Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
-cron.schedule('55 14 * * 2', async () => {
-  console.log('Weekly avatar sync job started...');
+cron.schedule("55 14 * * 2", async () => {
+  logger.info("Weekly avatar sync job started...");
   await fetchAndStoreDefaultAvatars();
-  console.log('Weekly avatar sync job finished.');
-  console.log('Weekly voice sync job started...');
+  logger.info("Weekly avatar sync job finished.");
+  logger.info("Weekly voice sync job started...");
   await fetchAndStoreDefaultVoices();
-  console.log('Weekly voice sync job finished.');
+  logger.info("Weekly voice sync job finished.");
 });
 
 // Schedule avatar status check every 5 minutes
-cron.schedule('*/2 * * * *', async () => {
-  console.log('Checking pending avatars status...');
+cron.schedule("*/2 * * * *", async () => {
+  logger.info("Checking pending avatars status...");
   await checkPendingAvatarsAndUpdate();
 });
 
@@ -176,27 +202,11 @@ app.use((_req, res) => {
 });
 
 // Error handler
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use(
-  (
-    err: any,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction
-  ) => {
-    console.error(err);
+app.use(errorHandler);
 
-    const errorResponse: ApiResponse = {
-      success: false,
-      message: err.message || "Internal server error",
-    };
-    res.status(err.status || 500).json(errorResponse);
-  }
-);
-
-const PORT = Number(process.env.PORT) || 4000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Express server with WebSocket running on port ${PORT}`);
+const PORT = env.getRequired("PORT") as number;
+server.listen(PORT, "0.0.0.0", () => {
+  logger.info(`✅ Express server with WebSocket running on port ${PORT}`);
 });
 
 export default app;
