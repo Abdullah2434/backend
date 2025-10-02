@@ -36,6 +36,9 @@ const AUTH_ROUTES = {
     "/api/video/topics/", // Get topic by type
     "/api/video/pending-workflows/", // Check pending workflows
 
+    // User settings routes (public)
+    "/api/user-settings/user-settings", // Get and save user video settings
+
     // Webhook routes (public)
     "/api/webhook/workflow-error",
     "/api/webhook/stripe",
