@@ -183,19 +183,19 @@ class SocialBuAccountService {
   }
 
   /**
-   * Get accounts for a specific user
+   * Get accounts for a specific user using token
    */
   async getUserAccounts(
-    userId: string
+    token: string
   ): Promise<SocialBuApiResponse<SocialBuAccount[]>> {
     try {
-      // Get user from database
-      const user = await User.findById(userId);
+      const { authService } = await import("../../auth/services/auth.service");
 
+      const user = await authService.getCurrentUser(token);
       if (!user) {
         return {
           success: false,
-          message: "User not found",
+          message: "User not found or invalid token",
         };
       }
 
@@ -209,7 +209,7 @@ class SocialBuAccountService {
       // Filter accounts that belong to this user
       const userAccountIds = user.socialbu_account_ids || [];
       const userAccounts = accountsResult.data.filter((account) =>
-        userAccountIds.includes(account.id)
+        userAccountIds.includes(Number(account.id))
       );
 
       return {

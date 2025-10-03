@@ -26,13 +26,14 @@ export const getAccountsPublic = asyncHandler(
  * Get accounts for authenticated user
  */
 export const getAccounts = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user?.id;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
 
-  if (!userId) {
-    return ResponseHelper.unauthorized(res, "User ID is required");
+  if (!token) {
+    return ResponseHelper.unauthorized(res, "Access token is required");
   }
 
-  const result = await socialBuAccountService.getUserAccounts(userId);
+  const result = await socialBuAccountService.getUserAccounts(token);
 
   if (!result.success) {
     return ResponseHelper.badRequest(res, result.message, result.error);
