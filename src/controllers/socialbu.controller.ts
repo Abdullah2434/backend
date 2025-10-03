@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import socialBuService from '../services/socialbu.service';
 import webhookService from '../services/webhooksocialbu.service';
+import User from '../models/User';
 
 /**
  * Manual login to SocialBu and save token
@@ -93,8 +94,20 @@ export const saveToken = async (req: Request, res: Response) => {
  */
 export const getAccounts = async (req: Request, res: Response) => {
   try {
-    console.log('Getting SocialBu accounts');
+    console.log('Getting SocialBu accounts for user:', req.user?._id);
 
+    // Get user's socialbu_account_ids from the database
+    const user = await User.findById(req.user?._id).select('socialbu_account_ids');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    console.log('User socialbu_account_ids:', user.socialbu_account_ids);
+
+    // Get all SocialBu accounts
     const result = await socialBuService.getAccounts();
 
     if (!result.success) {
@@ -105,10 +118,23 @@ export const getAccounts = async (req: Request, res: Response) => {
       });
     }
 
+    // Filter accounts to only include those that match user's socialbu_account_ids
+    const userAccountIds = user.socialbu_account_ids || [];
+    const matchedAccounts = result.data?.filter((account: any) => 
+      userAccountIds.includes(account.id)
+    ) || [];
+
+    console.log('Matched accounts:', matchedAccounts.length, 'out of', result.data?.length);
+
     res.status(200).json({
       success: true,
-      message: 'Accounts retrieved successfully',
-      data: result.data
+      message: 'User accounts retrieved successfully',
+      data: {
+        accounts: matchedAccounts,
+        total_matched: matchedAccounts.length,
+        user_account_ids: userAccountIds,
+        total_available: result.data?.length || 0
+      }
     });
   } catch (error) {
     console.error('Error getting accounts:', error);
