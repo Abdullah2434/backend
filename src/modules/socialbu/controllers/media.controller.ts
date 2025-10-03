@@ -101,3 +101,40 @@ export const getActiveUploads = asyncHandler(
     );
   }
 );
+
+/**
+ * Create social media post
+ */
+export const createPost = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return ResponseHelper.unauthorized(res, "User ID is required");
+  }
+
+  const {
+    accountId,
+    content,
+    mediaId,
+    scheduledTime,
+    platforms = ["facebook", "twitter", "instagram"],
+  } = req.body;
+
+  if (!accountId || !content) {
+    return ResponseHelper.badRequest(res, "accountId and content are required");
+  }
+
+  const result = await socialBuMediaService.createPost(userId, {
+    accountId,
+    content,
+    mediaId,
+    scheduledTime,
+    platforms,
+  });
+
+  if (!result.success) {
+    return ResponseHelper.badRequest(res, result.message, result.error);
+  }
+
+  return ResponseHelper.success(res, result.message, result.data);
+});

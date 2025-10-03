@@ -286,6 +286,88 @@ class SocialBuMediaService {
       return [];
     }
   }
+
+  /**
+   * Create social media post
+   */
+  async createPost(
+    userId: string,
+    postData: {
+      accountId: string;
+      content: string;
+      mediaId?: string;
+      scheduledTime?: string;
+      platforms: string[];
+    }
+  ): Promise<{ success: boolean; message: string; data?: any; error?: any }> {
+    try {
+      await connectMongo();
+
+      logger.info("Creating social media post for user:", userId);
+
+      // Get valid token
+      const tokenString = await socialBuAuthService.getValidToken();
+      if (!tokenString) {
+        return {
+          success: false,
+          message: "No valid SocialBu token available",
+          error: "Token not found",
+        };
+      }
+
+      // Prepare post data
+      const postPayload = {
+        account_id: postData.accountId,
+        content: postData.content,
+        platforms: postData.platforms,
+        ...(postData.mediaId && { media_id: postData.mediaId }),
+        ...(postData.scheduledTime && {
+          scheduled_time: postData.scheduledTime,
+        }),
+      };
+
+      // Call SocialBu create post API
+      const response = await axios.post(
+        "https://socialbu.com/api/v1/posts",
+        postPayload,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${tokenString}`,
+          },
+        }
+      );
+
+      if (response.data) {
+        logger.info("Post created successfully:", response.data);
+        return {
+          success: true,
+          message: "Post created successfully",
+          data: {
+            postId: response.data.id || response.data.post_id,
+            status: response.data.status || "pending",
+            platforms: postData.platforms,
+            scheduledTime: postData.scheduledTime,
+            socialbuResponse: response.data,
+          },
+        };
+      }
+
+      return {
+        success: false,
+        message: "Failed to create post",
+        error: "No response data",
+      };
+    } catch (error) {
+      logger.error("Error creating post", error);
+      return {
+        success: false,
+        message: "Failed to create post",
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
 }
 
 export const socialBuMediaService = SocialBuMediaService.getInstance();

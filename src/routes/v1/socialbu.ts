@@ -72,6 +72,9 @@ router.get("/accounts/:accountId/check", async (req, res) => {
 // Upload media to SocialBu
 router.post("/media/upload", mediaController.uploadMedia);
 
+// Create social media post
+router.post("/media/create-post", mediaController.createPost);
+
 // Get user's media uploads
 router.get("/media/user", mediaController.getUserMedia);
 

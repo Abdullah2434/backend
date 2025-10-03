@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import multer from "multer";
 import { videoGenerationService } from "../services/generation.service";
 import { videoService } from "../services/video.service";
+import { videoCreationService } from "../services/video-creation.service";
 import { queueManager } from "../../jobs";
 import { asyncHandler } from "../../../core/errors/ErrorHandler";
 import { ResponseHelper } from "../../../core/utils/response";
@@ -38,18 +39,62 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  const result = await videoGenerationService.createVideo(req.body);
+  // Generate unique request ID
+  const requestId = `video_${Date.now()}_${Math.random()
+    .toString(36)
+    .substr(2, 9)}`;
 
-  return ResponseHelper.success(
-    res,
-    "Video creation request submitted successfully",
-    {
-      requestId: result.requestId,
-      webhookResponse: result.webhookResult,
-      timestamp: result.timestamp,
-      status: "pending",
-    }
-  );
+  try {
+    // Save video creation record to database FIRST
+    const videoCreationRecord = await videoCreationService.createVideoCreationRecord(
+      req.body,
+      requestId
+    );
+
+    // Update status to processing
+    await videoCreationService.updateVideoCreationStatus(
+      requestId,
+      "processing"
+    );
+
+    // Send to n8n webhook
+    const result = await videoGenerationService.createVideo({
+      ...req.body,
+      requestId, // Include requestId in webhook data
+    });
+
+    // Update with webhook response
+    await videoCreationService.updateVideoCreationStatus(
+      requestId,
+      "processing",
+      result.webhookResult
+    );
+
+    return ResponseHelper.success(
+      res,
+      "Video creation request submitted successfully",
+      {
+        requestId: videoCreationRecord.requestId,
+        webhookResponse: result.webhookResult,
+        timestamp: result.timestamp,
+        status: "processing",
+        databaseRecord: {
+          id: videoCreationRecord._id,
+          createdAt: videoCreationRecord.createdAt,
+        },
+      }
+    );
+  } catch (error: any) {
+    // Update status to failed if there's an error
+    await videoCreationService.updateVideoCreationStatus(
+      requestId,
+      "failed",
+      null,
+      error.message
+    );
+
+    throw error; // Re-throw to be handled by error middleware
+  }
 });
 
 /**
