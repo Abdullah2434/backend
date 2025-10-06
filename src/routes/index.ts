@@ -10,6 +10,7 @@ import socialbuRoutes from "./v1/socialbu";
 import socialbuMediaRoutes from "./v1/socialbu-media";
 import socialbuAccountRoutes from "./v1/socialbu-account";
 import userSettingsRoutes from "./v1/user-settings";
+import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use("/socialbu", socialbuRoutes);
 router.use("/socialbu-media", socialbuMediaRoutes);
 router.use("/socialbu-account", socialbuAccountRoutes);
 router.use("/user-settings", userSettingsRoutes);
+router.use("/user-connected-accounts", userConnectedAccountRoutes);
 router.use("/webhook", webhookRoutes);
 
 export default router;
