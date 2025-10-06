@@ -225,7 +225,22 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
  */
 export const createSocialPost = async (req: Request, res: Response) => {
   try {
-    const { accountIds, name,userId, videoUrl, date, time, caption } = req.body;
+    const { 
+      accountIds, 
+      name, 
+      userId, 
+      videoUrl, 
+      date, 
+      time, 
+      caption,
+      selectedAccounts,
+      instagram_caption,
+      facebook_caption,
+      linkedin_caption,
+      twitter_caption,
+      tiktok_caption,
+      youtube_caption
+    } = req.body;
 
     // Normalize accountIds to array format
     let normalizedAccountIds = accountIds;
@@ -257,6 +272,29 @@ export const createSocialPost = async (req: Request, res: Response) => {
         }
       });
     }
+    
+    // Convert selectedAccounts object to array if needed
+    let normalizedSelectedAccounts = selectedAccounts;
+    if (selectedAccounts && typeof selectedAccounts === 'object' && !Array.isArray(selectedAccounts)) {
+      normalizedSelectedAccounts = Object.values(selectedAccounts);
+    }
+    
+    // Validate selectedAccounts
+    if (!normalizedSelectedAccounts || !Array.isArray(normalizedSelectedAccounts) || normalizedSelectedAccounts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected accounts are required and must be an array',
+        debug: {
+          received: selectedAccounts,
+          normalized: normalizedSelectedAccounts,
+          type: typeof selectedAccounts,
+          isArray: Array.isArray(normalizedSelectedAccounts),
+          length: normalizedSelectedAccounts?.length
+        }
+      });
+    }
+
+    console.log('Selected accounts length:', normalizedSelectedAccounts.length);
 
     if (!name || !videoUrl || !date || !time || !caption) {
       return res.status(400).json({
@@ -325,46 +363,111 @@ export const createSocialPost = async (req: Request, res: Response) => {
     const { upload_token } = statusResponse.data;
     console.log('Upload status checked successfully, upload_token:', upload_token);
 
-    // Step 3: Create social media post
-    console.log('Step 3: Creating social media post...');
+    // Step 3: Create social media posts for each selected account
+    console.log('Step 3: Creating social media posts for each account...');
     
     // Format date and time for publish_at
     const publishAt = `${date} ${time}`;
     
-    const postData = {
-      accounts: normalizedAccountIds,
-      publish_at: publishAt,
-      content: caption,
-      existing_attachments: [
-        {
-          upload_token: upload_token
+    const results = [];
+    const errors = [];
+    
+    // Loop through each selected account
+    try {
+      for (const account of normalizedSelectedAccounts) {
+      try {
+        console.log(`Processing account: ${account.name} (${account.type})`);
+        
+        // Determine the appropriate caption based on account type
+        let accountCaption = caption; // Default to main caption
+        
+        if (account.type === 'instagram.api' && instagram_caption) {
+          accountCaption = instagram_caption;
+        } else if (account.type === 'facebook.profile' && facebook_caption) {
+          accountCaption = facebook_caption;
+        } else if (account.type === 'linkedin.profile' && linkedin_caption) {
+          accountCaption = linkedin_caption;
+        } else if (account.type === 'twitter.profile' && twitter_caption) {
+          accountCaption = twitter_caption;
+        } else if (account.type === 'tiktok.profile' && tiktok_caption) {
+          accountCaption = tiktok_caption;
+        } else if (account.type === 'google.youtube' && youtube_caption) {
+          accountCaption = youtube_caption;
         }
-      ]
-    };
+        
+        const postData = {
+          accounts: [account.id], // Single account per post
+          publish_at: publishAt,
+          content: accountCaption,
+          existing_attachments: [
+            {
+              upload_token: upload_token
+            }
+          ]
+        };
 
-    const postResponse = await socialBuService.makeAuthenticatedRequest(
-      'POST',
-      '/posts',
-      postData
-    );
+        const postResponse = await socialBuService.makeAuthenticatedRequest(
+          'POST',
+          '/posts',
+          postData
+        );
 
-    if (!postResponse.success) {
-      return res.status(400).json({
+        if (postResponse.success) {
+          console.log(`Post created successfully for ${account.name}`);
+          results.push({
+            account: account.name,
+            accountId: account.id,
+            type: account.type,
+            success: true,
+            data: postResponse.data
+          });
+        } else {
+          console.error(`Failed to create post for ${account.name}:`, postResponse.message);
+          errors.push({
+            account: account.name,
+            accountId: account.id,
+            type: account.type,
+            error: postResponse.message
+          });
+        }
+        
+        // Add a small delay between posts to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.error(`Error creating post for ${account.name}:`, error);
+        errors.push({
+          account: account.name,
+          accountId: account.id,
+          type: account.type,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    } catch (loopError) {
+      console.error('Error in account processing loop:', loopError);
+      return res.status(500).json({
         success: false,
-        message: 'Failed to create social media post',
-        error: postResponse.message
+        message: 'Failed to process selected accounts',
+        error: loopError instanceof Error ? loopError.message : 'Unknown error'
       });
     }
 
-    console.log('Social media post created successfully');
+    console.log(`Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`);
 
     res.status(200).json({
       success: true,
-      message: 'Social media post created successfully',
+      message: `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`,
       data: {
         upload: uploadResult.data,
         status: statusResponse.data,
-        post: postResponse.data
+        results: results,
+        errors: errors,
+        summary: {
+          total: normalizedSelectedAccounts.length,
+          successful: results.length,
+          failed: errors.length
+        }
       }
     });
 
