@@ -1,21 +1,26 @@
 import { Request, Response } from 'express';
 import webhookService from '../services/webhooksocialbu.service';
+import { userConnectedAccountService } from '../services/userConnectedAccount.service';
 
 /**
  * Disconnect a user's SocialBu account by account ID
  */
-export const disconnectAccount = async (req: Request, res: Response) => {
+export const disconnectAccount = async (req: Request, res: Response, token: string) => {
   try {
     const { accountId } = req.params;
-    // For testing purposes, use a hardcoded user ID
-    const userId = req.user?._id || "68b19f13b732018f898d7046";
+    console.log("Getting user from token")
+    const authService = new (await import("../services/auth.service")).default();
 
-    if (!userId) {
+    const user = await authService.getCurrentUser(token);
+    console.log("User found:", user)
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'User authentication required'
+        message: "User not found or invalid token",
       });
     }
+
+    const userId = user._id.toString();
 
     if (!accountId) {
       return res.status(400).json({
@@ -65,6 +70,17 @@ export const disconnectAccount = async (req: Request, res: Response) => {
         message: removeResult.message,
         error: removeResult.data
       });
+    }
+
+    // Also delete the account from UserConnectedAccount database
+    if (removeResult.success) {
+      try {
+        await userConnectedAccountService.deleteUserConnectedAccount(userId, accountIdNumber);
+        console.log(`Account ${accountIdNumber} deleted from UserConnectedAccount database for user ${userId}`);
+      } catch (dbError) {
+        console.error('Error deleting account from UserConnectedAccount database:', dbError);
+        // Don't fail the request if database update fails
+      }
     }
 
     res.status(200).json({
