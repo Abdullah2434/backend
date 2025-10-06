@@ -1,5 +1,38 @@
 import { Request } from "express";
 
+// ==================== SOCIALBU TYPES ====================
+export interface SocialBuAccount {
+  id: number;
+  name: string;
+  type: string;
+  _type: string;
+  active: boolean;
+  image: string;
+  post_maxlength: number;
+  attachment_types: string[];
+  max_attachments: number;
+  post_media_required: boolean;
+  video_dimensions: {
+    min: [number, number | null];
+    max: [number | null, number | null];
+  };
+  video_duration: {
+    min: number;
+    max: number;
+  };
+  user_id: number;
+  account_id: string;
+  public_id: string;
+  extra_data: any;
+}
+
+export interface SocialBuApiResponse<T> {
+  success: boolean;
+  message: string;
+  data?: T;
+  error?: any;
+}
+
 // ==================== AUTH TYPES ====================
 export interface RegisterData {
   firstName: string;
