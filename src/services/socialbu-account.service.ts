@@ -1,5 +1,6 @@
 import socialBuService from './socialbu.service';
 import { SocialBuApiResponse, SocialBuAccount } from '../types';
+import { userConnectedAccountService } from './userConnectedAccount.service';
 
 export class SocialBuAccountService {
   async getUserAccounts(
@@ -33,10 +34,22 @@ export class SocialBuAccountService {
         userAccountIds.includes(Number(account.id))
       );
 
+      // Save/update accounts in the database
+      const savedAccounts = await userConnectedAccountService.updateUserConnectedAccountsFromSocialBu(
+        user._id.toString(),
+        userAccounts
+      );
+
+      // Add userId to each account object for response
+      const accountsWithUserId = userAccounts.map((account: any) => ({
+        ...account,
+        userId: user._id.toString()
+      }));
+
       return {
         success: true,
-        message: "User accounts retrieved successfully",
-        data: userAccounts,
+        message: "User accounts retrieved and saved successfully",
+        data: accountsWithUserId,
       };
     } catch (error) {
       console.error("Error getting user accounts", error);
