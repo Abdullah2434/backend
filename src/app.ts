@@ -1,5 +1,5 @@
 // Load environment variables first
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
@@ -18,12 +18,16 @@ import {
   sanitizeInputs,
   authenticate,
 } from "./middleware";
-import cron from 'node-cron';
-import { fetchAndStoreDefaultAvatars, fetchAndStoreDefaultVoices } from './cron/fetchDefaultAvatars';
-import { checkPendingAvatarsAndUpdate } from './cron/checkAvatarStatus';
-import './queues/photoAvatarWorker';
-import { connectMongo } from './config/mongoose';
-import { notificationService } from './services/notification.service';
+import cron from "node-cron";
+import {
+  fetchAndStoreDefaultAvatars,
+  fetchAndStoreDefaultVoices,
+} from "./cron/fetchDefaultAvatars";
+import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
+import { startAllCronJobs } from "./cron/processScheduledVideos";
+import "./queues/photoAvatarWorker";
+import { connectMongo } from "./config/mongoose";
+import { notificationService } from "./services/notification.service";
 // import { generateAndStoreTopicData } from './cron/generateTopicData'; // Removed - now using API endpoint
 
 const app = express();
@@ -40,15 +44,10 @@ app.use(
   cors({
     origin: "*", // or whitelist your frontends for production
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-    ],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     credentials: false,
   })
 );
-
 
 // Security middleware (must be after CORS)
 app.use(securityHeaders());
@@ -63,20 +62,25 @@ if (process.env.NODE_ENV !== "production") {
 
 // Configure body parsing with webhook-specific handling
 // First, handle webhooks with raw body parsing
-app.use('/api/webhook/stripe', raw({ type: 'application/json' }));
+app.use("/api/webhook/stripe", raw({ type: "application/json" }));
 
 // Handle workflow error webhook with JSON parsing
-app.use('/api/webhook/workflow-error', json({ limit: "10mb" }));
+app.use("/api/webhook/workflow-error", json({ limit: "10mb" }));
 
 // Handle SocialBu webhook with JSON parsing
-app.use('/api/webhook/socialbu', json({ limit: "10mb" }));
-app.use('/api/webhook/test', json({ limit: "10mb" }));
-app.use('/api/video/generate-video', json({ limit: "1gb" }));
+app.use("/api/webhook/socialbu", json({ limit: "10mb" }));
+app.use("/api/webhook/test", json({ limit: "10mb" }));
+app.use("/api/video/generate-video", json({ limit: "1gb" }));
 
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next();
   } else {
     json({ limit: "10mb" })(req, res, next);
@@ -85,7 +89,12 @@ app.use((req, res, next) => {
 
 // URL encoding for form data (also skip webhooks and file uploads)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next();
   } else {
     urlencoded({ extended: true })(req, res, next);
@@ -94,7 +103,12 @@ app.use((req, res, next) => {
 
 // Input sanitization (skip webhooks and file uploads to preserve raw data)
 app.use((req, res, next) => {
-  if (req.path && (req.path.startsWith('/api/webhook') || req.path === '/api/video/photo-avatar' || req.path === '/api/video/generate-video')) {
+  if (
+    req.path &&
+    (req.path.startsWith("/api/webhook") ||
+      req.path === "/api/video/photo-avatar" ||
+      req.path === "/api/video/generate-video")
+  ) {
     next(); // Skip sanitization for webhooks and file uploads
   } else {
     sanitizeInputs()(req, res, next);
@@ -146,20 +160,23 @@ app.use(
 );
 
 // Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
-cron.schedule('55 14 * * 2', async () => {
-  console.log('Weekly avatar sync job started...');
+cron.schedule("55 14 * * 2", async () => {
+  console.log("Weekly avatar sync job started...");
   await fetchAndStoreDefaultAvatars();
-  console.log('Weekly avatar sync job finished.');
-  console.log('Weekly voice sync job started...');
+  console.log("Weekly avatar sync job finished.");
+  console.log("Weekly voice sync job started...");
   await fetchAndStoreDefaultVoices();
-  console.log('Weekly voice sync job finished.');
+  console.log("Weekly voice sync job finished.");
 });
 
 // Schedule avatar status check every 5 minutes
-cron.schedule('*/2 * * * *', async () => {
-  console.log('Checking pending avatars status...');
+cron.schedule("*/2 * * * *", async () => {
+  console.log("Checking pending avatars status...");
   await checkPendingAvatarsAndUpdate();
 });
+
+// Start scheduled video processing cron jobs
+startAllCronJobs();
 
 // cron.schedule('0 23 * * 6', async () => {
 //   console.log('Updating trend topics...');
@@ -195,7 +212,7 @@ app.use(
 );
 
 const PORT = Number(process.env.PORT) || 4000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Express server with WebSocket running on port ${PORT}`);
 });
 

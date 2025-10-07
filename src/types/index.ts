@@ -239,6 +239,15 @@ export interface VideoCompleteData {
   s3Key?: string;
   metadata?: any;
   error?: any;
+  scheduleId?: string;
+  trendIndex?: number;
+  captions?: {
+    instagram_caption?: string;
+    facebook_caption?: string;
+    linkedin_caption?: string;
+    twitter_caption?: string;
+    tiktok_caption?: string;
+  };
 }
 
 export interface WebhookResult {

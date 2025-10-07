@@ -1,64 +1,76 @@
-import nodemailer from 'nodemailer'
-import { EmailOptions } from '../types'
+import nodemailer from "nodemailer";
+import { EmailOptions } from "../types";
 
-class EmailService {
-  private transporter: nodemailer.Transporter | null = null
-  private isDevelopment: boolean
-  private brandName: string = 'EdgeAi'
-  private brandColor: string = '#5046E5'
-  private brandSecondaryColor: string = '#282828'
-  private brandAccentColor: string = '#667085'
+export class EmailService {
+  private transporter: nodemailer.Transporter | null = null;
+  private isDevelopment: boolean;
+  private brandName: string = "EdgeAi";
+  private brandColor: string = "#5046E5";
+  private brandSecondaryColor: string = "#282828";
+  private brandAccentColor: string = "#667085";
 
   constructor() {
-    this.isDevelopment = process.env.NODE_ENV === 'development'
-    
+    this.isDevelopment = process.env.NODE_ENV === "development";
+
     // Get email configuration from environment variables
-    const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com'
-    const emailPort = parseInt(process.env.EMAIL_PORT || '587')
-    const emailUser = process.env.EMAIL_USER
-    const emailPass = process.env.EMAIL_PASS
-    
+    const emailHost = process.env.EMAIL_HOST || "smtp.gmail.com";
+    const emailPort = parseInt(process.env.EMAIL_PORT || "587");
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+
     if (emailUser && emailPass) {
       try {
-        console.log(`[Email Service] Configuring SMTP with host: ${emailHost}, port: ${emailPort}, user: ${emailUser}`)
+        console.log(
+          `[Email Service] Configuring SMTP with host: ${emailHost}, port: ${emailPort}, user: ${emailUser}`
+        );
         this.transporter = nodemailer.createTransport({
           host: emailHost,
           port: emailPort,
           secure: false, // true for 465, false for other ports
           auth: {
             user: emailUser,
-            pass: emailPass
+            pass: emailPass,
           },
           tls: {
-            rejectUnauthorized: false
-          }
-        })
-        console.log('✅ Email service configured successfully with SMTP')
+            rejectUnauthorized: false,
+          },
+        });
+        console.log("✅ Email service configured successfully with SMTP");
       } catch (error) {
-        console.error('Email service configuration failed:', error)
-        this.transporter = null
+        console.error("Email service configuration failed:", error);
+        this.transporter = null;
       }
     } else {
-      console.log('Email service not configured - running in development mode')
-      console.log('Required environment variables: EMAIL_USER, EMAIL_PASS')
-      console.log('Current values: EMAIL_USER=' + (emailUser ? 'SET' : 'NOT SET'), 'EMAIL_PASS=' + (emailPass ? 'SET' : 'NOT SET'))
+      console.log("Email service not configured - running in development mode");
+      console.log("Required environment variables: EMAIL_USER, EMAIL_PASS");
+      console.log(
+        "Current values: EMAIL_USER=" + (emailUser ? "SET" : "NOT SET"),
+        "EMAIL_PASS=" + (emailPass ? "SET" : "NOT SET")
+      );
     }
   }
 
   /**
    * Generate email template wrapper with consistent styling
    */
-  private generateEmailTemplate(content: string, showFooter: boolean = true): string {
-    const footer = showFooter ? `
+  private generateEmailTemplate(
+    content: string,
+    showFooter: boolean = true
+  ): string {
+    const footer = showFooter
+      ? `
       <div style="background-color: #f8fafc; padding: 24px; margin-top: 32px; border-top: 1px solid #e5e7eb; text-align: center;">
         <p style="color: #6b7280; font-size: 14px; margin: 0 0 8px 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-          This is an automated email from ${this.brandName}. Please do not reply.
+          This is an automated email from ${
+            this.brandName
+          }. Please do not reply.
         </p>
         <p style="color: #9ca3af; font-size: 12px; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
           © ${new Date().getFullYear()} ${this.brandName}. All rights reserved.
         </p>
       </div>
-    ` : ''
+    `
+      : "";
 
     return `
       <!DOCTYPE html>
@@ -89,39 +101,45 @@ class EmailService {
         </div>
       </body>
       </html>
-    `
+    `;
   }
 
   async send(to: string, subject: string, html: string): Promise<void> {
     if (!this.transporter) {
       if (this.isDevelopment) {
-        console.log('[DEV EMAIL] To:', to)
-        console.log('[DEV EMAIL] Subject:', subject)
-        console.log('[DEV EMAIL] HTML:', html)
-        return
+        console.log("[DEV EMAIL] To:", to);
+        console.log("[DEV EMAIL] Subject:", subject);
+        console.log("[DEV EMAIL] HTML:", html);
+        return;
       }
-      throw new Error('Email service not configured')
+      throw new Error("Email service not configured");
     }
 
     const mailOptions: EmailOptions = {
       to,
       subject,
-      html: this.generateEmailTemplate(html)
-    }
+      html: this.generateEmailTemplate(html),
+    };
 
     await this.transporter.sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER as string,
-      ...mailOptions
-    })
+      from: process.env.EMAIL_FROM || (process.env.EMAIL_USER as string),
+      ...mailOptions,
+    });
   }
 }
 
-const emailService = new EmailService()
+const emailService = new EmailService();
 
-export async function sendVerificationEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/verify-email?token=${token}`
-  const name = firstName ? ` ${firstName}` : ''
-  
+export async function sendVerificationEmail(
+  email: string,
+  token: string,
+  firstName?: string
+) {
+  const url = `${
+    process.env.FRONTEND_URL || "https://www.edgeairealty.com"
+  }/verify-email?token=${token}`;
+  const name = firstName ? ` ${firstName}` : "";
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -159,15 +177,21 @@ export async function sendVerificationEmail(email: string, token: string, firstN
       If the button doesn't work, you can copy and paste this link into your browser:<br>
       <a href="${url}" style="color: #5046E5; word-break: break-all;">${url}</a>
     </p>
-  `
-  
-  await emailService.send(email, `Verify Your EdgeAI Account`, content)
+  `;
+
+  await emailService.send(email, `Verify Your EdgeAI Account`, content);
 }
 
-export async function sendPasswordResetEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/reset-password?token=${token}`
-  const name = firstName ? ` ${firstName}` : ''
-  
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+  firstName?: string
+) {
+  const url = `${
+    process.env.FRONTEND_URL || "https://www.edgeairealty.com"
+  }/reset-password?token=${token}`;
+  const name = firstName ? ` ${firstName}` : "";
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -217,14 +241,14 @@ export async function sendPasswordResetEmail(email: string, token: string, first
       If the button doesn't work, you can copy and paste this link into your browser:<br>
       <a href="${url}" style="color: #5046E5; word-break: break-all;">${url}</a>
     </p>
-  `
-  
-  await emailService.send(email, `Reset Your EdgeAI Password`, content)
+  `;
+
+  await emailService.send(email, `Reset Your EdgeAI Password`, content);
 }
 
 export async function sendWelcomeEmail(email: string, firstName: string) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
-  
+  const url = `${process.env.FRONTEND_URL || "https://www.edgeairealty.com"}`;
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -277,15 +301,25 @@ export async function sendWelcomeEmail(email: string, firstName: string) {
     <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
       Ready to get started? <a href="${url}" style="color: #5046E5; text-decoration: none; font-weight: 600;">Access your dashboard</a> and begin your AI video creation journey!
     </p>
-  `
-  
-  await emailService.send(email, `Welcome to EdgeAI - Let's Create Amazing Videos!`, content)
+  `;
+
+  await emailService.send(
+    email,
+    `Welcome to EdgeAI - Let's Create Amazing Videos!`,
+    content
+  );
 }
 
-export async function sendResendVerificationEmail(email: string, token: string, firstName?: string) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}/verify-email?token=${token}`
-  const name = firstName ? ` ${firstName}` : ''
-  
+export async function sendResendVerificationEmail(
+  email: string,
+  token: string,
+  firstName?: string
+) {
+  const url = `${
+    process.env.FRONTEND_URL || "https://www.edgeairealty.com"
+  }/verify-email?token=${token}`;
+  const name = firstName ? ` ${firstName}` : "";
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -323,15 +357,19 @@ export async function sendResendVerificationEmail(email: string, token: string, 
       If the button doesn't work, you can copy and paste this link into your browser:<br>
       <a href="${url}" style="color: #5046E5; word-break: break-all;">${url}</a>
     </p>
-  `
-  
-  await emailService.send(email, `New EdgeAI Verification Link`, content)
+  `;
+
+  await emailService.send(email, `New EdgeAI Verification Link`, content);
 }
 
 // Additional professional email templates
-export async function sendAvatarReadyNotification(email: string, firstName: string, avatarName: string) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
-  
+export async function sendAvatarReadyNotification(
+  email: string,
+  firstName: string,
+  avatarName: string
+) {
+  const url = `${process.env.FRONTEND_URL || "https://www.edgeairealty.com"}`;
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -363,14 +401,19 @@ export async function sendAvatarReadyNotification(email: string, firstName: stri
     <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
       Ready to bring your ideas to life? <a href="${url}" style="color: #5046E5; text-decoration: none; font-weight: 600;">Start creating videos</a> with your new avatar!
     </p>
-  `
-  
-  await emailService.send(email, `Your Custom Avatar is Ready!`, content)
+  `;
+
+  await emailService.send(email, `Your Custom Avatar is Ready!`, content);
 }
 
-export async function sendSubscriptionConfirmation(email: string, firstName: string, planName: string, amount: number) {
-  const url = `${process.env.FRONTEND_URL || 'https://www.edgeairealty.com'}`
-  
+export async function sendSubscriptionConfirmation(
+  email: string,
+  firstName: string,
+  planName: string,
+  amount: number
+) {
+  const url = `${process.env.FRONTEND_URL || "https://www.edgeairealty.com"}`;
+
   const content = `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -387,7 +430,9 @@ export async function sendSubscriptionConfirmation(email: string, firstName: str
       </h3>
       <div style="color: #4b5563; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
         <p style="margin: 8px 0;"><strong>Plan:</strong> ${planName}</p>
-        <p style="margin: 8px 0;"><strong>Amount:</strong> $${(amount / 100).toFixed(2)}/month</p>
+        <p style="margin: 8px 0;"><strong>Amount:</strong> $${(
+          amount / 100
+        ).toFixed(2)}/month</p>
         <p style="margin: 8px 0;"><strong>Billing:</strong> Monthly</p>
         <p style="margin: 8px 0;"><strong>Status:</strong> Active</p>
       </div>
@@ -404,13 +449,24 @@ export async function sendSubscriptionConfirmation(email: string, firstName: str
         <strong>Need Help?</strong> If you have any questions about your subscription or need assistance, our support team is here to help.
       </p>
     </div>
-  `
-  
-  await emailService.send(email, `Welcome to ${planName} - Subscription Confirmed!`, content)
+  `;
+
+  await emailService.send(
+    email,
+    `Welcome to ${planName} - Subscription Confirmed!`,
+    content
+  );
 }
 
 // Contact form email functions
-export async function sendContactFormNotification(adminEmail: string, fullName: string, position: string, email: string, phone: string, question: string) {
+export async function sendContactFormNotification(
+  adminEmail: string,
+  fullName: string,
+  position: string,
+  email: string,
+  phone: string,
+  question: string
+) {
   const content = `
     <h2>New Contact Form Submission</h2>
     <p><strong>Full Name:</strong> ${fullName}</p>
@@ -418,26 +474,32 @@ export async function sendContactFormNotification(adminEmail: string, fullName: 
     <p><strong>Email:</strong> ${email}</p>
     <p><strong>Phone:</strong> ${phone}</p>
     <p><strong>Question:</strong></p>
-    <p>${question.replace(/\n/g, '<br>')}</p>
+    <p>${question.replace(/\n/g, "<br>")}</p>
     <hr>
     <p><em>This message was sent from the contact form on your website.</em></p>
-  `
-  
-  await emailService.send(adminEmail, `Contact Form: ${fullName} - ${position}`, content)
+  `;
+
+  await emailService.send(
+    adminEmail,
+    `Contact Form: ${fullName} - ${position}`,
+    content
+  );
 }
 
-export async function sendContactFormConfirmation(userEmail: string, fullName: string, question: string) {
+export async function sendContactFormConfirmation(
+  userEmail: string,
+  fullName: string,
+  question: string
+) {
   const content = `
     <h2>Thank you for your message!</h2>
     <p>Hi ${fullName},</p>
     <p>We have received your question and will get back to you as soon as possible.</p>
     <p><strong>Your question:</strong></p>
-    <p>${question.replace(/\n/g, '<br>')}</p>
+    <p>${question.replace(/\n/g, "<br>")}</p>
     <hr>
     <p>Best regards,<br>Support Team</p>
-  `
-  
-  await emailService.send(userEmail, "Thank you for contacting us", content)
+  `;
+
+  await emailService.send(userEmail, "Thank you for contacting us", content);
 }
-
-
