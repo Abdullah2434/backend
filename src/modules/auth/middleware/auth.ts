@@ -44,6 +44,10 @@ const AUTH_ROUTES = {
     "/api/socialbu/test-auth",
     "/api/socialbu-media",
     "/api/socialbu-account",
+    "/api/video-schedule/schedule",
+    "/api/video-schedule/schedule/details",
+    "/api/video-schedule/schedule/stats",
+    "/api/video-schedule/schedule/:scheduleId",
   ],
 
   // Video routes (auth required)

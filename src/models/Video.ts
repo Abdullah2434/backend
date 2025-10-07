@@ -1,38 +1,59 @@
-import mongoose, { Schema, Document } from 'mongoose'
-import { VideoMetadata } from '../types'
+import mongoose, { Schema, Document } from "mongoose";
+import { VideoMetadata } from "../types";
 
 export interface IVideo extends Document {
-  _id: mongoose.Types.ObjectId
-  videoId: string
-  userId?: mongoose.Types.ObjectId
-  email: string
-  title: string
-  secretKey: string
-  s3Key: string
-  videoUrl: string
-  status: 'processing' | 'ready' | 'failed'
-  metadata?: VideoMetadata
-  createdAt: Date
-  updatedAt: Date
+  _id: mongoose.Types.ObjectId;
+  videoId: string;
+  userId?: mongoose.Types.ObjectId;
+  email: string;
+  title: string;
+  secretKey: string;
+  s3Key: string;
+  videoUrl: string;
+  status: "processing" | "ready" | "failed";
+  metadata?: VideoMetadata;
+  socialMediaCaptions?: {
+    instagram_caption?: string;
+    facebook_caption?: string;
+    linkedin_caption?: string;
+    twitter_caption?: string;
+    tiktok_caption?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-const videoSchema = new Schema<IVideo>({
-  videoId: { type: String, required: true, unique: true, index: true },
-  userId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-  email: { type: String, required: true, index: true, trim: true },
-  title: { type: String, required: true, trim: true },
-  videoUrl: { type: String, required: true },
-  secretKey: { type: String, required: true, select: false },
-  s3Key: { type: String, required: true },
-  status: { type: String, enum: ['processing', 'ready', 'failed'], default: 'processing', index: true },
-  metadata: { duration: Number, size: Number, format: String },
-}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } })
+const videoSchema = new Schema<IVideo>(
+  {
+    videoId: { type: String, required: true, unique: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    email: { type: String, required: true, index: true, trim: true },
+    title: { type: String, required: true, trim: true },
+    videoUrl: { type: String, required: true },
+    secretKey: { type: String, required: true, select: false },
+    s3Key: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["processing", "ready", "failed"],
+      default: "processing",
+      index: true,
+    },
+    metadata: { duration: Number, size: Number, format: String },
+    socialMediaCaptions: {
+      instagram_caption: { type: String, trim: true },
+      facebook_caption: { type: String, trim: true },
+      linkedin_caption: { type: String, trim: true },
+      twitter_caption: { type: String, trim: true },
+      tiktok_caption: { type: String, trim: true },
+    },
+  },
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+);
 
-videoSchema.index({ userId: 1, createdAt: -1 })
-videoSchema.index({ email: 1, createdAt: -1 })
-videoSchema.index({ status: 1, createdAt: -1 })
-videoSchema.index({ s3Key: 1 })
+videoSchema.index({ userId: 1, createdAt: -1 });
+videoSchema.index({ email: 1, createdAt: -1 });
+videoSchema.index({ status: 1, createdAt: -1 });
+videoSchema.index({ s3Key: 1 });
 
-export default mongoose.models.Video || mongoose.model<IVideo>('Video', videoSchema)
-
-
+export default mongoose.models.Video ||
+  mongoose.model<IVideo>("Video", videoSchema);

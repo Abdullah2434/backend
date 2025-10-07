@@ -135,6 +135,28 @@ export class VideoService {
   }
 
   /**
+   * Update video social media captions
+   */
+  async updateVideoCaptions(
+    videoId: string,
+    captions: {
+      instagram_caption?: string;
+      facebook_caption?: string;
+      linkedin_caption?: string;
+      twitter_caption?: string;
+      tiktok_caption?: string;
+    }
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { socialMediaCaptions: captions },
+      { new: true }
+    ).select("+secretKey");
+
+    return video;
+  }
+
+  /**
    * Update video title
    */
   async updateVideoTitle(

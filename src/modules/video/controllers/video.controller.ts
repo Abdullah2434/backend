@@ -6,6 +6,7 @@ import DefaultVoice from "../../../models/voice";
 import WorkflowHistory from "../../../models/WorkflowHistory";
 import { photoAvatarQueue } from "../../../queues/photoAvatarQueue";
 import { notificationService } from "../../../services/notification.service";
+import CaptionGenerationService from "../../../services/captionGeneration.service";
 import multer from "multer";
 import https from "https";
 import url from "url";
@@ -51,6 +52,7 @@ export async function gallery(req: Request, res: Response) {
       metadata: video.metadata,
       downloadUrl: video.downloadUrl || null,
       videoUrl: video.videoUrl || null,
+      socialMediaCaptions: video.socialMediaCaptions || null,
     }));
 
     return res.json({
@@ -608,12 +610,10 @@ export async function createVideo(req: Request, res: Response) {
       console.error(
         "VIDEO_CREATION_WEBHOOK_URL environment variable is not set"
       );
-      return res
-        .status(500)
-        .json({
-          success: false,
-          message: "Video creation service is not configured",
-        });
+      return res.status(500).json({
+        success: false,
+        message: "Video creation service is not configured",
+      });
     }
     const body = req.body;
     const webhookData = {
@@ -754,6 +754,23 @@ export async function generateVideo(req: Request, res: Response) {
     }
     console.log("Using voice_id:", voice_id);
     console.log(body.body, "body body");
+
+    // Generate social media captions using OpenAI
+    console.log("🎨 Generating social media captions for custom video...");
+    const captions = await CaptionGenerationService.generateCustomVideoCaptions(
+      body.hook,
+      body.body,
+      body.conclusion,
+      {
+        name: body.company_name, // Using company name as context
+        position: "Real Estate Professional",
+        companyName: body.company_name,
+        city: "Your City", // Could be extracted from user settings
+        socialHandles: body.social_handles,
+      }
+    );
+    console.log("✅ Captions generated successfully");
+
     const webhookData = {
       hook: body.hook,
       body: body.body,
@@ -769,12 +786,17 @@ export async function generateVideo(req: Request, res: Response) {
       voice: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
+      // Store captions for later retrieval (not sent to webhook)
+      _captions: captions,
     };
+    // Remove captions from webhook data (captions are stored separately)
+    const { _captions, ...webhookPayload } = webhookData;
+
     // Fire and forget: send request to n8n webhook and return immediately
     const https = require("https");
     const url = require("url");
     const parsedUrl = url.parse(webhookUrl);
-    const postData = JSON.stringify(webhookData);
+    const postData = JSON.stringify(webhookPayload);
     const options = {
       hostname: parsedUrl.hostname,
       path: parsedUrl.path,
