@@ -7,6 +7,8 @@ import ScheduleEmailService, {
   VideoGeneratedEmailData,
 } from "./scheduleEmail.service";
 import CaptionGenerationService from "./captionGeneration.service";
+import TimezoneService from "../utils/timezone";
+import { notificationService } from "./notification.service";
 
 export interface ScheduleData {
   frequency: "once_week" | "twice_week" | "three_week" | "daily";
@@ -64,9 +66,23 @@ export class VideoScheduleService {
       endDate
     );
 
-    // Generate trends for the schedule
+    // Generate trends for the schedule - ensure we have enough for the full month
+    console.log(`🎬 Generating ${numberOfVideos} trends for the schedule...`);
     const trends = await generateRealEstateTrends();
-    const selectedTrends = trends.slice(0, numberOfVideos);
+
+    // If we don't have enough trends, generate more
+    let selectedTrends = trends;
+    if (trends.length < numberOfVideos) {
+      console.log(
+        `⚠️ Not enough trends (${trends.length}), generating more...`
+      );
+      // Generate additional trends to meet the requirement
+      const additionalTrends = await generateRealEstateTrends();
+      selectedTrends = [...trends, ...additionalTrends];
+    }
+
+    selectedTrends = selectedTrends.slice(0, numberOfVideos);
+    console.log(`✅ Selected ${selectedTrends.length} trends for scheduling`);
 
     // Create scheduled trends
     const generatedTrends = this.createScheduledTrends(
@@ -251,6 +267,19 @@ export class VideoScheduleService {
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
+    // Send socket notification - Video processing started
+    notificationService.notifyScheduledVideoProgress(
+      schedule.userId.toString(),
+      "video-creation",
+      "progress",
+      {
+        message: `Scheduled video "${trend.description}" is being created`,
+        scheduleId: scheduleId,
+        trendIndex: trendIndex,
+        videoTitle: trend.description,
+      }
+    );
+
     try {
       // Generate social media captions using OpenAI
       console.log("🎨 Generating social media captions...");
@@ -288,6 +317,7 @@ export class VideoScheduleService {
 
       // ==================== STEP 1: CREATE VIDEO (PROMPT GENERATION) ====================
       console.log("🎬 Step 1: Creating video (prompt generation)...");
+      console.log("📋 API Endpoint: POST /api/video/create");
 
       // Get gender from avatar settings
       const DefaultAvatar = require("../models/avatar").default;
@@ -331,37 +361,125 @@ export class VideoScheduleService {
         trendIndex: trendIndex,
       };
 
+      // Call Step 1: Create Video API endpoint (same as manual)
+      console.log("🔄 Step 1: Calling Create Video API...");
+      console.log(
+        "📋 Request Body:",
+        JSON.stringify(videoCreationData, null, 2)
+      );
+
+      let enhancedContent: any = null;
+      try {
+        enhancedContent = await this.callCreateVideoAPI(videoCreationData);
+        console.log("✅ Step 1: Create Video API completed successfully");
+        console.log(
+          "📋 Enhanced content received:",
+          JSON.stringify(enhancedContent, null, 2)
+        );
+
+        // Validate that we have the required enhanced content
+        if (
+          !enhancedContent ||
+          !enhancedContent.hook ||
+          !enhancedContent.body ||
+          !enhancedContent.conclusion
+        ) {
+          throw new Error(
+            "Enhanced content is incomplete or missing from first API response"
+          );
+        }
+      } catch (error: any) {
+        console.error("❌ Step 1: Create Video API failed:", error);
+        throw new Error(`Create Video API failed: ${error.message}`);
+      }
+
+      // Wait a moment between API calls
+      console.log("⏳ Waiting 2 seconds before Step 2...");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // ==================== STEP 2: GENERATE VIDEO (VIDEO CREATION) ====================
       console.log("🎬 Step 2: Generating video (video creation)...");
+      console.log("📋 API Endpoint: POST /api/video/generate-video");
 
-      // Step 2: Prepare data for video generation API (same format as manual)
-      const { _captions, ...webhookVideoData } = videoData;
+      // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
       const videoGenerationData = {
-        ...webhookVideoData,
+        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
+        body: enhancedContent.body, // ONLY use enhanced body from Step 1
+        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        company_name: userSettings.companyName,
+        social_handles: userSettings.socialHandles,
+        license: userSettings.license,
+        avatar_title: userSettings.titleAvatar,
+        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
+        avatar_conclusion: userSettings.conclusionAvatar,
+        email: userSettings.email,
+        title: `${trend.description} - ${new Date().toLocaleDateString()}`,
         voice: voice_id,
         isDefault: avatarDoc?.default,
         timestamp: new Date().toISOString(),
         isScheduled: true,
         scheduleId: scheduleId,
         trendIndex: trendIndex,
+        // Store captions for later retrieval (not sent to webhook)
+        _captions: captions,
       };
 
-      // Call Step 1: Create Video API endpoint (same as manual)
-      await this.callCreateVideoAPI(videoCreationData);
-
       // Call Step 2: Generate Video API endpoint (same as manual)
-      await this.callGenerateVideoAPI(videoGenerationData);
-
-      // Log processing start (no WebSocket notification)
+      console.log("🔄 Step 2: Calling Generate Video API...");
       console.log(
-        `🎬 Processing scheduled video: "${trend.description}" for user ${schedule.userId}`
+        "📋 Request Body:",
+        JSON.stringify(videoGenerationData, null, 2)
+      );
+      try {
+        await this.callGenerateVideoAPI(videoGenerationData);
+        console.log("✅ Step 2: Generate Video API completed successfully");
+      } catch (error: any) {
+        console.error("❌ Step 2: Generate Video API failed:", error);
+        throw new Error(`Generate Video API failed: ${error.message}`);
+      }
+
+      // Log processing completion
+      console.log("🎉 Both API calls completed successfully!");
+      console.log(
+        `🎬 Scheduled video processing initiated: "${trend.description}" for user ${schedule.userId}`
+      );
+      console.log(
+        "📱 Video will be processed and auto-posted to social media when ready"
+      );
+
+      // Send socket notification - Video creation initiated successfully
+      notificationService.notifyScheduledVideoProgress(
+        schedule.userId.toString(),
+        "video-creation",
+        "success",
+        {
+          message: `Video "${trend.description}" creation initiated successfully`,
+          scheduleId: scheduleId,
+          trendIndex: trendIndex,
+          videoTitle: trend.description,
+          nextStep: "Video will be processed and auto-posted when ready",
+        }
       );
     } catch (error: any) {
       console.error("Error processing scheduled video:", error);
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
 
-      // Log failure (no WebSocket notification)
+      // Send socket notification - Video creation failed
+      notificationService.notifyScheduledVideoProgress(
+        schedule.userId.toString(),
+        "video-creation",
+        "error",
+        {
+          message: `Failed to create video "${trend.description}": ${error.message}`,
+          scheduleId: scheduleId,
+          trendIndex: trendIndex,
+          videoTitle: trend.description,
+          error: error.message,
+        }
+      );
+
+      // Log failure
       console.error(
         `❌ Failed to process scheduled video "${trend.description}" for user ${schedule.userId}:`,
         error.message
@@ -372,11 +490,16 @@ export class VideoScheduleService {
   /**
    * Call Step 1: Create Video API endpoint (same as manual)
    */
-  private async callCreateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:4000";
+  private async callCreateVideoAPI(data: any): Promise<any> {
+    const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
     const createVideoUrl = `${baseUrl}/api/video/create`;
 
-    return new Promise<void>((resolve, reject) => {
+    console.log("🌐 Making API call to create video...");
+    console.log(`📋 URL: ${createVideoUrl}`);
+    console.log(`📋 Method: POST`);
+    console.log(`📋 Headers: Content-Type: application/json`);
+
+    return new Promise<any>((resolve, reject) => {
       const https = require("https");
       const http = require("http");
       const url = require("url");
@@ -402,9 +525,55 @@ export class VideoScheduleService {
             responseData += chunk;
           });
           res.on("end", () => {
+            console.log(
+              `📋 Step 1: Create Video API Response Status: ${res.statusCode}`
+            );
+            console.log(
+              `📋 Step 1: Create Video API Response Body:`,
+              responseData
+            );
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
               console.log("✅ Step 1: Create Video API called successfully");
-              resolve();
+
+              // Parse the response to extract enhanced content
+              try {
+                const response = JSON.parse(responseData);
+
+                // Extract enhanced content from webhookResponse (URL-encoded)
+                const webhookResponse = response.data?.webhookResponse;
+                if (webhookResponse) {
+                  const enhancedContent = {
+                    hook: decodeURIComponent(webhookResponse.hook || "")
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .trim(),
+                    body: decodeURIComponent(webhookResponse.body || "")
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .trim(),
+                    conclusion: decodeURIComponent(
+                      webhookResponse.conclusion || ""
+                    )
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .trim(),
+                  };
+                  console.log(
+                    "📋 Extracted enhanced content:",
+                    enhancedContent
+                  );
+                  resolve(enhancedContent);
+                } else {
+                  console.warn("⚠️ No webhookResponse found in API response");
+                  resolve(null);
+                }
+              } catch (parseError) {
+                console.warn(
+                  "⚠️ Could not parse enhanced content from response, using fallback"
+                );
+                resolve(null);
+              }
             } else {
               console.error(
                 `❌ Step 1: Create Video API failed with status ${res.statusCode}:`,
@@ -418,6 +587,8 @@ export class VideoScheduleService {
 
       request.on("error", (error: any) => {
         console.error("❌ Step 1: Create Video API request failed:", error);
+        console.error(`📋 Error details: ${error.message}`);
+        console.error(`📋 Error code: ${error.code}`);
         reject(error);
       });
 
@@ -430,8 +601,13 @@ export class VideoScheduleService {
    * Call Step 2: Generate Video API endpoint (same as manual)
    */
   private async callGenerateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:4000";
+    const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
     const generateVideoUrl = `${baseUrl}/api/video/generate-video`;
+
+    console.log("🌐 Making API call to generate video...");
+    console.log(`📋 URL: ${generateVideoUrl}`);
+    console.log(`📋 Method: POST`);
+    console.log(`📋 Headers: Content-Type: application/json`);
 
     return new Promise<void>((resolve, reject) => {
       const https = require("https");
@@ -459,6 +635,14 @@ export class VideoScheduleService {
             responseData += chunk;
           });
           res.on("end", () => {
+            console.log(
+              `📋 Step 2: Generate Video API Response Status: ${res.statusCode}`
+            );
+            console.log(
+              `📋 Step 2: Generate Video API Response Body:`,
+              responseData
+            );
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
               console.log("✅ Step 2: Generate Video API called successfully");
               resolve();
@@ -475,6 +659,8 @@ export class VideoScheduleService {
 
       request.on("error", (error: any) => {
         console.error("❌ Step 2: Generate Video API request failed:", error);
+        console.error(`📋 Error details: ${error.message}`);
+        console.error(`📋 Error code: ${error.code}`);
         reject(error);
       });
 
@@ -601,7 +787,8 @@ export class VideoScheduleService {
   }
 
   /**
-   * Calculate number of videos needed
+   * Calculate number of videos needed based on frequency and duration
+   * Ensures we calculate for the full month period
    */
   private calculateNumberOfVideos(
     frequency: string,
@@ -613,22 +800,43 @@ export class VideoScheduleService {
     );
     const weeks = Math.ceil(daysDiff / 7);
 
+    console.log(`📊 Calculating videos for ${frequency}:`);
+    console.log(
+      `📅 Period: ${startDate.toISOString()} to ${endDate.toISOString()}`
+    );
+    console.log(`📅 Days: ${daysDiff}, Weeks: ${weeks}`);
+
+    let numberOfVideos = 0;
+
     switch (frequency) {
       case "once_week":
-        return weeks;
+        numberOfVideos = weeks;
+        console.log(`📊 Once per week: ${numberOfVideos} videos`);
+        break;
       case "twice_week":
-        return weeks * 2;
+        numberOfVideos = weeks * 2;
+        console.log(`📊 Twice per week: ${numberOfVideos} videos`);
+        break;
       case "three_week":
-        return weeks * 3;
+        numberOfVideos = weeks * 3;
+        console.log(`📊 Three times per week: ${numberOfVideos} videos`);
+        break;
       case "daily":
-        return daysDiff;
+        numberOfVideos = daysDiff;
+        console.log(`📊 Daily: ${numberOfVideos} videos`);
+        break;
       default:
-        return 1;
+        numberOfVideos = 1;
+        console.log(`📊 Default: ${numberOfVideos} videos`);
     }
+
+    console.log(`📊 Total videos to generate: ${numberOfVideos}`);
+    return numberOfVideos;
   }
 
   /**
    * Create scheduled trends with proper timing
+   * Handles edge case: if scheduled time is less than 40 minutes away, skip that day
    */
   private createScheduledTrends(
     trends: any[],
@@ -641,8 +849,14 @@ export class VideoScheduleService {
 
     let currentDate = new Date(startDate);
     let trendIndex = 0;
+    const now = new Date();
 
-    while (currentDate <= endDate && trendIndex < trends.length) {
+    console.log(
+      `📅 Creating scheduled trends from ${startDate.toISOString()} to ${endDate.toISOString()}`
+    );
+    console.log(`🕐 Current time: ${now.toISOString()}`);
+
+    while (currentDate <= endDate) {
       const dayOfWeek = currentDate
         .toLocaleDateString("en-US", { weekday: "long" })
         .toLowerCase();
@@ -668,12 +882,59 @@ export class VideoScheduleService {
         const [hours, minutes] = schedule.times[timeIndex]
           .split(":")
           .map(Number);
+
+        // Create scheduled time in the user's timezone first
         const scheduledTime = new Date(currentDate);
         scheduledTime.setHours(hours, minutes, 0, 0);
 
+        // Convert to UTC using the user's timezone
+        const timeString = `${hours.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}`;
+        const scheduledTimeUTC = TimezoneService.convertToUTC(
+          timeString,
+          scheduleData.timezone
+        );
+
+        console.log(
+          `🕐 Converting ${timeString} ${scheduleData.timezone} to UTC:`,
+          scheduledTimeUTC.toISOString()
+        );
+
+        // Use the UTC time for scheduling
+        const finalScheduledTime = new Date(currentDate);
+        finalScheduledTime.setUTCHours(
+          scheduledTimeUTC.getUTCHours(),
+          scheduledTimeUTC.getUTCMinutes(),
+          0,
+          0
+        );
+
+        console.log(
+          `📅 Final scheduled time (UTC):`,
+          finalScheduledTime.toISOString()
+        );
+
+        // Edge case handling: Check if scheduled time is less than 40 minutes away
+        const shouldSkipDay = this.shouldSkipScheduledDay(
+          finalScheduledTime,
+          now,
+          dayOfWeek,
+          schedule.times[timeIndex]
+        );
+
+        if (shouldSkipDay) {
+          // Skip this day, move to next day
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Use trend with cycling if we run out of trends
+        const trendToUse = trends[trendIndex % trends.length];
+
         scheduledTrends.push({
-          ...trends[trendIndex],
-          scheduledFor: scheduledTime,
+          ...trendToUse,
+          scheduledFor: finalScheduledTime, // Use UTC time
           status: "pending",
         });
 
@@ -683,7 +944,48 @@ export class VideoScheduleService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
+    console.log(
+      `📊 Created ${scheduledTrends.length} scheduled trends for the full month period`
+    );
+    console.log(`📊 Used ${trends.length} unique trends with cycling`);
     return scheduledTrends;
+  }
+
+  /**
+   * Check if a scheduled day should be skipped based on edge case rules
+   * Skips if scheduled time is less than 40 minutes away from current time
+   */
+  private shouldSkipScheduledDay(
+    scheduledTime: Date,
+    currentTime: Date,
+    dayOfWeek: string,
+    scheduledTimeString: string
+  ): boolean {
+    const timeDiff = scheduledTime.getTime() - currentTime.getTime();
+    const minutesUntilScheduled = timeDiff / (1000 * 60); // Convert to minutes
+
+    console.log(
+      `📅 Checking ${dayOfWeek} ${scheduledTimeString}: ${minutesUntilScheduled.toFixed(
+        1
+      )} minutes until scheduled time`
+    );
+
+    // Edge case: If scheduled time is less than 40 minutes away, skip this day
+    if (minutesUntilScheduled < 40) {
+      console.log(
+        `⏰ Skipping ${dayOfWeek} ${scheduledTimeString} - less than 40 minutes away (${minutesUntilScheduled.toFixed(
+          1
+        )} minutes)`
+      );
+      return true;
+    }
+
+    console.log(
+      `✅ Scheduling ${dayOfWeek} ${scheduledTimeString} - ${minutesUntilScheduled.toFixed(
+        1
+      )} minutes away`
+    );
+    return false;
   }
 }
 
