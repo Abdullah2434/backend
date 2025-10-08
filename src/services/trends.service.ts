@@ -1,6 +1,9 @@
-import axios from 'axios';
+// language: typescript
+// filepath: /Users/mac/Desktop/edge-all/backend/src/services/trends.service.ts
 
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+import axios from "axios";
+
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 interface OpenAIResponse {
@@ -22,206 +25,178 @@ interface TrendData {
   youtube_caption: string;
 }
 
-export async function generateRealEstateTrends(): Promise<TrendData[]> {
+/**
+ * Utility to robustly extract JSON from raw text responses,
+ * including handling truncated arrays/objects and malformed JSON.
+ */
+function extractJsonFromText(content: string): any {
+  if (!content || typeof content !== "string") {
+    throw new Error("No content to parse");
+  }
+
+  // Remove markdown fences
+  let cleaned = content
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  // Extract only the JSON portion (between first {/[ and last }/])
+  const firstIdx = Math.min(
+    ...["{", "["].map((ch) =>
+      cleaned.indexOf(ch) === -1 ? Number.POSITIVE_INFINITY : cleaned.indexOf(ch)
+    )
+  );
+  const lastIdx = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (!isFinite(firstIdx) || lastIdx === -1) {
+    throw new Error("No JSON object/array found in content");
+  }
+
+  let candidate = cleaned.slice(firstIdx, lastIdx + 1).trim();
+
+  // Fix common JSON issues
+  let candidateFixed = candidate
+    .replace(/,\s*(?=[}\]])/g, "") // remove trailing commas
+    .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":') // ensure keys quoted
+    .replace(/'/g, '"'); // replace single with double quotes
+
   try {
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY environment variable is not set');
+    return JSON.parse(candidateFixed);
+  } catch (err) {
+    console.warn("Parse failed, attempting auto-repair...");
+
+    // If array opened but not closed
+    if (candidateFixed.startsWith("[") && !candidateFixed.endsWith("]")) {
+      candidateFixed += "]";
     }
 
-    const prompt = `Generate top 10 topic trends to create video ads for real estate in America. Each trend should focus on a different aspect of the real estate industry that would be perfect for video advertising. Provide:
+    // If object opened but not closed
+    if (candidateFixed.startsWith("{") && !candidateFixed.endsWith("}")) {
+      candidateFixed += "}";
+    }
 
-For each of the 10 trends, include:
-1. A comprehensive description (5-6 words that look like a title) about current real estate trends in America
-2. Key points covering the most important aspects not more than 5 words
-3. Platform-specific captions for each social media platform:
-   - Instagram caption (engaging, emoji-rich, 1-2 sentences)
-   - Facebook caption (informative, 2-3 sentences)
-   - LinkedIn caption (professional, business-focused, 2-3 sentences)
-   - Twitter caption (concise, hashtag-friendly, 1-2 sentences)
-   - TikTok caption (trendy, engaging, 1-2 sentences)
-   - YouTube caption (descriptive, SEO-friendly, 2-3 sentences)
+    try {
+      return JSON.parse(candidateFixed);
+    } catch (err2) {
+      // Try trimming to last complete object/array
+      const lastValidIdx = Math.max(
+        candidateFixed.lastIndexOf("}"),
+        candidateFixed.lastIndexOf("]")
+      );
+      if (lastValidIdx > 0) {
+        const trimmed = candidateFixed.slice(0, lastValidIdx + 1);
+        try {
+          return JSON.parse(trimmed);
+        } catch (err3) {
+          console.error("Final JSON parse failed. Returning empty array.");
+          console.error("Raw response:\n", content);
+          console.error("Candidate after fixes:\n", candidateFixed);
+          return [];
+        }
+      }
 
-Format your response as JSON array:
+      console.error("No valid JSON found at all. Returning empty array.");
+      console.error("Raw response:\n", content);
+      return [];
+    }
+  }
+}
+
+export async function generateRealEstateTrends(
+  retryCount = 0
+): Promise<TrendData[]> {
+  try {
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable is not set");
+    }
+
+    const prompt = `
+Generate 10 current topic trends for creating video ads about real estate in America.  
+Each trend should highlight a unique aspect of the real estate industry that's ideal for engaging video advertising.  
+
+For each trend, include:
+1. A short, catchy description (5–6 words max)
+2. Key points (no more than 5 words)
+3. Platform-specific captions:
+   - Instagram: engaging, emoji-rich, 1–2 sentences  
+   - Facebook: informative, 2–3 sentences  
+   - LinkedIn: professional, 2–3 sentences  
+   - Twitter: concise, hashtag-friendly, 1–2 sentences  
+   - TikTok: trendy, engaging, 1–2 sentences  
+   - YouTube: descriptive, SEO-friendly, 2–3 sentences  
+
+Return your result as a valid JSON array like this:
 [
   {
-    "description": "Description for trend 1",
-    "keypoints": "Key points for trend 1",
-    "instagram_caption": "Instagram caption for trend 1",
-    "facebook_caption": "Facebook caption for trend 1",
-    "linkedin_caption": "LinkedIn caption for trend 1",
-    "twitter_caption": "Twitter caption for trend 1",
-    "tiktok_caption": "TikTok caption for trend 1",
-    "youtube_caption": "YouTube caption for trend 1"
-  },
-  {
-    "description": "Description for trend 2", 
-    "keypoints": "Key points for trend 2",
-    "instagram_caption": "Instagram caption for trend 2",
-    "facebook_caption": "Facebook caption for trend 2",
-    "linkedin_caption": "LinkedIn caption for trend 2",
-    "twitter_caption": "Twitter caption for trend 2",
-    "tiktok_caption": "TikTok caption for trend 2",
-    "youtube_caption": "YouTube caption for trend 2"
-  },
-  {
-    "description": "Description for trend 3",
-    "keypoints": "Key points for trend 3",
-    "instagram_caption": "Instagram caption for trend 3",
-    "facebook_caption": "Facebook caption for trend 3",
-    "linkedin_caption": "LinkedIn caption for trend 3",
-    "twitter_caption": "Twitter caption for trend 3",
-    "tiktok_caption": "TikTok caption for trend 3",
-    "youtube_caption": "YouTube caption for trend 3"
-  },
-  {
-    "description": "Description for trend 4",
-    "keypoints": "Key points for trend 4",
-    "instagram_caption": "Instagram caption for trend 4",
-    "facebook_caption": "Facebook caption for trend 4",
-    "linkedin_caption": "LinkedIn caption for trend 4",
-    "twitter_caption": "Twitter caption for trend 4",
-    "tiktok_caption": "TikTok caption for trend 4",
-    "youtube_caption": "YouTube caption for trend 4"
-  },
-  {
-    "description": "Description for trend 5",
-    "keypoints": "Key points for trend 5",
-    "instagram_caption": "Instagram caption for trend 5",
-    "facebook_caption": "Facebook caption for trend 5",
-    "linkedin_caption": "LinkedIn caption for trend 5",
-    "twitter_caption": "Twitter caption for trend 5",
-    "tiktok_caption": "TikTok caption for trend 5",
-    "youtube_caption": "YouTube caption for trend 5"
-  },
-  {
-    "description": "Description for trend 6",
-    "keypoints": "Key points for trend 6",
-    "instagram_caption": "Instagram caption for trend 6",
-    "facebook_caption": "Facebook caption for trend 6",
-    "linkedin_caption": "LinkedIn caption for trend 6",
-    "twitter_caption": "Twitter caption for trend 6",
-    "tiktok_caption": "TikTok caption for trend 6",
-    "youtube_caption": "YouTube caption for trend 6"
-  },
-  {
-    "description": "Description for trend 7",
-    "keypoints": "Key points for trend 7",
-    "instagram_caption": "Instagram caption for trend 7",
-    "facebook_caption": "Facebook caption for trend 7",
-    "linkedin_caption": "LinkedIn caption for trend 7",
-    "twitter_caption": "Twitter caption for trend 7",
-    "tiktok_caption": "TikTok caption for trend 7",
-    "youtube_caption": "YouTube caption for trend 7"
-  },
-  {
-    "description": "Description for trend 8",
-    "keypoints": "Key points for trend 8",
-    "instagram_caption": "Instagram caption for trend 8",
-    "facebook_caption": "Facebook caption for trend 8",
-    "linkedin_caption": "LinkedIn caption for trend 8",
-    "twitter_caption": "Twitter caption for trend 8",
-    "tiktok_caption": "TikTok caption for trend 8",
-    "youtube_caption": "YouTube caption for trend 8"
-  },
-  {
-    "description": "Description for trend 9",
-    "keypoints": "Key points for trend 9",
-    "instagram_caption": "Instagram caption for trend 9",
-    "facebook_caption": "Facebook caption for trend 9",
-    "linkedin_caption": "LinkedIn caption for trend 9",
-    "twitter_caption": "Twitter caption for trend 9",
-    "tiktok_caption": "TikTok caption for trend 9",
-    "youtube_caption": "YouTube caption for trend 9"
-  },
-  {
-    "description": "Description for trend 10",
-    "keypoints": "Key points for trend 10",
-    "instagram_caption": "Instagram caption for trend 10",
-    "facebook_caption": "Facebook caption for trend 10",
-    "linkedin_caption": "LinkedIn caption for trend 10",
-    "twitter_caption": "Twitter caption for trend 10",
-    "tiktok_caption": "TikTok caption for trend 10",
-    "youtube_caption": "YouTube caption for trend 10"
+    "description": "",
+    "keypoints": "",
+    "instagram_caption": "",
+    "facebook_caption": "",
+    "linkedin_caption": "",
+    "twitter_caption": "",
+    "tiktok_caption": "",
+    "youtube_caption": ""
   }
 ]
-
-Make each trend current, relevant, and engaging for real estate video ads. Focus on different aspects like market trends, technology, investment opportunities, regulatory changes, and consumer behavior that would make compelling video content. Each caption should be tailored to the specific platform's audience and style.`;
+Ensure all fields are filled and formatted as strings.
+`;
 
     const response = await axios.post<OpenAIResponse>(
       OPENAI_API_URL,
       {
-        model: 'gpt-4',
+        model: "gpt-3.5-turbo",
         messages: [
           {
-            role: 'system',
-            content: 'You are a real estate market analyst and video marketing expert providing current, accurate, and engaging market insights specifically for video advertising content.'
+            role: "system",
+            content:
+              "You are a real estate marketing strategist and video content expert. Provide concise, clear, and engaging trend ideas suitable for multiple social platforms.",
           },
           {
-            role: 'user',
-            content: prompt
-          }
+            role: "user",
+            content: prompt,
+          },
         ],
-        temperature: 0.8,
-        max_tokens: 4000,
+        temperature: 0.7,
+        max_tokens: 1200,
       },
       {
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        }
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        timeout: 90000,
       }
     );
 
-    const content = response.data.choices[0]?.message?.content;
+    const content = response.data.choices[0]?.message?.content?.trim();
     if (!content) {
-      throw new Error('No content received from ChatGPT');
+      throw new Error("No content received from ChatGPT");
     }
 
-    // Parse the JSON response
-    try {
-      // Remove markdown code blocks if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      const parsedData = JSON.parse(cleanContent);
-      
-      // Ensure it's an array
-      if (!Array.isArray(parsedData)) {
-        throw new Error('Expected array response from ChatGPT');
-      }
-      
-      // Process each item in the array
-      return parsedData.map((item: any) => {
-        // Handle keypoints - convert array to string if needed
-        let keypoints = item.keypoints;
-        if (Array.isArray(keypoints)) {
-          keypoints = keypoints.join(', ');
-        }
-        
-        return {
-          description: item.description,
-          keypoints: keypoints,
-          instagram_caption: item.instagram_caption || '',
-          facebook_caption: item.facebook_caption || '',
-          linkedin_caption: item.linkedin_caption || '',
-          twitter_caption: item.twitter_caption || '',
-          tiktok_caption: item.tiktok_caption || '',
-          youtube_caption: item.youtube_caption || ''
-        };
-      });
-      
-    } catch (parseError) {
-      console.error('Error parsing ChatGPT response:', parseError);
-      console.log('Raw response:', content);
-      throw new Error('Failed to parse ChatGPT response');
+    let parsed: any = extractJsonFromText(content);
+
+    if (!Array.isArray(parsed)) {
+      throw new Error("Parsed response is not an array");
     }
 
+    return parsed.map((item: any) => ({
+      description: item.description || "",
+      keypoints: Array.isArray(item.keypoints)
+        ? item.keypoints.join(", ")
+        : item.keypoints || "",
+      instagram_caption: item.instagram_caption || "",
+      facebook_caption: item.facebook_caption || "",
+      linkedin_caption: item.linkedin_caption || "",
+      twitter_caption: item.twitter_caption || "",
+      tiktok_caption: item.tiktok_caption || "",
+      youtube_caption: item.youtube_caption || "",
+    }));
   } catch (error) {
-    console.error('Error calling ChatGPT API:', error);
-    throw error;
+    if (retryCount < 1) {
+      console.warn("First attempt failed, retrying once...");
+      return await generateRealEstateTrends(retryCount + 1);
+    }
+    console.error("Error generating real estate trends:", error);
+    return [];
   }
 }
+
