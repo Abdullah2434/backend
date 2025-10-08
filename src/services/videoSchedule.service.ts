@@ -310,7 +310,7 @@ export class VideoScheduleService {
         avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
         avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
-        title: `${trend.description} - ${new Date().toLocaleDateString()}`,
+        title: trend.description,
         // Store captions for later retrieval (not sent to webhook)
         _captions: captions,
       };
@@ -413,7 +413,7 @@ export class VideoScheduleService {
         avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
         avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
-        title: `${trend.description} - ${new Date().toLocaleDateString()}`,
+        title: trend.description,
         voice: voice_id,
         isDefault: avatarDoc?.default,
         timestamp: new Date().toISOString(),
@@ -547,16 +547,22 @@ export class VideoScheduleService {
                     hook: decodeURIComponent(webhookResponse.hook || "")
                       .replace(/\\n\\n/g, " ")
                       .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
                       .trim(),
                     body: decodeURIComponent(webhookResponse.body || "")
                       .replace(/\\n\\n/g, " ")
                       .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
                       .trim(),
                     conclusion: decodeURIComponent(
                       webhookResponse.conclusion || ""
                     )
                       .replace(/\\n\\n/g, " ")
                       .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
                       .trim(),
                   };
                   console.log(
