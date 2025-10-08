@@ -12,9 +12,12 @@ import socialbuAccountRoutes from "./v1/socialbu-account";
 import userSettingsRoutes from "./v1/user-settings";
 import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 import videoScheduleRoutes from "./v1/videoSchedule";
+import videoAvatarRoutes from "./v2/videoAvatar";
+import webhookRoutes from "./v2/webhook";
 
 const router = Router();
 
+// V1 API Routes
 router.use("/auth", authRoutes);
 router.use("/video", videoRoutes);
 router.use("/webhook", webhookRoutes);
@@ -29,5 +32,9 @@ router.use("/user-settings", userSettingsRoutes);
 router.use("/user-connected-accounts", userConnectedAccountRoutes);
 router.use("/video-schedule", videoScheduleRoutes);
 router.use("/webhook", webhookRoutes);
+
+// V2 API Routes
+router.use("/v2", videoAvatarRoutes);
+router.use("/v2", webhookRoutes);
 
 export default router;
