@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import WebhookService from "../services/webhook.service";
+import VideoScheduleService from "../services/videoSchedule.service";
 import { WebhookResult, ApiResponse } from "../types";
 import WorkflowHistory from "../models/WorkflowHistory";
 import { notificationService } from "../services/notification.service";
@@ -106,7 +107,7 @@ export async function handleWorkflowError(req: Request, res: Response) {
   try {
     console.log("Workflow error webhook received:", req.body);
 
-    const { errorMessage, executionId } = req.body;
+    const { errorMessage, executionId, scheduleId, trendIndex } = req.body;
 
     // Validate required fields
     if (!errorMessage || !executionId) {
@@ -145,6 +146,26 @@ export async function handleWorkflowError(req: Request, res: Response) {
     console.log(
       `Workflow history updated for execution ${executionId}: failed`
     );
+
+    // If schedule context is provided, mark schedule item as failed
+    if (scheduleId && (trendIndex === 0 || Number.isInteger(trendIndex))) {
+      try {
+        const videoScheduleService = new VideoScheduleService();
+        await videoScheduleService.updateVideoStatus(
+          String(scheduleId),
+          Number(trendIndex),
+          "failed"
+        );
+        console.log(
+          `📉 Marked schedule ${scheduleId} trend ${trendIndex} as failed due to workflow error`
+        );
+      } catch (updateErr) {
+        console.warn(
+          "Failed to update schedule status to failed from workflow-error webhook:",
+          updateErr
+        );
+      }
+    }
 
     // Send socket notification to user
     console.log(

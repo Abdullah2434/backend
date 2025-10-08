@@ -3,6 +3,7 @@ import VideoSchedule from "../models/VideoSchedule";
 import socialBuService from "./socialbu.service";
 import socialBuMediaService from "./socialbu-media.service";
 import { notificationService } from "./notification.service";
+import SocialBuToken from "../models/SocialBuToken";
 
 export interface AutoPostingData {
   userId: string;
@@ -33,6 +34,21 @@ export class AutoSocialPostingService {
         `🚀 Starting auto social media posting for user ${data.userId}, schedule ${data.scheduleId}, trend ${data.trendIndex}`
       );
 
+      // Preflight: ensure active SocialBu token exists
+      const activeToken = await SocialBuToken.findOne({ isActive: true });
+      if (!activeToken || !activeToken.authToken) {
+        console.warn("⚠️ No active SocialBu token found. Skipping auto-post.");
+        notificationService.notifyAutoPostAlert(data.userId, "failure", {
+          scheduleId: data.scheduleId,
+          trendIndex: data.trendIndex,
+          videoTitle: data.videoTitle,
+          errorDetails: "No active SocialBu token configured",
+          totalPlatforms: 0,
+          failureCount: 0,
+        });
+        return [];
+      }
+
       // Get the video schedule and specific trend
       const schedule = await VideoSchedule.findById(data.scheduleId);
       if (!schedule) {
@@ -54,6 +70,14 @@ export class AutoSocialPostingService {
         console.log(
           `⚠️ No connected social media accounts found for user ${data.userId}`
         );
+        notificationService.notifyAutoPostAlert(data.userId, "failure", {
+          scheduleId: data.scheduleId,
+          trendIndex: data.trendIndex,
+          videoTitle: data.videoTitle,
+          errorDetails: "No connected social media accounts",
+          totalPlatforms: 0,
+          failureCount: 0,
+        });
         return [];
       }
 
@@ -96,6 +120,28 @@ export class AutoSocialPostingService {
 
       console.log("✅ Video uploaded successfully to SocialBu");
 
+      // Step 1.1: Fetch upload_token from SocialBu using the key (align with manual flow)
+      const key = socialbuResponse.key;
+      console.log("🔑 SocialBu upload key:", key);
+      // Wait briefly then check status to obtain upload_token
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const statusResponse = await socialBuService.makeAuthenticatedRequest(
+        "GET",
+        `/upload_media/status?key=${encodeURIComponent(key)}`
+      );
+      if (!statusResponse.success) {
+        throw new Error(
+          `Failed to check upload status: ${
+            statusResponse.message || "unknown error"
+          }`
+        );
+      }
+      const uploadToken = statusResponse.data?.upload_token;
+      if (!uploadToken) {
+        throw new Error("Missing upload_token in SocialBu status response");
+      }
+      console.log("🔐 SocialBu upload_token:", uploadToken);
+
       // Send socket notification - Video uploaded
       notificationService.notifyAutoPostProgress(
         data.userId,
@@ -129,11 +175,7 @@ export class AutoSocialPostingService {
             }`
           );
 
-          const result = await this.postToPlatform(
-            account,
-            trend,
-            socialbuResponse.key
-          );
+          const result = await this.postToPlatform(account, trend, uploadToken);
 
           results.push(result);
 
@@ -247,7 +289,7 @@ export class AutoSocialPostingService {
   private async postToPlatform(
     account: any,
     trend: any,
-    uploadKey: string
+    uploadToken: string
   ): Promise<SocialPostResult> {
     try {
       // Get the appropriate caption for this platform (same logic as manual posting)
@@ -263,16 +305,39 @@ export class AutoSocialPostingService {
       }
 
       // Create post data using same structure as manual posting
+      // Use UTC from schedule.scheduledFor; format as YYYY-MM-DD HH:mm:00 in UTC
+      const formatDateTimeUTC = (d: Date) => {
+        const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(
+          d.getUTCDate()
+        )} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
+      };
+      const publishDate = trend?.scheduledFor
+        ? new Date(trend.scheduledFor)
+        : new Date();
+      const publishAt = formatDateTimeUTC(publishDate);
+      try {
+        console.log(`🕒 Using publish_at (UTC): ${publishAt}`);
+      } catch {}
       const postData = {
         accounts: [account.socialbuAccountId], // Use socialbuAccountId like manual posting
-        publish_at: new Date().toISOString(), // Post immediately
+        publish_at: publishAt, // Schedule using UTC time from DB
         content: caption,
         existing_attachments: [
           {
-            key: uploadKey, // Use key from upload result
+            upload_token: uploadToken, // Use upload_token as in manual posting
+            type: "video",
           },
         ],
-      };
+      } as any;
+
+      // Debug: Log full SocialBu post body
+      try {
+        console.log(
+          `📦 SocialBu post body for ${account.accountName} (${account.accountType}):\n` +
+            JSON.stringify(postData, null, 2)
+        );
+      } catch {}
 
       // Use existing socialBuService.makeAuthenticatedRequest (same as manual posting)
       const postResponse = await socialBuService.makeAuthenticatedRequest(
