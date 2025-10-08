@@ -9,7 +9,6 @@ import DefaultVoice from "../../../models/voice";
 import WorkflowHistory from "../../../models/WorkflowHistory";
 import { photoAvatarQueue } from "../../../queues/photoAvatarQueue";
 import { notificationService } from "../../../services/notification.service";
-import CaptionGenerationService from "../../../services/captionGeneration.service";
 import multer from "multer";
 import https from "https";
 import url from "url";
@@ -17,6 +16,8 @@ import User from "../../../models/User";
 import mongoose from "mongoose";
 import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
+import PendingCaptions from "../../../models/PendingCaptions";
+import CaptionGenerationService from "../../../services/captionGeneration.service";
 
 const authService = new AuthService();
 const videoService = new VideoService();
@@ -283,6 +284,30 @@ export async function download(req: Request, res: Response) {
           tiktok_caption: captions.tiktok_caption,
         });
         console.log("📑 Stored provided captions on video", result.videoId);
+      } else {
+        // Otherwise, try to consume server-stored pending captions (generated at createVideo)
+        try {
+          const pending = await PendingCaptions.findOne({ email, title });
+          if (pending?.captions) {
+            await videoService.updateVideoCaptions(result.videoId, {
+              instagram_caption: pending.captions.instagram_caption,
+              facebook_caption: pending.captions.facebook_caption,
+              linkedin_caption: pending.captions.linkedin_caption,
+              twitter_caption: pending.captions.twitter_caption,
+              tiktok_caption: pending.captions.tiktok_caption,
+            });
+            console.log("📑 Stored pending captions on video", result.videoId);
+            // best-effort cleanup
+            try {
+              await PendingCaptions.deleteOne({ _id: (pending as any)._id });
+            } catch {}
+          }
+        } catch (consumeErr) {
+          console.warn(
+            "No pending captions found or failed to consume:",
+            consumeErr
+          );
+        }
       }
     } catch (capErr) {
       console.warn("Warning storing captions:", capErr);
@@ -806,6 +831,42 @@ export async function createVideo(req: Request, res: Response) {
         .toString(36)
         .substr(2, 9)}`,
     };
+
+    // Generate and store captions for manual/custom on the basis of topic/key points (do not send to N8N)
+    try {
+      const topic = String(body.videoTopic || body.name || "").trim();
+      const keyPoints = String(body.topicKeyPoints || body.prompt || "").trim();
+      if (topic && keyPoints) {
+        const captions = await CaptionGenerationService.generateCaptions(
+          topic,
+          keyPoints,
+          {
+            name: body.name,
+            position: body.position,
+            companyName: body.companyName,
+            city: body.city,
+            socialHandles: body.socialHandles,
+          }
+        );
+        await PendingCaptions.findOneAndUpdate(
+          { email: body.email, title: body.videoTopic || body.title || topic },
+          {
+            email: body.email,
+            title: body.videoTopic || body.title || topic,
+            captions,
+          },
+          { upsert: true, new: true }
+        );
+        console.log(
+          "📝 Generated and stored pending captions for manual video"
+        );
+      }
+    } catch (capGenErr) {
+      console.warn(
+        "Caption generation (manual) failed, continuing:",
+        capGenErr
+      );
+    }
     // Use native node http(s) for webhook POST
     const https = require("https");
     const url = require("url");
