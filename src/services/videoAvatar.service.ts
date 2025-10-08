@@ -51,9 +51,17 @@ export class VideoAvatarService {
         );
       }
 
-      // Validate URLs are accessible
+      // Validate URLs are accessible (skip if they are S3 URLs we just uploaded)
       if (trainingFootageUrl && consentStatementUrl) {
-        await this.validateVideoUrls(trainingFootageUrl, consentStatementUrl);
+        const isS3Url = (u: string) =>
+          /\.amazonaws\.com\//.test(u) ||
+          (process.env.AWS_S3_BUCKET ? u.includes(process.env.AWS_S3_BUCKET) : false);
+
+        if (!isS3Url(trainingFootageUrl) && !isS3Url(consentStatementUrl)) {
+          await this.validateVideoUrls(trainingFootageUrl, consentStatementUrl);
+        } else {
+          console.log('Skipping URL HEAD validation for S3 URLs')
+        }
       }
 
       // Create video avatar record
@@ -69,6 +77,20 @@ export class VideoAvatarService {
       });
 
       await videoAvatar.save();
+
+      // Submit to Heygen if env is configured
+      try {
+        await this.submitToHeygen({
+          training_footage_url: trainingFootageUrl!,
+          consent_statement_url: consentStatementUrl!,
+          avatar_name: request.avatar_name,
+          avatar_group_id,
+          callback_id: request.callback_id,
+          callback_url: request.callback_url,
+        })
+      } catch (e: any) {
+        console.error('Heygen submission failed (non-blocking):', e?.message || e)
+      }
 
       // Start avatar generation process asynchronously
       this.processAvatarGeneration(avatar_id).catch(error => {
@@ -116,6 +138,20 @@ export class VideoAvatarService {
       });
 
       await videoAvatar.save();
+
+      // Submit to Heygen if env is configured
+      try {
+        await this.submitToHeygen({
+          training_footage_url: request.training_footage_url!,
+          consent_statement_url: request.consent_statement_url!,
+          avatar_name: request.avatar_name,
+          avatar_group_id,
+          callback_id: request.callback_id,
+          callback_url: request.callback_url,
+        })
+      } catch (e: any) {
+        console.error('Heygen submission failed (non-blocking):', e?.message || e)
+      }
 
       // Start avatar generation process asynchronously
       this.processAvatarGeneration(avatar_id).catch(error => {
@@ -266,6 +302,43 @@ export class VideoAvatarService {
       console.error('Error validating video URLs:', error);
       throw new Error(`Video URL validation failed: ${error.message}`);
     }
+  }
+
+  /**
+   * Submit payload to Heygen API using env HEYGEN_BASE_URL and HEYGEN_API_KEY
+   */
+  private async submitToHeygen(payload: {
+    training_footage_url: string
+    consent_statement_url: string
+    avatar_name: string
+    avatar_group_id?: string
+    callback_id?: string
+    callback_url?: string
+  }): Promise<void> {
+    const baseUrl = process.env.HEYGEN_BASE_URL
+    const apiKey = process.env.HEYGEN_API_KEY
+    if (!baseUrl || !apiKey) {
+      console.log('HEYGEN_BASE_URL/HEYGEN_API_KEY not set; skipping Heygen submission')
+      return
+    }
+    const url = `${baseUrl.replace(/\/$/, '')}/v2/video_avatar`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Heygen responded ${res.status}: ${text}`)
+    }
+
+    const data = await res.json().catch(() => ({}))
+    console.log('Heygen submission ok:', data)
   }
 
   /**

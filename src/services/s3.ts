@@ -21,7 +21,7 @@ export class S3Service {
     return `videos/${userId}/${videoId}/${ts}_${safe}`
   }
   async uploadVideoDirectly(s3Key: string, buf: Buffer, contentType: string, metadata: Record<string, string>) {
-    const cmd = new PutObjectCommand({ Bucket: this.bucketName, Key: s3Key, Body: buf, ContentType: contentType, Metadata: metadata })
+    const cmd = new PutObjectCommand({ Bucket: this.bucketName, Key: s3Key, Body: buf, ContentType: contentType, Metadata: metadata, ContentLength: buf.byteLength })
     await this.client.send(cmd)
     return true
   }

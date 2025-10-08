@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IVideoAvatar extends Document {
+  userId?: mongoose.Types.ObjectId;
   avatar_id: string;
   avatar_group_id: string;
   avatar_name: string;
@@ -16,6 +17,12 @@ export interface IVideoAvatar extends Document {
 }
 
 const VideoAvatarSchema = new Schema<IVideoAvatar>({
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: false,
+    index: true
+  },
   avatar_id: {
     type: String,
     required: true,
@@ -69,6 +76,7 @@ const VideoAvatarSchema = new Schema<IVideoAvatar>({
 // Indexes for better query performance
 VideoAvatarSchema.index({ avatar_id: 1 });
 VideoAvatarSchema.index({ avatar_group_id: 1 });
+VideoAvatarSchema.index({ userId: 1 });
 VideoAvatarSchema.index({ status: 1 });
 VideoAvatarSchema.index({ createdAt: -1 });
 
