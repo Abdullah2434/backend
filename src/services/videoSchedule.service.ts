@@ -491,7 +491,7 @@ export class VideoScheduleService {
    * Call Step 1: Create Video API endpoint (same as manual)
    */
   private async callCreateVideoAPI(data: any): Promise<any> {
-    const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
+    const baseUrl = process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const createVideoUrl = `${baseUrl}/api/video/create`;
 
     console.log("🌐 Making API call to create video...");
@@ -607,7 +607,7 @@ export class VideoScheduleService {
    * Call Step 2: Generate Video API endpoint (same as manual)
    */
   private async callGenerateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:4000";
+    const baseUrl = process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const generateVideoUrl = `${baseUrl}/api/video/generate-video`;
 
     console.log("🌐 Making API call to generate video...");
