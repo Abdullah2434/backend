@@ -491,7 +491,8 @@ export class VideoScheduleService {
    * Call Step 1: Create Video API endpoint (same as manual)
    */
   private async callCreateVideoAPI(data: any): Promise<any> {
-    const baseUrl = process.env.API_BASE_URL || "https://backend.edgeairealty.com";
+    const baseUrl =
+      process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const createVideoUrl = `${baseUrl}/api/video/create`;
 
     console.log("🌐 Making API call to create video...");
@@ -607,7 +608,8 @@ export class VideoScheduleService {
    * Call Step 2: Generate Video API endpoint (same as manual)
    */
   private async callGenerateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "https://backend.edgeairealty.com";
+    const baseUrl =
+      process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const generateVideoUrl = `${baseUrl}/api/video/generate-video`;
 
     console.log("🌐 Making API call to generate video...");
@@ -889,32 +891,10 @@ export class VideoScheduleService {
           .split(":")
           .map(Number);
 
-        // Create scheduled time in the user's timezone first
-        const scheduledTime = new Date(currentDate);
-        scheduledTime.setHours(hours, minutes, 0, 0);
-
-        // Convert to UTC using the user's timezone
-        const timeString = `${hours.toString().padStart(2, "0")}:${minutes
-          .toString()
-          .padStart(2, "0")}`;
-        const scheduledTimeUTC = TimezoneService.convertToUTC(
-          timeString,
-          scheduleData.timezone
-        );
-
-        console.log(
-          `🕐 Converting ${timeString} ${scheduleData.timezone} to UTC:`,
-          scheduledTimeUTC.toISOString()
-        );
-
-        // Use the UTC time for scheduling
+        // Schedule times are already converted to UTC in the controller
+        // No need for additional timezone conversion here
         const finalScheduledTime = new Date(currentDate);
-        finalScheduledTime.setUTCHours(
-          scheduledTimeUTC.getUTCHours(),
-          scheduledTimeUTC.getUTCMinutes(),
-          0,
-          0
-        );
+        finalScheduledTime.setUTCHours(hours, minutes, 0, 0);
 
         console.log(
           `📅 Final scheduled time (UTC):`,
