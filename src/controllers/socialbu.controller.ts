@@ -5,6 +5,8 @@ import User from '../models/User';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ResponseHelper } from '../utils/responseHelper';
 import { socialBuAccountService } from '../services/socialbu-account.service';
+import { socialBuPostsService } from '../services/socialbu-posts.service';
+import { socialBuInsightsService } from '../services/socialbu-insights.service';
 
 /**
  * Manual login to SocialBu and save token
@@ -300,6 +302,72 @@ export const testAuth = async (req: Request, res: Response) => {
     });
   }
 };
+
+/**
+ * Get posts from SocialBu
+ */
+export const getPosts = asyncHandler(async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
+
+  if (!token) {
+    return ResponseHelper.unauthorized(res, "Access token is required");
+  }
+
+  // Extract parameters from request body
+  const { type, account_id, limit, offset } = req.body;
+
+  const requestData: any = {};
+  if (type) requestData.type = type;
+  if (account_id) requestData.account_id = parseInt(account_id as string);
+  if (limit) requestData.limit = parseInt(limit as string);
+  if (offset) requestData.offset = parseInt(offset as string);
+
+  const result = await socialBuPostsService.getUserPosts(token, requestData);
+
+  if (!result.success) {
+    return ResponseHelper.badRequest(res, result.message, result.error);
+  }
+
+  return ResponseHelper.success(
+    res,
+    "User data and posts retrieved successfully",
+    result.data
+  );
+});
+
+/**
+ * Get insights from SocialBu
+ */
+export const getInsights = asyncHandler(async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
+
+  if (!token) {
+    return ResponseHelper.unauthorized(res, "Access token is required");
+  }
+
+  // Extract parameters from request body
+  const { start, end, metrics } = req.body;
+
+  const requestData: any = {
+    start,
+    end,
+    metrics
+  };
+
+  const result = await socialBuInsightsService.getTopPosts(token, requestData);
+
+  if (!result.success) {
+    return ResponseHelper.badRequest(res, result.message, result.error);
+  }
+
+  return ResponseHelper.success(
+    res,
+    "User top posts retrieved successfully",
+    result.data
+  );
+});
 
 /**
  * Test SocialBu API connection

@@ -6,7 +6,9 @@ import {
   getAccountsPublic,
   connectAccount,
   testConnection,
-  testAuth
+  testAuth,
+  getPosts,
+  getInsights
 } from '../../controllers/socialbu.controller';
 
 const router = Router();
@@ -19,6 +21,8 @@ router.post('/save-token', saveToken); // Save token manually
 router.get('/accounts', getAccounts); // Get accounts from SocialBu (protected)
 router.get('/accounts/public', getAccountsPublic); // Get accounts from SocialBu (public - uses shared token)
 router.post('/accounts/connect', connectAccount); // Connect new account to SocialBu (public - uses shared token)
+router.post('/posts', getPosts); // Get posts from SocialBu (protected)
+router.get('/top/posts', getInsights); // Get insights from SocialBu (protected)
 router.get('/test', testConnection); // Test API connection
 router.get('/test-auth', testAuth); // Test authentication
 
