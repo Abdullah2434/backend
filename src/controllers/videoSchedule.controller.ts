@@ -229,6 +229,8 @@ export async function getSchedule(req: Request, res: Response) {
         scheduleId: schedule._id,
         frequency: schedule.frequency,
         schedule: schedule.schedule,
+        days: schedule.schedule.days, // Add days field
+        times: schedule.schedule.times, // Add times field
         startDate: schedule.startDate,
         endDate: schedule.endDate,
         isActive: schedule.isActive,

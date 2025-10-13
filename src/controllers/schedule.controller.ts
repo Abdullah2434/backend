@@ -112,6 +112,8 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
         pendingPosts: pendingPosts,
         scheduleInfo: {
           frequency: schedule.frequency,
+          days: schedule.schedule.days, // Add days field
+          times: schedule.schedule.times, // Add times field
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
@@ -584,6 +586,8 @@ export async function getSchedulePost(req: Request, res: Response) {
         },
         scheduleInfo: {
           frequency: schedule.frequency,
+          days: schedule.schedule.days, // Add days field
+          times: schedule.schedule.times, // Add times field
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
@@ -908,6 +912,8 @@ export async function updateScheduleFrequency(req: Request, res: Response) {
           ),
         scheduleInfo: {
           frequency: schedule.frequency,
+          days: schedule.schedule.days, // Add days field
+          times: schedule.schedule.times, // Add times field
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
