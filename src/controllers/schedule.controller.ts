@@ -67,11 +67,10 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
       });
     }
 
-    // Filter only pending posts
-    const pendingPosts = schedule.generatedTrends
-      .filter((trend) => trend.status === "pending")
-      .map((trend, index) => ({
-        id: `${schedule._id}_${index}`,
+    // Get all posts (pending, completed, processing, failed)
+    const allPosts = schedule.generatedTrends
+      .map((trend: any, index) => ({
+        id: `${schedule._id}_${index}`, // Use scheduleId_index format
         index: index, // Add index field
         scheduleId: schedule._id, // Add scheduleId field
         description: trend.description,
@@ -92,6 +91,7 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
           trend.scheduledFor,
           timezone
         ),
+        videoId: trend.videoId, // Add videoId for completed posts
       }))
       .sort(
         (a, b) =>
@@ -99,8 +99,18 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
           new Date(b.scheduledFor).getTime()
       ); // Sort by scheduled time
 
+    // Separate posts by status for better organization
+    const pendingPosts = allPosts.filter((post) => post.status === "pending");
+    const completedPosts = allPosts.filter(
+      (post) => post.status === "completed"
+    );
+    const processingPosts = allPosts.filter(
+      (post) => post.status === "processing"
+    );
+    const failedPosts = allPosts.filter((post) => post.status === "failed");
+
     console.log(
-      `📊 Found ${pendingPosts.length} pending posts for user ${payload.userId}`
+      `📊 Found ${allPosts.length} total posts for user ${payload.userId} (${pendingPosts.length} pending, ${completedPosts.length} completed, ${processingPosts.length} processing, ${failedPosts.length} failed)`
     );
 
     return res.json({
@@ -108,8 +118,16 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
       data: {
         id: schedule._id, // Changed from scheduleId to id
         timezone: timezone,
+        totalPosts: allPosts.length,
         totalPendingPosts: pendingPosts.length,
-        pendingPosts: pendingPosts,
+        totalCompletedPosts: completedPosts.length,
+        totalProcessingPosts: processingPosts.length,
+        totalFailedPosts: failedPosts.length,
+        allPosts: allPosts, // All posts in one array
+        pendingPosts: pendingPosts, // Only pending posts (for backward compatibility)
+        completedPosts: completedPosts, // Only completed posts
+        processingPosts: processingPosts, // Only processing posts
+        failedPosts: failedPosts, // Only failed posts
         scheduleInfo: {
           frequency: schedule.frequency,
           days: schedule.schedule.days, // Add days field

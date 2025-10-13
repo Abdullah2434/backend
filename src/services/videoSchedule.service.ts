@@ -497,10 +497,9 @@ export class VideoScheduleService {
       throw new Error("Post not found");
     }
 
-    // Only allow deleting if post is still pending
-    if (post.status !== "pending") {
-      throw new Error("Can only delete pending posts");
-    }
+    // Allow deleting posts in any status (pending, completed, processing, failed)
+    // This gives users flexibility to clean up their schedule
+    console.log(`🗑️ Deleting post with status: ${post.status}`);
 
     // Remove the post from the array
     schedule.generatedTrends.splice(postIndex, 1);
@@ -509,7 +508,7 @@ export class VideoScheduleService {
     await schedule.save();
 
     console.log(
-      `🗑️ Deleted post ${postIndex} from schedule ${scheduleId} for user ${userId}`
+      `🗑️ Deleted post ${postIndex} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
     );
 
     return schedule;
@@ -553,10 +552,9 @@ export class VideoScheduleService {
       throw new Error("Post not found");
     }
 
-    // Only allow deleting if post is still pending
-    if (post.status !== "pending") {
-      throw new Error("Can only delete pending posts");
-    }
+    // Allow deleting posts in any status (pending, completed, processing, failed)
+    // This gives users flexibility to clean up their schedule
+    console.log(`🗑️ Deleting post with status: ${post.status}`);
 
     // Remove the post from the array
     schedule.generatedTrends.splice(postIndex, 1);
@@ -565,7 +563,7 @@ export class VideoScheduleService {
     await schedule.save();
 
     console.log(
-      `🗑️ Deleted post ${postId} from schedule ${scheduleId} for user ${userId}`
+      `🗑️ Deleted post ${postId} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
     );
 
     return schedule;
