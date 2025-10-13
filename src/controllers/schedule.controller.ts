@@ -169,15 +169,14 @@ export async function editSchedulePost(req: Request, res: Response) {
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
-    // Extract scheduleId and postIndex from URL parameters
-    const { scheduleId, postIndex } = req.params;
+    // Extract scheduleId and postId from URL parameters
+    const { scheduleId, postId } = req.params;
 
-    // Validate postIndex is a number
-    const postIndexNum = parseInt(postIndex);
-    if (isNaN(postIndexNum) || postIndexNum < 0) {
+    // Validate postId format
+    if (!postId || !postId.includes("_")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid post index. Must be a non-negative number.",
+        message: "Invalid post ID format. Expected format: scheduleId_index",
       });
     }
 
@@ -287,13 +286,13 @@ export async function editSchedulePost(req: Request, res: Response) {
     }
 
     console.log(
-      `📝 Updating post ${postIndexNum} in schedule ${scheduleId} for user ${payload.userId}`
+      `📝 Updating post ${postId} in schedule ${scheduleId} for user ${payload.userId}`
     );
 
     // Update the post
-    const updatedSchedule = await videoScheduleService.updateSchedulePost(
+    const updatedSchedule = await videoScheduleService.updateSchedulePostById(
       scheduleId,
-      postIndexNum,
+      postId,
       payload.userId,
       updateData
     );
@@ -305,11 +304,15 @@ export async function editSchedulePost(req: Request, res: Response) {
       });
     }
 
+    // Parse post ID to get index for response
+    const parts = postId.split("_");
+    const postIndex = parseInt(parts[1]);
+
     // Get the updated post
-    const updatedPost = updatedSchedule.generatedTrends[postIndexNum];
+    const updatedPost = updatedSchedule.generatedTrends[postIndex];
 
     console.log(
-      `✅ Successfully updated post ${postIndexNum} in schedule ${scheduleId}`
+      `✅ Successfully updated post ${postId} in schedule ${scheduleId}`
     );
 
     return res.json({
@@ -317,10 +320,11 @@ export async function editSchedulePost(req: Request, res: Response) {
       message: "Post updated successfully",
       data: {
         scheduleId: updatedSchedule._id,
-        postIndex: postIndexNum,
+        postId: postId,
+        postIndex: postIndex,
         timezone: timezone,
         updatedPost: {
-          id: `${updatedSchedule._id}_${postIndexNum}`,
+          id: postId,
           description: updatedPost.description,
           keypoints: updatedPost.keypoints,
           scheduledFor: updatedPost.scheduledFor,
@@ -398,26 +402,25 @@ export async function deleteSchedulePost(req: Request, res: Response) {
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
-    // Extract scheduleId and postIndex from URL parameters
-    const { scheduleId, postIndex } = req.params;
+    // Extract scheduleId and postId from URL parameters
+    const { scheduleId, postId } = req.params;
 
-    // Validate postIndex is a number
-    const postIndexNum = parseInt(postIndex);
-    if (isNaN(postIndexNum) || postIndexNum < 0) {
+    // Validate postId format
+    if (!postId || !postId.includes("_")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid post index. Must be a non-negative number.",
+        message: "Invalid post ID format. Expected format: scheduleId_index",
       });
     }
 
     console.log(
-      `🗑️ Deleting post ${postIndexNum} from schedule ${scheduleId} for user ${payload.userId}`
+      `🗑️ Deleting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
     );
 
     // Delete the post
-    const updatedSchedule = await videoScheduleService.deleteSchedulePost(
+    const updatedSchedule = await videoScheduleService.deleteSchedulePostById(
       scheduleId,
-      postIndexNum,
+      postId,
       payload.userId
     );
 
@@ -429,7 +432,7 @@ export async function deleteSchedulePost(req: Request, res: Response) {
     }
 
     console.log(
-      `✅ Successfully deleted post ${postIndexNum} from schedule ${scheduleId}`
+      `✅ Successfully deleted post ${postId} from schedule ${scheduleId}`
     );
 
     return res.json({
@@ -437,7 +440,7 @@ export async function deleteSchedulePost(req: Request, res: Response) {
       message: "Post deleted successfully",
       data: {
         scheduleId: updatedSchedule._id,
-        deletedPostIndex: postIndexNum,
+        deletedPostId: postId,
         remainingPosts: updatedSchedule.generatedTrends.length,
         scheduleInfo: {
           frequency: updatedSchedule.frequency,
@@ -504,12 +507,12 @@ export async function deleteSchedulePost(req: Request, res: Response) {
 }
 
 /**
- * Get a single post from the user's schedule
+ * Get a single post from the user's schedule by post ID
  *
  * Usage:
  * curl -H "Authorization: Bearer <token>" \
  *      -H "x-timezone: America/New_York" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/0
+ *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/68ed0c8a9ff65c5692f718f4_0
  */
 export async function getSchedulePost(req: Request, res: Response) {
   try {
@@ -518,15 +521,14 @@ export async function getSchedulePost(req: Request, res: Response) {
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
-    // Extract scheduleId and postIndex from URL parameters
-    const { scheduleId, postIndex } = req.params;
+    // Extract scheduleId and postId from URL parameters
+    const { scheduleId, postId } = req.params;
 
-    // Validate postIndex is a number
-    const postIndexNum = parseInt(postIndex);
-    if (isNaN(postIndexNum) || postIndexNum < 0) {
+    // Validate postId format
+    if (!postId || !postId.includes("_")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid post index. Must be a non-negative number.",
+        message: "Invalid post ID format. Expected format: scheduleId_index",
       });
     }
 
@@ -535,37 +537,38 @@ export async function getSchedulePost(req: Request, res: Response) {
     console.log("🌍 Detected timezone:", timezone);
 
     console.log(
-      `📋 Getting post ${postIndexNum} from schedule ${scheduleId} for user ${payload.userId}`
+      `📋 Getting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
     );
 
     // Get the post
-    const result = await videoScheduleService.getSchedulePost(
+    const result = await videoScheduleService.getSchedulePostById(
       scheduleId,
-      postIndexNum,
+      postId,
       payload.userId
     );
 
     if (!result) {
       return res.status(404).json({
         success: false,
-        message: "Schedule not found or not active",
+        message: "Schedule or post not found",
       });
     }
 
-    const { schedule, post } = result;
+    const { schedule, post, postIndex } = result;
 
     console.log(
-      `✅ Successfully retrieved post ${postIndexNum} from schedule ${scheduleId}`
+      `✅ Successfully retrieved post ${postId} from schedule ${scheduleId}`
     );
 
     return res.json({
       success: true,
       data: {
         scheduleId: schedule._id,
-        postIndex: postIndexNum,
+        postId: postId,
+        postIndex: postIndex,
         timezone: timezone,
         post: {
-          id: `${schedule._id}_${postIndexNum}`,
+          id: postId,
           description: post.description,
           keypoints: post.keypoints,
           scheduledFor: post.scheduledFor,
@@ -586,8 +589,8 @@ export async function getSchedulePost(req: Request, res: Response) {
         },
         scheduleInfo: {
           frequency: schedule.frequency,
-          days: schedule.schedule.days, // Add days field
-          times: schedule.schedule.times, // Add times field
+          days: schedule.schedule.days,
+          times: schedule.schedule.times,
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
@@ -619,8 +622,8 @@ export async function getSchedulePost(req: Request, res: Response) {
     }
 
     if (
-      e.message.includes("Post index out of range") ||
-      e.message.includes("Post not found")
+      e.message.includes("Post not found") ||
+      e.message.includes("Invalid post ID")
     ) {
       return res.status(400).json({
         success: false,
