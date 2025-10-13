@@ -50,7 +50,9 @@ export function startScheduledVideoProcessor() {
       )}MB`
     );
     console.log(`⏰ Cron job started at: ${new Date().toISOString()}`);
-    console.log(`📋 Checking for videos scheduled within the next hour...`);
+    console.log(
+      `📋 Checking for videos scheduled within the next 30 minutes (processing 30 minutes early)...`
+    );
 
     try {
       // Add timeout protection
@@ -253,7 +255,7 @@ async function processScheduleWithTimeout(
         );
 
         if (
-          timeDiff <= 30 * 60 * 1000 && // 30 minutes before (change this value)
+          timeDiff <= 30 * 60 * 1000 && // 30 minutes before scheduled time
           timeDiff >= -15 * 60 * 1000 && // 15 minutes after (grace period)
           trend.status === "pending"
         ) {
@@ -262,7 +264,9 @@ async function processScheduleWithTimeout(
           );
           console.log(`  📋 Schedule ID: ${schedule._id}`);
           console.log(`  📋 Trend Index: ${i}`);
-          console.log(`  ⏰ Time until scheduled: ${minutesUntil} minutes`);
+          console.log(
+            `  ⏰ Time until scheduled: ${minutesUntil} minutes (processing 30 minutes early)`
+          );
 
           try {
             await videoScheduleService.processScheduledVideo(

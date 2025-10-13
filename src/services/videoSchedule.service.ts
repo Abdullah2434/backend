@@ -293,17 +293,618 @@ export class VideoScheduleService {
   }
 
   /**
-   * Get pending videos for processing
+   * Update individual post in a schedule
+   */
+  async updateSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string,
+    updateData: {
+      description?: string;
+      keypoints?: string;
+      scheduledFor?: Date;
+      instagram_caption?: string;
+      facebook_caption?: string;
+      linkedin_caption?: string;
+      twitter_caption?: string;
+      tiktok_caption?: string;
+      youtube_caption?: string;
+    }
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Only allow editing if post is still pending
+    if (post.status !== "pending") {
+      throw new Error("Can only edit pending posts");
+    }
+
+    // Update the post fields
+    if (updateData.description !== undefined) {
+      post.description = updateData.description;
+    }
+    if (updateData.keypoints !== undefined) {
+      post.keypoints = updateData.keypoints;
+    }
+    if (updateData.scheduledFor !== undefined) {
+      post.scheduledFor = updateData.scheduledFor;
+    }
+    if (updateData.instagram_caption !== undefined) {
+      post.instagram_caption = updateData.instagram_caption;
+    }
+    if (updateData.facebook_caption !== undefined) {
+      post.facebook_caption = updateData.facebook_caption;
+    }
+    if (updateData.linkedin_caption !== undefined) {
+      post.linkedin_caption = updateData.linkedin_caption;
+    }
+    if (updateData.twitter_caption !== undefined) {
+      post.twitter_caption = updateData.twitter_caption;
+    }
+    if (updateData.tiktok_caption !== undefined) {
+      post.tiktok_caption = updateData.tiktok_caption;
+    }
+    if (updateData.youtube_caption !== undefined) {
+      post.youtube_caption = updateData.youtube_caption;
+    }
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `✅ Updated post ${postIndex} in schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Delete individual post from a schedule
+   */
+  async deleteSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Only allow deleting if post is still pending
+    if (post.status !== "pending") {
+      throw new Error("Can only delete pending posts");
+    }
+
+    // Remove the post from the array
+    schedule.generatedTrends.splice(postIndex, 1);
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `🗑️ Deleted post ${postIndex} from schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Get a single post from a schedule
+   */
+  async getSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string
+  ): Promise<{
+    schedule: IVideoSchedule;
+    post: any;
+    postIndex: number;
+  } | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    return {
+      schedule,
+      post,
+      postIndex,
+    };
+  }
+
+  /**
+   * Delete entire schedule
+   */
+  async deleteEntireSchedule(
+    scheduleId: string,
+    userId: string
+  ): Promise<boolean> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    // Delete the entire schedule document
+    await VideoSchedule.findByIdAndDelete(scheduleId);
+
+    console.log(`🗑️ Deleted entire schedule ${scheduleId} for user ${userId}`);
+
+    return true;
+  }
+
+  /**
+   * Update schedule frequency and recalculate posts
+   */
+  async updateScheduleFrequency(
+    scheduleId: string,
+    userId: string,
+    updateData: {
+      newFrequency: "daily" | "twice-a-week" | "thrice-a-week" | "weekly";
+      preferredDays?: string[];
+      preferredTime?: string | string[];
+    }
+  ): Promise<{
+    schedule: IVideoSchedule;
+    deletedPostsCount: number;
+    generatedPostsCount: number;
+    nextScheduledDates: Date[];
+  }> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    const currentFrequency = schedule.frequency;
+    const newFrequency = updateData.newFrequency;
+
+    // Validate frequency values
+    const validFrequencies = [
+      "daily",
+      "twice-a-week",
+      "thrice-a-week",
+      "weekly",
+    ];
+    if (!validFrequencies.includes(newFrequency)) {
+      throw new Error(
+        "Invalid frequency. Must be one of: daily, twice-a-week, thrice-a-week, weekly"
+      );
+    }
+
+    // Map frequency to internal format
+    const frequencyMap: { [key: string]: string } = {
+      daily: "daily",
+      "twice-a-week": "twice_week",
+      "thrice-a-week": "three_week",
+      weekly: "once_week",
+    };
+
+    const internalNewFrequency = frequencyMap[newFrequency];
+
+    // Calculate frequency differences
+    const frequencyValues = {
+      daily: 7,
+      "twice-a-week": 2,
+      "thrice-a-week": 3,
+      weekly: 1,
+      // Also support internal format
+      twice_week: 2,
+      three_week: 3,
+      once_week: 1,
+    };
+
+    const currentValue =
+      frequencyValues[newFrequency as keyof typeof frequencyValues];
+    const oldValue =
+      frequencyValues[currentFrequency as keyof typeof frequencyValues];
+
+    // Get current pending posts
+    const currentPendingPosts = schedule.generatedTrends.filter(
+      (trend: any) => trend.status === "pending"
+    );
+    const currentCompletedPosts = schedule.generatedTrends.filter(
+      (trend: any) => trend.status === "completed"
+    );
+    const currentProcessingPosts = schedule.generatedTrends.filter(
+      (trend: any) => trend.status === "processing"
+    );
+
+    console.log(
+      `📊 Frequency change: ${currentFrequency} → ${newFrequency} (${oldValue} → ${currentValue} posts/week)`
+    );
+    console.log(`📊 Current pending posts: ${currentPendingPosts.length}`);
+    console.log(
+      `📊 Will ${
+        currentValue > oldValue
+          ? "GENERATE"
+          : currentValue < oldValue
+          ? "DELETE"
+          : "KEEP"
+      } posts`
+    );
+
+    let deletedPostsCount = 0;
+    let generatedPostsCount = 0;
+
+    // Calculate new schedule configuration
+    let newSchedule = { ...schedule.schedule };
+
+    // Update preferred days and time if provided
+    if (updateData.preferredDays && updateData.preferredDays.length > 0) {
+      newSchedule.days = updateData.preferredDays.map(
+        (day) => day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()
+      );
+    }
+
+    if (updateData.preferredTime) {
+      if (Array.isArray(updateData.preferredTime)) {
+        newSchedule.times = updateData.preferredTime;
+      } else {
+        newSchedule.times = [updateData.preferredTime];
+      }
+    }
+
+    // Recalculate posts based on frequency change
+    if (currentValue < oldValue) {
+      // Frequency decreased - delete extra posts
+      const now = new Date();
+      const remainingTimeMs =
+        new Date(schedule.endDate).getTime() - now.getTime();
+      const remainingDays = Math.max(
+        1,
+        Math.ceil(remainingTimeMs / (24 * 60 * 60 * 1000))
+      );
+
+      // Calculate how many posts we actually need for the remaining time
+      let postsNeeded = 0;
+      if (internalNewFrequency === "daily") {
+        postsNeeded = remainingDays; // Daily = 1 post per day
+      } else {
+        // For weekly frequencies, calculate based on actual days
+        const postsPerWeek = currentValue;
+        postsNeeded = Math.ceil((remainingDays / 7) * postsPerWeek);
+      }
+
+      const postsToDelete = Math.max(
+        0,
+        currentPendingPosts.length - postsNeeded
+      );
+
+      if (postsToDelete > 0) {
+        // Remove extra posts (keep the earliest scheduled ones)
+        const sortedPendingPosts = currentPendingPosts.sort(
+          (a: any, b: any) =>
+            new Date(a.scheduledFor).getTime() -
+            new Date(b.scheduledFor).getTime()
+        );
+
+        const postsToRemove = sortedPendingPosts.slice(postsNeeded);
+        const postsToRemoveIndices = postsToRemove.map((post: any) =>
+          schedule.generatedTrends.findIndex((trend: any) => trend === post)
+        );
+
+        // Remove posts in reverse order to maintain indices
+        postsToRemoveIndices
+          .sort((a: number, b: number) => b - a)
+          .forEach((index: number) => {
+            schedule.generatedTrends.splice(index, 1);
+          });
+
+        deletedPostsCount = postsToDelete;
+        console.log(`📊 Remaining days: ${remainingDays}`);
+        console.log(
+          `📊 Posts needed for remaining time: ${postsNeeded} (${internalNewFrequency} frequency)`
+        );
+        console.log(`📊 Current pending posts: ${currentPendingPosts.length}`);
+        console.log(
+          `🗑️ Deleted ${deletedPostsCount} extra posts due to frequency decrease`
+        );
+      }
+    } else if (currentValue > oldValue) {
+      // Frequency increased - generate additional posts
+      // Calculate total posts needed for the remaining time period with new frequency
+      const now = new Date();
+      const remainingTimeMs =
+        new Date(schedule.endDate).getTime() - now.getTime();
+      const remainingDays = Math.max(
+        1,
+        Math.ceil(remainingTimeMs / (24 * 60 * 60 * 1000))
+      );
+      const remainingWeeks = Math.max(1, Math.ceil(remainingDays / 7));
+
+      // Calculate total posts needed based on actual days remaining
+      let totalPostsNeeded = 0;
+      if (internalNewFrequency === "daily") {
+        totalPostsNeeded = remainingDays; // Daily = 1 post per day
+      } else {
+        // For weekly frequencies, calculate based on actual days
+        const postsPerWeek = currentValue;
+        totalPostsNeeded = Math.ceil((remainingDays / 7) * postsPerWeek);
+      }
+
+      // Calculate how many additional posts we need to generate
+      const additionalPostsNeeded = Math.max(
+        0,
+        totalPostsNeeded - currentPendingPosts.length
+      );
+
+      if (additionalPostsNeeded > 0) {
+        console.log(
+          `🎬 Frequency increased: ${currentFrequency} → ${newFrequency}`
+        );
+        console.log(`📊 Remaining days: ${remainingDays}`);
+        console.log(`📊 Remaining weeks: ${remainingWeeks}`);
+        console.log(
+          `📊 Total posts needed for remaining time: ${totalPostsNeeded} (${internalNewFrequency} frequency)`
+        );
+        console.log(`📊 Current pending posts: ${currentPendingPosts.length}`);
+        console.log(`📊 Additional posts needed: ${additionalPostsNeeded}`);
+        console.log(
+          `🎬 Generating ${additionalPostsNeeded} additional posts in chunks...`
+        );
+
+        // Generate trends in chunks like when creating a new schedule
+        const allNewTrends = [];
+        const chunkSize = 5;
+        const totalChunks = Math.ceil(additionalPostsNeeded / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const remainingTrends = additionalPostsNeeded - allNewTrends.length;
+          const currentChunkSize = Math.min(chunkSize, remainingTrends);
+
+          console.log(
+            `📦 Generating chunk ${
+              i + 1
+            }/${totalChunks} (${currentChunkSize} trends)...`
+          );
+
+          try {
+            const chunkTrends = await generateRealEstateTrends(
+              currentChunkSize,
+              0,
+              i
+            );
+
+            if (!chunkTrends || chunkTrends.length === 0) {
+              throw new Error(`Failed to generate trends for chunk ${i + 1}`);
+            }
+
+            // Validate chunk trends
+            const invalidTrends = chunkTrends.filter(
+              (trend: any) =>
+                !trend.description ||
+                !trend.keypoints ||
+                !trend.instagram_caption ||
+                !trend.facebook_caption ||
+                !trend.linkedin_caption ||
+                !trend.twitter_caption ||
+                !trend.tiktok_caption ||
+                !trend.youtube_caption
+            );
+
+            if (invalidTrends.length > 0) {
+              throw new Error(
+                `Chunk ${i + 1} has ${
+                  invalidTrends.length
+                } trends with missing required fields`
+              );
+            }
+
+            allNewTrends.push(...chunkTrends);
+            console.log(
+              `✅ Chunk ${i + 1} completed: ${chunkTrends.length} valid trends`
+            );
+
+            // Add a small delay between chunks to avoid rate limiting
+            if (i < totalChunks - 1) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          } catch (error) {
+            console.error(`❌ Error in chunk ${i + 1}:`, error);
+            throw error;
+          }
+        }
+
+        console.log(
+          `🎬 Generated ${allNewTrends.length} total trends in ${totalChunks} chunks`
+        );
+
+        // Create new scheduled posts for the full remaining period
+        const newScheduledPosts = this.createScheduledTrends(
+          allNewTrends,
+          {
+            frequency: internalNewFrequency as
+              | "once_week"
+              | "twice_week"
+              | "three_week"
+              | "daily",
+            schedule: newSchedule,
+            startDate: now, // Start from now, not the original start date
+            endDate: schedule.endDate,
+            timezone: schedule.timezone,
+          },
+          now,
+          schedule.endDate
+        );
+
+        // Add new posts to the schedule
+        schedule.generatedTrends.push(...newScheduledPosts);
+        generatedPostsCount = newScheduledPosts.length;
+        console.log(
+          `✅ Generated ${generatedPostsCount} new posts for the full remaining period`
+        );
+      }
+    }
+
+    // Update schedule configuration
+    schedule.frequency = internalNewFrequency;
+    schedule.schedule = newSchedule;
+
+    // Completely recalculate all pending posts with new schedule
+    const remainingPendingPosts = schedule.generatedTrends.filter(
+      (trend: any) => trend.status === "pending"
+    );
+
+    if (remainingPendingPosts.length > 0) {
+      console.log(
+        `🔄 Recalculating ${remainingPendingPosts.length} pending posts with new schedule`
+      );
+
+      // Create a fresh schedule for all pending posts
+      const now = new Date();
+      const newScheduledPosts = this.createScheduledTrends(
+        remainingPendingPosts.map((post: any) => ({
+          description: post.description,
+          keypoints: post.keypoints,
+          instagram_caption: post.instagram_caption,
+          facebook_caption: post.facebook_caption,
+          linkedin_caption: post.linkedin_caption,
+          twitter_caption: post.twitter_caption,
+          tiktok_caption: post.tiktok_caption,
+          youtube_caption: post.youtube_caption,
+        })),
+        {
+          frequency: internalNewFrequency as
+            | "once_week"
+            | "twice_week"
+            | "three_week"
+            | "daily",
+          schedule: newSchedule,
+          startDate: now,
+          endDate: schedule.endDate,
+          timezone: schedule.timezone,
+        },
+        now,
+        schedule.endDate
+      );
+
+      // Replace the old scheduled posts with the new ones
+      // Remove old pending posts
+      schedule.generatedTrends = schedule.generatedTrends.filter(
+        (trend: any) => trend.status !== "pending"
+      );
+
+      // Add the newly scheduled posts
+      schedule.generatedTrends.push(...newScheduledPosts);
+
+      console.log(
+        `✅ Rescheduled ${newScheduledPosts.length} posts with new frequency and times`
+      );
+    }
+
+    // Save the updated schedule
+    await schedule.save();
+
+    // Get next scheduled dates
+    const nextScheduledDates = schedule.generatedTrends
+      .filter((trend: any) => trend.status === "pending")
+      .map((trend: any) => trend.scheduledFor)
+      .sort((a: Date, b: Date) => new Date(a).getTime() - new Date(b).getTime())
+      .slice(0, 5); // Get next 5 scheduled dates
+
+    console.log(
+      `✅ Successfully updated schedule frequency from ${currentFrequency} to ${newFrequency}`
+    );
+
+    return {
+      schedule,
+      deletedPostsCount,
+      generatedPostsCount,
+      nextScheduledDates,
+    };
+  }
+
+  /**
+   * Helper method to calculate days until target day
+   */
+  private getDaysUntilTargetDay(currentDay: string, targetDay: string): number {
+    const daysOfWeek = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const currentIndex = daysOfWeek.indexOf(currentDay);
+    const targetIndex = daysOfWeek.indexOf(targetDay);
+
+    if (targetIndex > currentIndex) {
+      return targetIndex - currentIndex;
+    } else if (targetIndex < currentIndex) {
+      return 7 - (currentIndex - targetIndex);
+    } else {
+      return 7; // Same day, move to next week
+    }
+  }
+
+  /**
+   * Get pending videos for processing (30 minutes early)
    */
   async getPendingVideos(): Promise<IVideoSchedule[]> {
     const now = new Date();
-    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
 
     return await VideoSchedule.find({
       isActive: true,
       "generatedTrends.scheduledFor": {
         $gte: now,
-        $lte: oneHourFromNow,
+        $lte: thirtyMinutesFromNow,
       },
       "generatedTrends.status": "pending",
     });
@@ -982,6 +1583,36 @@ export class VideoScheduleService {
         // Use unique trend (no cycling since we have exactly the number needed)
         const trendToUse = trends[trendIndex];
 
+        if (!trendToUse) {
+          console.log(
+            `📊 No more trends available at index ${trendIndex}. Total trends: ${trends.length}`
+          );
+          console.log(
+            `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
+          );
+          break; // Stop creating more posts when we run out of trends
+        }
+
+        // Validate that the trend has all required fields
+        if (
+          !trendToUse.description ||
+          !trendToUse.keypoints ||
+          !trendToUse.instagram_caption ||
+          !trendToUse.facebook_caption ||
+          !trendToUse.linkedin_caption ||
+          !trendToUse.twitter_caption ||
+          !trendToUse.tiktok_caption ||
+          !trendToUse.youtube_caption
+        ) {
+          console.error(
+            `❌ Invalid trend data at index ${trendIndex}:`,
+            trendToUse
+          );
+          throw new Error(
+            `Trend at index ${trendIndex} is missing required fields`
+          );
+        }
+
         scheduledTrends.push({
           ...trendToUse,
           scheduledFor: finalScheduledTime, // Use UTC time
@@ -995,9 +1626,104 @@ export class VideoScheduleService {
     }
 
     console.log(
-      `📊 Created ${scheduledTrends.length} scheduled trends for the full month period`
+      `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
     );
-    console.log(`📊 Used ${trends.length} unique trends (no cycling)`);
+    console.log(
+      `📊 Used ${Math.min(
+        scheduledTrends.length,
+        trends.length
+      )} unique trends (no cycling)`
+    );
+    return scheduledTrends;
+  }
+
+  /**
+   * Create immediate scheduled posts for frequency updates
+   * Only creates posts for the next few upcoming schedule slots
+   */
+  private createImmediateScheduledPosts(
+    trends: any[],
+    scheduleData: ScheduleData,
+    startDate: Date
+  ): any[] {
+    const scheduledTrends = [];
+    const { frequency, schedule } = scheduleData;
+    let trendIndex = 0;
+    const now = new Date();
+
+    console.log(
+      `📅 Creating immediate scheduled posts from ${startDate.toISOString()}`
+    );
+    console.log(`📊 Available trends: ${trends.length}`);
+
+    // Create posts for the next few upcoming schedule slots
+    let currentDate = new Date(startDate);
+    let postsCreated = 0;
+    const maxPostsToCreate = Math.min(trends.length, 10); // Limit to reasonable number
+
+    while (postsCreated < maxPostsToCreate && trendIndex < trends.length) {
+      const dayOfWeek = currentDate
+        .toLocaleDateString("en-US", { weekday: "long" })
+        .toLowerCase();
+
+      // Check if this day should have a video
+      let shouldSchedule = false;
+      let timeIndex = 0;
+
+      if (frequency === "daily") {
+        shouldSchedule = true;
+        timeIndex = 0;
+      } else {
+        const dayIndex = schedule.days.findIndex(
+          (day) => day.toLowerCase() === dayOfWeek
+        );
+        if (dayIndex !== -1) {
+          shouldSchedule = true;
+          timeIndex = dayIndex;
+        }
+      }
+
+      if (shouldSchedule) {
+        const [hours, minutes] = schedule.times[timeIndex]
+          .split(":")
+          .map(Number);
+
+        const finalScheduledTime = new Date(currentDate);
+        finalScheduledTime.setUTCHours(hours, minutes, 0, 0);
+
+        // Skip if the time is too close to now
+        const timeDiff = finalScheduledTime.getTime() - now.getTime();
+        if (timeDiff < 40 * 60 * 1000) {
+          // Less than 40 minutes
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        const trendToUse = trends[trendIndex];
+        if (!trendToUse) {
+          console.log(`📊 No more trends available at index ${trendIndex}`);
+          break;
+        }
+
+        scheduledTrends.push({
+          ...trendToUse,
+          scheduledFor: finalScheduledTime,
+          status: "pending",
+        });
+
+        trendIndex++;
+        postsCreated++;
+        console.log(
+          `📅 Created post ${postsCreated} for ${dayOfWeek} at ${finalScheduledTime.toISOString()}`
+        );
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log(
+      `📊 Created ${scheduledTrends.length} immediate scheduled posts`
+    );
     return scheduledTrends;
   }
 

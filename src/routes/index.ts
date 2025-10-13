@@ -12,6 +12,7 @@ import socialbuAccountRoutes from "./v1/socialbu-account";
 import userSettingsRoutes from "./v1/user-settings";
 import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 import videoScheduleRoutes from "./v1/videoSchedule";
+import scheduleRoutes from "./v1/schedule";
 import cronHealthRoutes from "./v1/cronHealth";
 
 const router = Router();
@@ -29,6 +30,7 @@ router.use("/socialbu-account", socialbuAccountRoutes);
 router.use("/user-settings", userSettingsRoutes);
 router.use("/user-connected-accounts", userConnectedAccountRoutes);
 router.use("/video-schedule", videoScheduleRoutes);
+router.use("/schedule", scheduleRoutes);
 router.use("/cron", cronHealthRoutes);
 router.use("/webhook", webhookRoutes);
 
