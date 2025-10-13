@@ -46,7 +46,29 @@ export class TimezoneService {
    * Convert UTC time to local timezone
    */
   static convertFromUTC(utcTime: Date, timezone: string): string {
-    return moment(utcTime).tz(timezone).format("HH:mm");
+    return moment(utcTime).tz(timezone).format("YYYY-MM-DD HH:mm:ss");
+  }
+
+  /**
+   * Convert local datetime string to UTC Date
+   */
+  static convertLocalDateTimeToUTC(
+    localDateTime: string,
+    timezone: string
+  ): Date {
+    const momentTime = moment.tz(
+      localDateTime,
+      "YYYY-MM-DD HH:mm:ss",
+      timezone
+    );
+    return momentTime.utc().toDate();
+  }
+
+  /**
+   * Convert UTC Date to local datetime string
+   */
+  static convertUTCToLocalDateTime(utcTime: Date, timezone: string): string {
+    return moment(utcTime).tz(timezone).format("YYYY-MM-DD HH:mm:ss");
   }
 
   /**

@@ -67,26 +67,90 @@ export class VideoScheduleService {
     );
 
     // Generate trends for the schedule - ensure we have enough for the full month
-    console.log(`🎬 Generating ${numberOfVideos} trends for the schedule...`);
-    const trends = await generateRealEstateTrends();
+    // Generate trends in chunks of 5 to avoid API limits
+    console.log(
+      `🎬 Generating ${numberOfVideos} unique trends in chunks of 5...`
+    );
 
-    // If we don't have enough trends, generate more
-    let selectedTrends = trends;
-    if (trends.length < numberOfVideos) {
+    const allTrends = [];
+    const chunkSize = 5;
+    const totalChunks = Math.ceil(numberOfVideos / chunkSize);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const remainingTrends = numberOfVideos - allTrends.length;
+      const currentChunkSize = Math.min(chunkSize, remainingTrends);
+
       console.log(
-        `⚠️ Not enough trends (${trends.length}), generating more...`
+        `📦 Generating chunk ${
+          i + 1
+        }/${totalChunks} (${currentChunkSize} trends)...`
       );
-      // Generate additional trends to meet the requirement
-      const additionalTrends = await generateRealEstateTrends();
-      selectedTrends = [...trends, ...additionalTrends];
+
+      try {
+        const chunkTrends = await generateRealEstateTrends(
+          currentChunkSize,
+          0,
+          i
+        );
+
+        if (!chunkTrends || chunkTrends.length === 0) {
+          throw new Error(`Failed to generate trends for chunk ${i + 1}`);
+        }
+
+        // Accept partial results if we got at least some trends
+        if (chunkTrends.length < currentChunkSize) {
+          console.warn(
+            `⚠️ Chunk ${i + 1}: Requested ${currentChunkSize} trends but got ${
+              chunkTrends.length
+            } trends`
+          );
+        }
+
+        // Validate chunk trends
+        const invalidTrends = chunkTrends.filter(
+          (trend: any) =>
+            !trend.description ||
+            !trend.keypoints ||
+            !trend.instagram_caption ||
+            !trend.facebook_caption ||
+            !trend.linkedin_caption ||
+            !trend.twitter_caption ||
+            !trend.tiktok_caption ||
+            !trend.youtube_caption
+        );
+
+        if (invalidTrends.length > 0) {
+          throw new Error(
+            `Chunk ${i + 1} has ${
+              invalidTrends.length
+            } trends with missing required fields`
+          );
+        }
+
+        allTrends.push(...chunkTrends);
+        console.log(
+          `✅ Chunk ${i + 1} completed: ${chunkTrends.length} valid trends`
+        );
+
+        // Add a small delay between chunks to avoid rate limiting
+        if (i < totalChunks - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`❌ Error in chunk ${i + 1}:`, error);
+        throw new Error(
+          `Failed to generate trends in chunk ${i + 1}. Please try again.`
+        );
+      }
     }
 
-    selectedTrends = selectedTrends.slice(0, numberOfVideos);
-    console.log(`✅ Selected ${selectedTrends.length} trends for scheduling`);
+    console.log(
+      `✅ Generated ${allTrends.length} valid trends from OpenAI in ${totalChunks} chunks`
+    );
 
     // Create scheduled trends
     const generatedTrends = this.createScheduledTrends(
-      selectedTrends,
+      allTrends,
       scheduleData,
       startDate,
       endDate
@@ -915,8 +979,8 @@ export class VideoScheduleService {
           continue;
         }
 
-        // Use trend with cycling if we run out of trends
-        const trendToUse = trends[trendIndex % trends.length];
+        // Use unique trend (no cycling since we have exactly the number needed)
+        const trendToUse = trends[trendIndex];
 
         scheduledTrends.push({
           ...trendToUse,
@@ -933,7 +997,7 @@ export class VideoScheduleService {
     console.log(
       `📊 Created ${scheduledTrends.length} scheduled trends for the full month period`
     );
-    console.log(`📊 Used ${trends.length} unique trends with cycling`);
+    console.log(`📊 Used ${trends.length} unique trends (no cycling)`);
     return scheduledTrends;
   }
 

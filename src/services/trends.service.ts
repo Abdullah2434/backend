@@ -43,7 +43,9 @@ function extractJsonFromText(content: string): any {
   // Extract only the JSON portion (between first {/[ and last }/])
   const firstIdx = Math.min(
     ...["{", "["].map((ch) =>
-      cleaned.indexOf(ch) === -1 ? Number.POSITIVE_INFINITY : cleaned.indexOf(ch)
+      cleaned.indexOf(ch) === -1
+        ? Number.POSITIVE_INFINITY
+        : cleaned.indexOf(ch)
     )
   );
   const lastIdx = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
@@ -56,17 +58,37 @@ function extractJsonFromText(content: string): any {
   // Fix common JSON issues
   let candidateFixed = candidate
     .replace(/,\s*(?=[}\]])/g, "") // remove trailing commas
-    .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":') // ensure keys quoted
-    .replace(/'/g, '"'); // replace single with double quotes
+    .replace(/\n/g, " ") // replace newlines with spaces
+    .replace(/\s+/g, " ") // normalize whitespace
+    .trim();
 
   try {
     return JSON.parse(candidateFixed);
   } catch (err) {
     console.warn("Parse failed, attempting auto-repair...");
+    console.log("Original candidate:", candidate);
+    console.log("Fixed candidate:", candidateFixed);
+    console.log("Parse error:", err);
+
+    // Try parsing the original candidate first (before any modifications)
+    try {
+      return JSON.parse(candidate);
+    } catch (err2) {
+      console.warn(
+        "Original candidate also failed, trying more aggressive fixes..."
+      );
+    }
 
     // If array opened but not closed
     if (candidateFixed.startsWith("[") && !candidateFixed.endsWith("]")) {
-      candidateFixed += "]";
+      // Find the last complete object in the array
+      const lastCompleteObject = candidateFixed.lastIndexOf("}");
+      if (lastCompleteObject > 0) {
+        candidateFixed =
+          candidateFixed.substring(0, lastCompleteObject + 1) + "]";
+      } else {
+        candidateFixed += "]";
+      }
     }
 
     // If object opened but not closed
@@ -102,7 +124,9 @@ function extractJsonFromText(content: string): any {
 }
 
 export async function generateRealEstateTrends(
-  retryCount = 0
+  count: number = 10,
+  retryCount = 0,
+  seed: number = 0
 ): Promise<TrendData[]> {
   try {
     if (!OPENAI_API_KEY) {
@@ -110,8 +134,11 @@ export async function generateRealEstateTrends(
     }
 
     const prompt = `
-Generate 10 current topic trends for creating video ads about real estate in America.  
-Each trend should highlight a unique aspect of the real estate industry that's ideal for engaging video advertising.  
+Generate ${count} current topic trends for creating video ads about real estate in America (batch ${
+      seed + 1
+    }).  
+Each trend should highlight a unique aspect of the real estate industry that's ideal for engaging video advertising.
+Focus on different real estate topics and avoid repeating common themes like smart homes, virtual tours, etc. from previous batches.  
 
 For each trend, include:
 1. A short, catchy description (5–6 words max)
@@ -156,7 +183,7 @@ Ensure all fields are filled and formatted as strings.
           },
         ],
         temperature: 0.7,
-        max_tokens: 1200,
+        max_tokens: Math.max(2000, count * 300),
       },
       {
         headers: {
@@ -178,7 +205,7 @@ Ensure all fields are filled and formatted as strings.
       throw new Error("Parsed response is not an array");
     }
 
-    return parsed.map((item: any) => ({
+    const mappedTrends = parsed.map((item: any) => ({
       description: item.description || "",
       keypoints: Array.isArray(item.keypoints)
         ? item.keypoints.join(", ")
@@ -190,13 +217,21 @@ Ensure all fields are filled and formatted as strings.
       tiktok_caption: item.tiktok_caption || "",
       youtube_caption: item.youtube_caption || "",
     }));
+
+    // Log if we got fewer trends than requested
+    if (mappedTrends.length < count) {
+      console.warn(
+        `⚠️ Requested ${count} trends but got ${mappedTrends.length} trends`
+      );
+    }
+
+    return mappedTrends;
   } catch (error) {
     if (retryCount < 1) {
       console.warn("First attempt failed, retrying once...");
-      return await generateRealEstateTrends(retryCount + 1);
+      return await generateRealEstateTrends(count, retryCount + 1, seed);
     }
     console.error("Error generating real estate trends:", error);
     return [];
   }
 }
-
