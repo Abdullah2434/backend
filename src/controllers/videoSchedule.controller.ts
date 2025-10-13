@@ -153,11 +153,64 @@ export async function createSchedule(req: Request, res: Response) {
       email = userSettings.email;
     }
 
+    // Convert startDate from user's timezone to UTC
+    let startDateUTC: Date;
+    if (typeof startDate === "string") {
+      // If startDate is just a date (YYYY-MM-DD), treat it as start of day in user's timezone
+      if (startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        startDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+          `${startDate} 00:00:00`,
+          timezone
+        );
+      } else {
+        // If it includes time, use as is
+        startDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+          startDate,
+          timezone
+        );
+      }
+    } else {
+      startDateUTC = new Date(startDate);
+    }
+
+    // Convert endDate from user's timezone to UTC if provided
+    let endDateUTC: Date;
+    if (endDate) {
+      if (typeof endDate === "string") {
+        // If endDate is just a date (YYYY-MM-DD), treat it as end of day in user's timezone
+        if (endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          endDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+            `${endDate} 23:59:59`,
+            timezone
+          );
+        } else {
+          // If it includes time, use as is
+          endDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+            endDate,
+            timezone
+          );
+        }
+      } else {
+        endDateUTC = new Date(endDate);
+      }
+    } else {
+      endDateUTC = new Date(); // Will be overridden to one month
+    }
+
+    console.log(
+      `🕐 Start date conversion: ${startDate} (${timezone}) → ${startDateUTC.toISOString()} (UTC)`
+    );
+    if (endDate) {
+      console.log(
+        `🕐 End date conversion: ${endDate} (${timezone}) → ${endDateUTC.toISOString()} (UTC)`
+      );
+    }
+
     const scheduleData: ScheduleData = {
       frequency,
       schedule: processedSchedule,
-      startDate: new Date(startDate),
-      endDate: endDate ? new Date(endDate) : new Date(), // Will be overridden to one month
+      startDate: startDateUTC,
+      endDate: endDateUTC, // Will be overridden to one month
       timezone, // Include timezone information
     };
 

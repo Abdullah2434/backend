@@ -55,9 +55,12 @@ export class VideoScheduleService {
     }
 
     // Set default duration to one month from start date
-    const startDate = new Date(scheduleData.startDate);
+    const startDate = scheduleData.startDate; // Already converted to UTC in controller
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1); // Add one month
+
+    console.log(`📅 Schedule start date (UTC): ${startDate.toISOString()}`);
+    console.log(`📅 Schedule end date (UTC): ${endDate.toISOString()}`);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = this.calculateNumberOfVideos(
@@ -1530,9 +1533,13 @@ export class VideoScheduleService {
     console.log(`🕐 Current time: ${now.toISOString()}`);
 
     while (currentDate <= endDate) {
-      const dayOfWeek = currentDate
-        .toLocaleDateString("en-US", { weekday: "long" })
-        .toLowerCase();
+      const dayOfWeek = currentDate.toLocaleDateString("en-US", {
+        weekday: "long",
+      });
+
+      console.log(
+        `📅 Checking date: ${currentDate.toISOString()} (${dayOfWeek})`
+      );
 
       // Check if this day should have a video
       let shouldSchedule = false;
@@ -1542,9 +1549,7 @@ export class VideoScheduleService {
         shouldSchedule = true;
         timeIndex = 0;
       } else {
-        const dayIndex = schedule.days.findIndex(
-          (day) => day.toLowerCase() === dayOfWeek
-        );
+        const dayIndex = schedule.days.findIndex((day) => day === dayOfWeek);
         if (dayIndex !== -1) {
           shouldSchedule = true;
           timeIndex = dayIndex;
