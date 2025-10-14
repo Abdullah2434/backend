@@ -7,7 +7,6 @@ const router = Router();
 router.get("/", ctrl.getPendingSchedulePosts);
 router.get("/:scheduleId/post/:postId", ctrl.getSchedulePost);
 router.put("/:scheduleId/post/:postId", ctrl.editSchedulePost);
-router.put("/:scheduleId/frequency", ctrl.updateScheduleFrequency);
 router.delete("/:scheduleId/post/:postId", ctrl.deleteSchedulePost);
 router.delete("/:scheduleId", ctrl.deleteEntireSchedule);
 
