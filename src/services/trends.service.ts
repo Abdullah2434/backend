@@ -134,11 +134,13 @@ export async function generateRealEstateTrends(
     }
 
     const prompt = `
-Generate ${count} current topic trends for creating video ads about real estate in America (batch ${
+Generate EXACTLY ${count} current topic trends for creating video ads about real estate in America (batch ${
       seed + 1
-    }).  
+    }). You MUST return exactly ${count} trends - no more, no less.
 Each trend should highlight a unique aspect of the real estate industry that's ideal for engaging video advertising.
 Focus on different real estate topics and avoid repeating common themes like smart homes, virtual tours, etc. from previous batches.  
+
+CRITICAL: Return exactly ${count} items in the JSON array. Do not include any additional text, explanations, or comments outside the JSON array.
 
 For each trend, include:
 1. A short, catchy description (5–6 words max)
@@ -151,7 +153,7 @@ For each trend, include:
    - TikTok: trendy, engaging, 1–2 sentences  
    - YouTube: descriptive, SEO-friendly, 2–3 sentences  
 
-Return your result as a valid JSON array like this:
+Return your result as a valid JSON array with EXACTLY ${count} objects like this:
 [
   {
     "description": "",
@@ -175,7 +177,7 @@ Ensure all fields are filled and formatted as strings.
           {
             role: "system",
             content:
-              "You are a real estate marketing strategist and video content expert. Provide concise, clear, and engaging trend ideas suitable for multiple social platforms.",
+              "You are a real estate marketing strategist and video content expert. Provide concise, clear, and engaging trend ideas suitable for multiple social platforms. You MUST always return exactly the requested number of trends - no more, no less. Return only valid JSON array format with no additional text.",
           },
           {
             role: "user",
@@ -203,6 +205,11 @@ Ensure all fields are filled and formatted as strings.
 
     if (!Array.isArray(parsed)) {
       throw new Error("Parsed response is not an array");
+    }
+
+    // Ensure we have exactly the requested number of items
+    if (parsed.length !== count) {
+      throw new Error(`Expected exactly ${count} trends, but received ${parsed.length}`);
     }
 
     const mappedTrends = parsed.map((item: any) => ({
