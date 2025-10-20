@@ -14,6 +14,9 @@ import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 import videoScheduleRoutes from "./v1/videoSchedule";
 import scheduleRoutes from "./v1/schedule";
 import cronHealthRoutes from "./v1/cronHealth";
+import dynamicCaptionsRoutes from "./v1/dynamicCaptions";
+import batchCaptionsRoutes from "./v1/batchCaptions";
+import performanceTrackingRoutes from "./v1/performanceTracking";
 
 const router = Router();
 
@@ -32,6 +35,9 @@ router.use("/user-connected-accounts", userConnectedAccountRoutes);
 router.use("/video-schedule", videoScheduleRoutes);
 router.use("/schedule", scheduleRoutes);
 router.use("/cron", cronHealthRoutes);
+router.use("/dynamic-captions", dynamicCaptionsRoutes);
+router.use("/batch-captions", batchCaptionsRoutes);
+router.use("/performance", performanceTrackingRoutes);
 router.use("/webhook", webhookRoutes);
 
 export default router;

@@ -19,6 +19,7 @@ export interface ScheduleData {
   startDate: Date;
   endDate: Date;
   timezone: string;
+  userId: string;
 }
 
 export class VideoScheduleService {
@@ -93,7 +94,8 @@ export class VideoScheduleService {
         const chunkTrends = await generateRealEstateTrends(
           currentChunkSize,
           0,
-          i
+          i,
+          scheduleData.userId
         );
 
         if (!chunkTrends || chunkTrends.length === 0) {
@@ -233,7 +235,8 @@ export class VideoScheduleService {
 
     // If frequency or dates are changing, regenerate trends
     if (updateData.frequency || updateData.startDate || updateData.endDate) {
-      const newScheduleData = {
+      const newScheduleData: ScheduleData = {
+        userId: schedule.userId.toString(),
         frequency: updateData.frequency || schedule.frequency,
         schedule: updateData.schedule || schedule.schedule,
         startDate: updateData.startDate || schedule.startDate,
@@ -249,7 +252,12 @@ export class VideoScheduleService {
         newScheduleData.endDate
       );
 
-      const trends = await generateRealEstateTrends();
+      const trends = await generateRealEstateTrends(
+        10,
+        0,
+        0,
+        schedule.userId.toString()
+      );
       const selectedTrends = trends.slice(0, numberOfVideos);
 
       schedule.generatedTrends = this.createScheduledTrends(
@@ -759,21 +767,46 @@ export class VideoScheduleService {
     );
 
     try {
-      // Generate social media captions using OpenAI
-      console.log("🎨 Generating social media captions...");
+      // Generate dynamic social media captions using our intelligent system
+      console.log("🎨 Generating dynamic social media captions...");
+      const DynamicCaptionGenerationService =
+        require("./dynamicCaptionGeneration.service").default;
       const captions =
-        await CaptionGenerationService.generateScheduledVideoCaptions(
+        await DynamicCaptionGenerationService.generateScheduledVideoCaptions(
           trend.description,
           trend.keypoints,
+          schedule.userId.toString(),
           {
             name: userSettings.name,
             position: userSettings.position,
             companyName: userSettings.companyName,
             city: userSettings.city,
             socialHandles: userSettings.socialHandles,
+            email: userSettings.email,
+            phone: userSettings.phone,
+            website: userSettings.website,
+            specialty: userSettings.specialty,
           }
         );
-      console.log("✅ Captions generated successfully");
+      console.log("✅ Dynamic captions generated successfully");
+
+      // Update the schedule with the new dynamic captions
+      schedule.generatedTrends[trendIndex].instagram_caption =
+        captions.instagram_caption;
+      schedule.generatedTrends[trendIndex].facebook_caption =
+        captions.facebook_caption;
+      schedule.generatedTrends[trendIndex].linkedin_caption =
+        captions.linkedin_caption;
+      schedule.generatedTrends[trendIndex].twitter_caption =
+        captions.twitter_caption;
+      schedule.generatedTrends[trendIndex].tiktok_caption =
+        captions.tiktok_caption;
+      schedule.generatedTrends[trendIndex].youtube_caption =
+        captions.youtube_caption;
+
+      // Save the updated schedule with dynamic captions
+      await schedule.save();
+      console.log("✅ Schedule updated with dynamic captions");
 
       // Create video using existing video generation logic (NO CAPTIONS in webhook)
       const videoData = {

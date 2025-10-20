@@ -2,6 +2,7 @@
 // filepath: /Users/mac/Desktop/edge-all/backend/src/services/trends.service.ts
 
 import axios from "axios";
+import GrokGenerationService from "./grokGeneration.service";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -14,7 +15,7 @@ interface OpenAIResponse {
   }>;
 }
 
-interface TrendData {
+export interface TrendData {
   description: string;
   keypoints: string;
   instagram_caption: string;
@@ -25,105 +26,105 @@ interface TrendData {
   youtube_caption: string;
 }
 
-/**
- * Utility to robustly extract JSON from raw text responses,
- * including handling truncated arrays/objects and malformed JSON.
- */
 function extractJsonFromText(content: string): any {
-  if (!content || typeof content !== "string") {
-    throw new Error("No content to parse");
-  }
-
-  // Remove markdown fences
-  let cleaned = content
-    .replace(/```(?:json)?/gi, "")
-    .replace(/```/g, "")
-    .trim();
-
-  // Extract only the JSON portion (between first {/[ and last }/])
-  const firstIdx = Math.min(
-    ...["{", "["].map((ch) =>
-      cleaned.indexOf(ch) === -1
-        ? Number.POSITIVE_INFINITY
-        : cleaned.indexOf(ch)
-    )
-  );
-  const lastIdx = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (!isFinite(firstIdx) || lastIdx === -1) {
-    throw new Error("No JSON object/array found in content");
-  }
-
-  let candidate = cleaned.slice(firstIdx, lastIdx + 1).trim();
-
-  // Fix common JSON issues
-  let candidateFixed = candidate
-    .replace(/,\s*(?=[}\]])/g, "") // remove trailing commas
-    .replace(/\n/g, " ") // replace newlines with spaces
-    .replace(/\s+/g, " ") // normalize whitespace
-    .trim();
-
   try {
-    return JSON.parse(candidateFixed);
-  } catch (err) {
-    console.warn("Parse failed, attempting auto-repair...");
-    console.log("Original candidate:", candidate);
-    console.log("Fixed candidate:", candidateFixed);
-    console.log("Parse error:", err);
-
-    // Try parsing the original candidate first (before any modifications)
-    try {
-      return JSON.parse(candidate);
-    } catch (err2) {
-      console.warn(
-        "Original candidate also failed, trying more aggressive fixes..."
-      );
-    }
-
-    // If array opened but not closed
-    if (candidateFixed.startsWith("[") && !candidateFixed.endsWith("]")) {
-      // Find the last complete object in the array
-      const lastCompleteObject = candidateFixed.lastIndexOf("}");
-      if (lastCompleteObject > 0) {
-        candidateFixed =
-          candidateFixed.substring(0, lastCompleteObject + 1) + "]";
-      } else {
-        candidateFixed += "]";
+    // First, try to parse the entire content as JSON
+    return JSON.parse(content);
+  } catch {
+    // If that fails, try to extract JSON from the text
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {
+        console.error("Failed to parse extracted JSON");
+        return null;
       }
     }
 
-    // If object opened but not closed
-    if (candidateFixed.startsWith("{") && !candidateFixed.endsWith("}")) {
-      candidateFixed += "}";
-    }
-
-    try {
-      return JSON.parse(candidateFixed);
-    } catch (err2) {
-      // Try trimming to last complete object/array
-      const lastValidIdx = Math.max(
-        candidateFixed.lastIndexOf("}"),
-        candidateFixed.lastIndexOf("]")
-      );
-      if (lastValidIdx > 0) {
-        const trimmed = candidateFixed.slice(0, lastValidIdx + 1);
-        try {
-          return JSON.parse(trimmed);
-        } catch (err3) {
-          console.error("Final JSON parse failed. Returning empty array.");
-          console.error("Raw response:\n", content);
-          console.error("Candidate after fixes:\n", candidateFixed);
-          return [];
-        }
+    // If no array found, try to find object patterns
+    const objectMatch = content.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        const parsed = JSON.parse(objectMatch[0]);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        console.error("Failed to parse extracted object");
+        return null;
       }
-
-      console.error("No valid JSON found at all. Returning empty array.");
-      console.error("Raw response:\n", content);
-      return [];
     }
+
+    console.error("No valid JSON found in content");
+    console.error("Raw response:\n", content);
+    return [];
   }
 }
 
 export async function generateRealEstateTrends(
+  count: number = 10,
+  retryCount = 0,
+  seed: number = 0,
+  userId?: string
+): Promise<TrendData[]> {
+  try {
+    // Use Grok for trending, current topics with user history
+    let userHistory: string[] = [];
+    if (userId) {
+      userHistory = await GrokGenerationService.getUserTopicHistory(userId, 10);
+    }
+
+    console.log(
+      `🚀 Generating ${count} trending real estate topics using Grok (batch ${
+        seed + 1
+      })`
+    );
+    console.log(
+      `📊 User history topics: ${userHistory.length} previous topics`
+    );
+
+    const trends = await GrokGenerationService.generateRealEstateTrends(
+      count,
+      retryCount,
+      seed,
+      userHistory
+    );
+
+    console.log(`✅ Generated ${trends.length} trending topics using Grok`);
+    return trends;
+  } catch (error: any) {
+    console.error("Error generating trends with Grok:", error);
+
+    if (retryCount < 2) {
+      console.log(`Retrying trend generation (attempt ${retryCount + 1})...`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return generateRealEstateTrends(count, retryCount + 1, seed, userId);
+    }
+
+    // Fallback to basic trends
+    console.log("Using fallback trends due to Grok failure");
+    return [
+      {
+        description: "Market Update Today",
+        keypoints: "Current rates, prices, trends",
+        instagram_caption:
+          "📈 Today's real estate market update! Current trends and what it means for you 🏠 #RealEstate #MarketUpdate",
+        facebook_caption:
+          "Real estate market update for today. Here's what's happening with rates, prices, and trends in your area.",
+        linkedin_caption:
+          "Professional analysis of today's real estate market conditions and trends affecting buyers and sellers.",
+        twitter_caption:
+          "Today's real estate market update 📈 #RealEstate #MarketTrends",
+        tiktok_caption:
+          "Today's market update 📈 #RealEstate #MarketTrends #fyp",
+        youtube_caption:
+          "Real Estate Market Update - Today's Analysis of Current Trends, Rates, and Market Conditions",
+      },
+    ].slice(0, count);
+  }
+}
+
+// Fallback OpenAI function (kept for emergency use)
+export async function generateRealEstateTrendsOpenAI(
   count: number = 10,
   retryCount = 0,
   seed: number = 0
@@ -218,20 +219,22 @@ Ensure all fields are filled and formatted as strings.
       youtube_caption: item.youtube_caption || "",
     }));
 
-    // Log if we got fewer trends than requested
-    if (mappedTrends.length < count) {
-      console.warn(
-        `⚠️ Requested ${count} trends but got ${mappedTrends.length} trends`
+    console.log(
+      `✅ Generated ${mappedTrends.length} real estate trends using OpenAI fallback`
+    );
+    return mappedTrends;
+  } catch (error: any) {
+    console.error("Error generating trends with OpenAI fallback:", error);
+
+    if (retryCount < 2) {
+      console.log(
+        `Retrying OpenAI trend generation (attempt ${retryCount + 1})...`
       );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return generateRealEstateTrendsOpenAI(count, retryCount + 1, seed);
     }
 
-    return mappedTrends;
-  } catch (error) {
-    if (retryCount < 1) {
-      console.warn("First attempt failed, retrying once...");
-      return await generateRealEstateTrends(count, retryCount + 1, seed);
-    }
-    console.error("Error generating real estate trends:", error);
+    console.error("Failed to generate trends after retries");
     return [];
   }
 }

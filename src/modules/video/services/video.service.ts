@@ -145,6 +145,7 @@ export class VideoService {
       linkedin_caption?: string;
       twitter_caption?: string;
       tiktok_caption?: string;
+      youtube_caption?: string;
     }
   ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
@@ -154,6 +155,71 @@ export class VideoService {
     ).select("+secretKey");
 
     return video;
+  }
+
+  /**
+   * Auto-generate dynamic captions when video is completed
+   */
+  async onVideoCompleted(videoId: string): Promise<void> {
+    try {
+      console.log(`🎨 Auto-generating dynamic captions for video ${videoId}`);
+
+      const video = await Video.findOne({ videoId });
+      if (!video || !video.userId) {
+        console.log(`⚠️ Video ${videoId} not found or missing userId`);
+        return;
+      }
+
+      // Get user context
+      const user = await User.findById(video.userId);
+      if (!user) {
+        console.log(`⚠️ User not found for video ${videoId}`);
+        return;
+      }
+
+      // Prepare video data for dynamic caption generation
+      const videoData = {
+        VIDEO_TOPIC: video.title,
+        SCRIPT_HOOK: video.title,
+        SCRIPT_SUMMARY: video.title, // Use title as summary for now
+        AGENT_NAME: user.firstName + " " + user.lastName,
+        AGENT_CITY: "Your City", // Could be enhanced with user settings
+        AGENT_EMAIL: user.email,
+      };
+
+      const userContext = {
+        name: user.firstName + " " + user.lastName,
+        position: "Real Estate Professional",
+        companyName: "Real Estate Company",
+        city: "Your City",
+        email: user.email,
+        phone: user.phone,
+        specialty: "General Real Estate",
+      };
+
+      // Generate dynamic captions
+      const DynamicCaptionGenerationService =
+        require("../../services/dynamicCaptionGeneration.service").default;
+      const captions =
+        await DynamicCaptionGenerationService.generateDynamicCaptions(
+          video.userId.toString(),
+          videoData,
+          userContext
+        );
+
+      // Update video with generated captions
+      await this.updateVideoCaptions(videoId, captions);
+
+      console.log(
+        `✅ Dynamic captions generated and saved for video ${videoId}`
+      );
+    } catch (error) {
+      console.error(
+        `❌ Error auto-generating captions for video ${videoId}:`,
+        error
+      );
+      // Don't throw error - this shouldn't break video completion
+    }
   }
 
   /**

@@ -1035,20 +1035,26 @@ export async function generateVideo(req: Request, res: Response) {
     console.log("Using voice_id:", voice_id);
     console.log(body.body, "body body");
 
-    // Generate social media captions using OpenAI
-    console.log("🎨 Generating social media captions for custom video...");
-    const captions = await CaptionGenerationService.generateCustomVideoCaptions(
-      body.hook,
-      body.body,
-      body.conclusion,
-      {
-        name: body.company_name, // Using company name as context
-        position: "Real Estate Professional",
-        companyName: body.company_name,
-        city: "Your City", // Could be extracted from user settings
-        socialHandles: body.social_handles,
-      }
+    // Generate dynamic social media captions using our intelligent system
+    console.log(
+      "🎨 Generating dynamic social media captions for custom video..."
     );
+    const DynamicCaptionGenerationService =
+      require("../../services/dynamicCaptionGeneration.service").default;
+    const captions =
+      await DynamicCaptionGenerationService.generateCustomVideoCaptions(
+        body.hook,
+        body.body,
+        body.conclusion,
+        req.user?._id || "anonymous", // Use authenticated user ID
+        {
+          name: body.company_name, // Using company name as context
+          position: "Real Estate Professional",
+          companyName: body.company_name,
+          city: "Your City", // Could be extracted from user settings
+          socialHandles: body.social_handles,
+        }
+      );
     console.log("✅ Captions generated successfully");
 
     const webhookData = {

@@ -187,7 +187,34 @@ export class WebhookService {
       }
     }
 
-    // Handle custom video completion - store captions if provided
+    // Handle custom video completion - auto-generate dynamic captions
+    if (
+      finalStatus === "ready" &&
+      updatedVideo &&
+      !scheduleId && // Only for custom videos (not scheduled)
+      !updatedVideo.socialMediaCaptions
+    ) {
+      try {
+        console.log(
+          `🎨 Auto-generating dynamic captions for custom video ${videoId}`
+        );
+
+        // Trigger dynamic caption generation
+        await this.videoService.onVideoCompleted(videoId);
+
+        console.log(
+          `✅ Dynamic captions generated for custom video ${videoId}`
+        );
+      } catch (captionError) {
+        console.error(
+          `❌ Error generating dynamic captions for custom video ${videoId}:`,
+          captionError
+        );
+        // Don't fail the webhook if caption generation fails
+      }
+    }
+
+    // Handle custom video completion - store provided captions if available
     if (
       finalStatus === "ready" &&
       updatedVideo &&
@@ -196,10 +223,10 @@ export class WebhookService {
     ) {
       try {
         await this.videoService.updateVideoCaptions(videoId, captions);
-        console.log(`✅ Captions stored for custom video ${videoId}`);
+        console.log(`✅ Provided captions stored for custom video ${videoId}`);
       } catch (captionError) {
         console.error(
-          `❌ Error storing captions for custom video ${videoId}:`,
+          `❌ Error storing provided captions for custom video ${videoId}:`,
           captionError
         );
         // Don't fail the webhook if caption storage fails

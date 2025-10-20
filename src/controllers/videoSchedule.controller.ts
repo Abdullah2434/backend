@@ -207,6 +207,7 @@ export async function createSchedule(req: Request, res: Response) {
     }
 
     const scheduleData: ScheduleData = {
+      userId: payload.userId,
       frequency,
       schedule: processedSchedule,
       startDate: startDateUTC,
