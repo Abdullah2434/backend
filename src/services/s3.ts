@@ -44,6 +44,30 @@ export class S3Service {
     const downloadUrl = await getSignedUrl(this.client, cmd, { expiresIn })
     return { downloadUrl, expiresIn }
   }
+  async createVideoViewUrl(
+    s3Key: string,
+    secretKey: string,
+    expiresIn = 3600
+  ): Promise<{ viewUrl: string; expiresIn: number }> {
+    // 1️⃣ Validate secretKey in object metadata (same as your download method)
+    const head = new HeadObjectCommand({ Bucket: this.bucketName, Key: s3Key });
+    const info = await this.client.send(head);
+  
+    if (info.Metadata?.secretkey && info.Metadata?.secretkey !== secretKey) {
+      throw new Error("Invalid secret key for video access");
+    }
+  
+    // 2️⃣ Generate a signed URL for streaming/viewing
+    const cmd = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: s3Key,
+      ResponseContentType: "video/mp4", // ensures browser streaming
+    });
+  
+    const viewUrl = await getSignedUrl(this.client, cmd, { expiresIn });
+  
+    return { viewUrl, expiresIn };
+  }
   async deleteVideo(s3Key: string, secretKey: string) {
     const head = new HeadObjectCommand({ Bucket: this.bucketName, Key: s3Key })
     const info = await this.client.send(head)
@@ -53,6 +77,41 @@ export class S3Service {
     return true
   }
   getVideoUrl(s3Key: string) { return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${s3Key}` }
+  
+  /**
+   * Generate a signed URL for video avatar files that can be accessed by external services like Heygen
+   */
+  async getSignedVideoUrl(s3Key: string, expiresIn = 3600): Promise<string> {
+    const cmd = new GetObjectCommand({ Bucket: this.bucketName, Key: s3Key })
+    return await getSignedUrl(this.client, cmd, { expiresIn })
+  }
+
+  /**
+   * Generate a view URL for video avatar files (optimized for streaming/viewing)
+   */
+  async createVideoAvatarViewUrl(s3Key: string, expiresIn = 3600): Promise<string> {
+    const cmd = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: s3Key,
+      ResponseContentType: "video/mp4", // ensures browser streaming
+    });
+    
+    return await getSignedUrl(this.client, cmd, { expiresIn });
+  }
+
+  /**
+   * Generate a clean proxy URL for video avatar files
+   * This creates a URL that goes through your API instead of directly to S3
+   */
+  getCleanVideoUrl(s3Key: string, baseUrl?: string): string {
+    // Use the actual API base URL from environment or construct it from request
+    const apiBaseUrl = baseUrl || process.env.API_BASE_URL || process.env.BASE_URL || 'http://localhost:3000';
+    
+    // Change file extension from .mov to .mp4 for cleaner URLs
+    const cleanS3Key = s3Key.replace(/\.mov$/i, '.mp4');
+    
+    return `${apiBaseUrl}/api/v2/video_avatar/proxy/${encodeURIComponent(cleanS3Key)}`;
+  }
 }
 
 let s3Singleton: S3Service | null = null
@@ -75,5 +134,3 @@ export function getS3() {
   }
   return s3Singleton
 }
-
-

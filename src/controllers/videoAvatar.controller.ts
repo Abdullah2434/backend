@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
 import multer from 'multer';
 import VideoAvatarService from '../services/videoAvatar.service';
+import { getS3 } from '../services/s3';
 import {
-  CreateVideoAvatarRequest,
   CreateVideoAvatarWithFilesRequest,
-  CreateVideoAvatarResponse,
   VideoAvatarStatusResponse,
-  ApiResponse
 } from '../types';
 
 const videoAvatarService = new VideoAvatarService();
@@ -34,36 +32,7 @@ const upload = multer({
  */
 export async function createVideoAvatar(req: Request, res: Response) {
   try {
-    console.log('POST /v2/video_avatar hit')
-    console.log('Headers:', {
-      contentType: req.headers['content-type'],
-      contentLength: req.headers['content-length'],
-      xApiKey: req.headers['x-api-key'] ? 'present' : 'missing',
-      authorization: req.headers['authorization'] ? 'present' : 'missing'
-    })
-    console.log('Body keys:', Object.keys(req.body || {}))
     const rawFiles: any = (req as any).files || {}
-    console.log('Files fields:', Object.keys(rawFiles || {}))
-    if (rawFiles?.training_footage?.[0]) {
-      console.log('training_footage file meta:', {
-        fieldname: rawFiles.training_footage[0].fieldname,
-        originalname: rawFiles.training_footage[0].originalname,
-        mimetype: rawFiles.training_footage[0].mimetype,
-        size: rawFiles.training_footage[0].buffer?.byteLength
-      })
-    } else {
-      console.log('training_footage file: missing')
-    }
-    if (rawFiles?.consent_statement?.[0]) {
-      console.log('consent_statement file meta:', {
-        fieldname: rawFiles.consent_statement[0].fieldname,
-        originalname: rawFiles.consent_statement[0].originalname,
-        mimetype: rawFiles.consent_statement[0].mimetype,
-        size: rawFiles.consent_statement[0].buffer?.byteLength
-      })
-    } else {
-      console.log('consent_statement file: missing')
-    }
     const {
       avatar_name,
       avatar_group_id,
@@ -75,7 +44,7 @@ export async function createVideoAvatar(req: Request, res: Response) {
 
     const trainingFootageFile = (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined
     const consentStatementFile = (rawFiles?.consent_statement?.[0] as Express.Multer.File) || undefined
-
+    console.log('trainingFootageFile:', trainingFootageFile)
     if (!avatar_name) {
       return res.status(400).json({ success: false, message: "avatar_name is required" });
     }
@@ -114,7 +83,6 @@ export async function createVideoAvatar(req: Request, res: Response) {
 
     let trainingUrlToUse = training_footage_url;
     let consentUrlToUse = consent_statement_url;
-
     const request: CreateVideoAvatarWithFilesRequest = {
       avatar_name,
       avatar_group_id,
@@ -124,10 +92,14 @@ export async function createVideoAvatar(req: Request, res: Response) {
       consent_statement_file: consentStatementFile,
     };
 
+    // Get userId and auth token from authenticated request
+    const userId = (req as any).user?._id;
+    const authToken = req.headers.authorization?.replace('Bearer ', '');
+
     const result = await videoAvatarService.createVideoAvatarWithFiles(request, {
       training_footage_url: trainingUrlToUse,
       consent_statement_url: consentUrlToUse,
-    });
+    }, userId, authToken);
 
     return res.status(202).json(result);
   } catch (error: any) {
@@ -192,78 +164,6 @@ export async function getVideoAvatarStatus(req: Request, res: Response) {
     });
   }
 }
-
-/**
- * Get all avatars by group ID
- * GET /v2/video_avatar/group/:groupId
- */
-export async function getAvatarsByGroup(req: Request, res: Response) {
-  try {
-    const { groupId } = req.params;
-
-    if (!groupId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Avatar Group ID is required'
-      });
-    }
-
-    const avatars = await videoAvatarService.getAvatarsByGroup(groupId);
-
-    return res.status(200).json({
-      success: true,
-      data: avatars
-    });
-
-  } catch (error: any) {
-    console.error('Error getting avatars by group:', error);
-    
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
-  }
-}
-
-/**
- * Delete video avatar
- * DELETE /v2/video_avatar/:id
- */
-export async function deleteVideoAvatar(req: Request, res: Response) {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Avatar ID is required'
-      });
-    }
-
-    const deleted = await videoAvatarService.deleteAvatar(id);
-
-    if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        message: 'Avatar not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Avatar deleted successfully'
-    });
-
-  } catch (error: any) {
-    console.error('Error deleting video avatar:', error);
-    
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
-  }
-}
-
 /**
  * Health check endpoint for video avatar service
  * GET /v2/video_avatar/health
@@ -279,6 +179,52 @@ export async function healthCheck(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       message: 'Video Avatar service is unhealthy',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Proxy endpoint to serve video avatar files with clean URLs
+ * GET /v2/video_avatar/proxy/:s3Key
+ */
+export async function proxyVideoFile(req: Request, res: Response) {
+  try {
+    const { s3Key } = req.params;
+    
+    if (!s3Key) {
+      return res.status(400).json({
+        success: false,
+        message: 'S3 key is required'
+      });
+    }
+
+    const s3Service = getS3();
+    let actualS3Key = decodeURIComponent(s3Key);
+    
+    // If the URL has .mp4 but the actual file is .mov, try the original .mov file first
+    if (actualS3Key.endsWith('.mp4')) {
+      const movS3Key = actualS3Key.replace(/\.mp4$/i, '.mov');
+      try {
+        // Try to generate signed URL for .mov file first
+        const signedUrl = await s3Service.getSignedVideoUrl(movS3Key, 3600);
+        return res.redirect(signedUrl);
+      } catch (error) {
+        // If .mov doesn't exist, try the .mp4 version
+        console.log('MOV file not found, trying MP4 version:', error);
+      }
+    }
+    
+    // Generate a signed URL for the S3 object
+    const signedUrl = await s3Service.getSignedVideoUrl(actualS3Key, 3600);
+    
+    // Redirect to the signed URL
+    return res.redirect(signedUrl);
+  } catch (error: any) {
+    console.error('Error proxying video file:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to serve video file',
       error: error.message
     });
   }

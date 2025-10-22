@@ -365,13 +365,27 @@ export interface CreateVideoAvatarWithFilesRequest {
 export interface CreateVideoAvatarResponse {
   avatar_id: string;
   avatar_group_id: string;
+  status?: string;
+  message?: string;
+  preview_image_url?: string;
+  preview_video_url?: string;
+  default_voice_id?: string;
+  avatar_name?: string;
+  error?: string;
 }
 
 export interface VideoAvatarStatusResponse {
   avatar_id: string;
-  status: "in_progress" | "completed" | "failed";
+  status: "in_progress"| "training" | "ready" | "processing" | "completed" | "failed";
   avatar_group_id: string;
   error?: string;
+  message?: string;
+  loading?: boolean;
+  avatar_name?: string;
+  completedAt?: Date;
+  preview_image_url?: string;
+  preview_video_url?: string;
+  default_voice_id?: string;
   [key: string]: any; // For other avatar details
 }
 
@@ -409,7 +423,7 @@ export interface VideoAvatarData {
   avatar_name: string;
   training_footage_url: string;
   consent_statement_url: string;
-  status: "in_progress" | "completed" | "failed";
+  status: "processing" | "completed" | "failed";
   callback_id?: string;
   callback_url?: string;
   error?: string;

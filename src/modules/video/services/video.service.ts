@@ -243,6 +243,15 @@ export class VideoService {
               3600 // 1 hour
             );
             (video as any).downloadUrl = downloadResult.downloadUrl;
+
+            // 2️⃣ Generate streaming/view URL (.mp4 for playback)
+          const viewResult = await this.s3Service.createVideoViewUrl(
+            video.s3Key,
+            video.secretKey,
+            3600 // 1 hour
+          );
+          (video as any).videoUrl = viewResult.viewUrl;
+          console.log("Video view URL:", viewResult.viewUrl);
           } catch (s3Error) {
             console.error(
               `Error creating download URL for video ${video.videoId}:`,

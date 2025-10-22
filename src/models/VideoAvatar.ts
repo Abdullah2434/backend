@@ -7,10 +7,15 @@ export interface IVideoAvatar extends Document {
   avatar_name: string;
   training_footage_url: string;
   consent_statement_url: string;
-  status: 'in_progress' | 'completed' | 'failed';
+  status: 'processing' | 'completed' | 'failed';
   callback_id?: string;
   callback_url?: string;
   error?: string;
+  error_message?: string;
+  preview_image_url?: string;
+  preview_video_url?: string;
+  default_voice_id?: string;
+  heygen_response?: any;
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
@@ -48,8 +53,8 @@ const VideoAvatarSchema = new Schema<IVideoAvatar>({
   },
   status: {
     type: String,
-    enum: ['in_progress', 'completed', 'failed'],
-    default: 'in_progress',
+    enum: ['processing', 'completed', 'failed'],
+    default: 'processing',
     required: true
   },
   callback_id: {
@@ -62,6 +67,26 @@ const VideoAvatarSchema = new Schema<IVideoAvatar>({
   },
   error: {
     type: String,
+    required: false
+  },
+  error_message: {
+    type: String,
+    required: false
+  },
+  preview_image_url: {
+    type: String,
+    required: false
+  },
+  preview_video_url: {
+    type: String,
+    required: false
+  },
+  default_voice_id: {
+    type: String,
+    required: false
+  },
+  heygen_response: {
+    type: Schema.Types.Mixed,
     required: false
   },
   completedAt: {

@@ -1,13 +1,12 @@
 import crypto from 'crypto';
 import VideoAvatar, { IVideoAvatar } from '../models/VideoAvatar';
+import DefaultAvatar from '../models/avatar';
 import { getS3 } from './s3';
 import WebhookService from './webhook.service';
 import {
-  CreateVideoAvatarRequest,
   CreateVideoAvatarWithFilesRequest,
   CreateVideoAvatarResponse,
   VideoAvatarStatusResponse,
-  VideoAvatarCallbackPayload,
   VideoAvatarData,
   WebhookRequest
 } from '../types';
@@ -21,7 +20,9 @@ export class VideoAvatarService {
    */
   async createVideoAvatarWithFiles(
     request: CreateVideoAvatarWithFilesRequest,
-    urls?: { training_footage_url?: string; consent_statement_url?: string }
+    urls?: { training_footage_url?: string; consent_statement_url?: string },
+    userId?: string,
+    authToken?: string
   ): Promise<CreateVideoAvatarResponse> {
     try {
       // Generate unique avatar ID
@@ -33,22 +34,61 @@ export class VideoAvatarService {
 
       let trainingFootageUrl = urls?.training_footage_url;
       let consentStatementUrl = urls?.consent_statement_url;
+      let trainingFootageSignedUrl = trainingFootageUrl;
+      let consentStatementSignedUrl = consentStatementUrl;
 
       // Upload files to S3 if provided
       if (request.training_footage_file) {
-        trainingFootageUrl = await this.uploadFileToS3(
+        const result = await this.uploadFileToS3WithSignedUrl(
           request.training_footage_file,
           avatar_id,
           'training_footage'
         );
+        trainingFootageUrl = this.s3Service.getVideoUrl(result.s3Key);
+        trainingFootageSignedUrl = result.signedUrl;
       }
 
       if (request.consent_statement_file) {
-        consentStatementUrl = await this.uploadFileToS3(
+        const result = await this.uploadFileToS3WithSignedUrl(
           request.consent_statement_file,
           avatar_id,
           'consent_statement'
         );
+        consentStatementUrl = this.s3Service.getVideoUrl(result.s3Key);
+        consentStatementSignedUrl = result.signedUrl;
+      }
+
+      // Handle existing S3 URLs - generate signed URLs for external access
+      if (urls?.training_footage_url && !request.training_footage_file) {
+        const isS3Url = (u: string) =>
+          /\.amazonaws\.com\//.test(u) ||
+          (process.env.AWS_S3_BUCKET ? u.includes(process.env.AWS_S3_BUCKET) : false);
+
+        if (isS3Url(trainingFootageUrl!)) {
+          // Extract S3 key from URL and generate view URL
+          const s3Key = this.extractS3KeyFromUrl(trainingFootageUrl!);
+          if (s3Key) {
+            trainingFootageSignedUrl = await this.s3Service.createVideoAvatarViewUrl(s3Key, 86400);
+          }
+        } else {
+          trainingFootageSignedUrl = trainingFootageUrl;
+        }
+      }
+
+      if (urls?.consent_statement_url && !request.consent_statement_file) {
+        const isS3Url = (u: string) =>
+          /\.amazonaws\.com\//.test(u) ||
+          (process.env.AWS_S3_BUCKET ? u.includes(process.env.AWS_S3_BUCKET) : false);
+
+        if (isS3Url(consentStatementUrl!)) {
+          // Extract S3 key from URL and generate view URL
+          const s3Key = this.extractS3KeyFromUrl(consentStatementUrl!);
+          if (s3Key) {
+            consentStatementSignedUrl = await this.s3Service.createVideoAvatarViewUrl(s3Key, 86400);
+          }
+        } else {
+          consentStatementSignedUrl = consentStatementUrl;
+        }
       }
 
       // Validate URLs are accessible (skip if they are S3 URLs we just uploaded)
@@ -64,44 +104,58 @@ export class VideoAvatarService {
         }
       }
 
-      // Create video avatar record
-      const videoAvatar = new VideoAvatar({
-        avatar_id,
-        avatar_group_id,
-        avatar_name: request.avatar_name,
-        training_footage_url: trainingFootageUrl!,
-        consent_statement_url: consentStatementUrl!,
-        status: 'in_progress',
-        callback_id: request.callback_id,
-        callback_url: request.callback_url
-      });
 
-      await videoAvatar.save();
-
-      // Submit to Heygen if env is configured
+      // Submit to Heygen if env is configured and wait for completion
+      console.log(`🚀 Starting Heygen submission for avatar ${avatar_id}...`);
       try {
-        await this.submitToHeygen({
-          training_footage_url: trainingFootageUrl!,
-          consent_statement_url: consentStatementUrl!,
+        const finalResponse = await this.submitToHeygen({
+          training_footage_url: trainingFootageSignedUrl!,
+          video_consent_url: consentStatementSignedUrl!,
           avatar_name: request.avatar_name,
-          avatar_group_id,
           callback_id: request.callback_id,
           callback_url: request.callback_url,
-        })
-      } catch (e: any) {
-        console.error('Heygen submission failed (non-blocking):', e?.message || e)
+        }, userId, authToken)
+
+        console.log(`📋 Heygen submission completed for avatar ${avatar_id}:`, finalResponse);
+
+        // Return the final response from Heygen
+        if (finalResponse) {
+          console.log(`✅ Returning completed response for avatar ${avatar_id}`);
+          return {
+            avatar_id,
+            avatar_group_id,
+            status: finalResponse.data?.status || 'completed',
+            message: 'Avatar generation completed successfully!',
+            preview_image_url: finalResponse.data?.preview_image_url,
+            preview_video_url: finalResponse.data?.preview_video_url,
+            default_voice_id: finalResponse.data?.default_voice_id,
+            avatar_name: finalResponse.data?.avatar_name
+          };
+        }
+
+        console.log(`⚠️ No final response received for avatar ${avatar_id}, returning processing status`);
+        return {
+          avatar_id,
+          avatar_group_id,
+          status: 'processing',
+          message: 'Avatar generation started. Please check status using the avatar_id.'
+        };
+      } catch (pollingError: any) {
+        // Handle polling timeout or other errors
+        if (pollingError.message && pollingError.message.includes('Polling timeout')) {
+          console.error(`Avatar generation timed out after 5 minutes for ${avatar_id}`);
+          return {
+            avatar_id,
+            avatar_group_id,
+            status: 'failed',
+            message: 'Avatar generation timed out after 5 minutes. Please try again.',
+            error: 'Avatar generation timed out'
+          };
+        }
+        
+        // Re-throw other errors
+        throw pollingError;
       }
-
-      // Start avatar generation process asynchronously
-      this.processAvatarGeneration(avatar_id).catch(error => {
-        console.error(`Avatar generation failed for ${avatar_id}:`, error);
-        this.updateAvatarStatus(avatar_id, 'failed', error.message);
-      });
-
-      return {
-        avatar_id,
-        avatar_group_id
-      };
     } catch (error: any) {
       console.error('Error creating video avatar:', error);
       throw new Error(`Failed to create video avatar: ${error.message}`);
@@ -110,66 +164,6 @@ export class VideoAvatarService {
 
   /**
    * Create a new video avatar request (legacy method for URL-based requests)
-   */
-  async createVideoAvatar(request: CreateVideoAvatarRequest): Promise<CreateVideoAvatarResponse> {
-    try {
-      // Generate unique avatar ID
-      const avatar_id = `avatar_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-      
-      // Generate or use provided avatar group ID
-      const avatar_group_id = request.avatar_group_id || 
-        `group_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-
-      // Validate URLs are accessible
-      if (request.training_footage_url && request.consent_statement_url) {
-        await this.validateVideoUrls(request.training_footage_url, request.consent_statement_url);
-      }
-
-      // Create video avatar record
-      const videoAvatar = new VideoAvatar({
-        avatar_id,
-        avatar_group_id,
-        avatar_name: request.avatar_name,
-        training_footage_url: request.training_footage_url!,
-        consent_statement_url: request.consent_statement_url!,
-        status: 'in_progress',
-        callback_id: request.callback_id,
-        callback_url: request.callback_url
-      });
-
-      await videoAvatar.save();
-
-      // Submit to Heygen if env is configured
-      try {
-        await this.submitToHeygen({
-          training_footage_url: request.training_footage_url!,
-          consent_statement_url: request.consent_statement_url!,
-          avatar_name: request.avatar_name,
-          avatar_group_id,
-          callback_id: request.callback_id,
-          callback_url: request.callback_url,
-        })
-      } catch (e: any) {
-        console.error('Heygen submission failed (non-blocking):', e?.message || e)
-      }
-
-      // Start avatar generation process asynchronously
-      this.processAvatarGeneration(avatar_id).catch(error => {
-        console.error(`Avatar generation failed for ${avatar_id}:`, error);
-        this.updateAvatarStatus(avatar_id, 'failed', error.message);
-      });
-
-      return {
-        avatar_id,
-        avatar_group_id
-      };
-    } catch (error: any) {
-      console.error('Error creating video avatar:', error);
-      throw new Error(`Failed to create video avatar: ${error.message}`);
-    }
-  }
-
-  /**
    * Get avatar status by ID
    */
   async getAvatarStatus(avatar_id: string): Promise<VideoAvatarStatusResponse> {
@@ -236,13 +230,13 @@ export class VideoAvatarService {
   }
 
   /**
-   * Upload file to S3 and return the URL
+   * Upload file to S3 and return both S3 key and signed URL for external access
    */
-  private async uploadFileToS3(
+  private async uploadFileToS3WithSignedUrl(
     file: Express.Multer.File,
     avatarId: string,
     fileType: 'training_footage' | 'consent_statement'
-  ): Promise<string> {
+  ): Promise<{ s3Key: string; signedUrl: string }> {
     try {
       // Generate S3 key for the file
       const timestamp = Date.now();
@@ -263,8 +257,10 @@ export class VideoAvatarService {
         }
       );
 
-      // Return the S3 URL
-      return this.s3Service.getVideoUrl(s3Key);
+      // Generate view URL for external access (valid for 24 hours)
+      const viewUrl = await this.s3Service.createVideoAvatarViewUrl(s3Key, 86400);
+
+      return { s3Key, signedUrl: viewUrl };
     } catch (error: any) {
       console.error(`Error uploading ${fileType} to S3:`, error);
       throw new Error(`Failed to upload ${fileType} to S3: ${error.message}`);
@@ -309,20 +305,20 @@ export class VideoAvatarService {
    */
   private async submitToHeygen(payload: {
     training_footage_url: string
-    consent_statement_url: string
+    video_consent_url: string
     avatar_name: string
-    avatar_group_id?: string
     callback_id?: string
     callback_url?: string
-  }): Promise<void> {
+  }, userId?: string, authToken?: string): Promise<any> {
     const baseUrl = process.env.HEYGEN_BASE_URL
     const apiKey = process.env.HEYGEN_API_KEY
     if (!baseUrl || !apiKey) {
       console.log('HEYGEN_BASE_URL/HEYGEN_API_KEY not set; skipping Heygen submission')
       return
     }
-    const url = `${baseUrl.replace(/\/$/, '')}/v2/video_avatar`
-
+    const url = `${baseUrl.replace(/\/$/, '')}/video_avatar`
+    console.log('Heygen submission URL:', url)
+    console.log('Heygen submission payload:', payload)
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -331,40 +327,124 @@ export class VideoAvatarService {
       },
       body: JSON.stringify(payload),
     })
-
+    console.log(JSON?.stringify(res,null,2))
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(`Heygen responded ${res.status}: ${text}`)
     }
 
-    const data = await res.json().catch(() => ({}))
-    console.log('Heygen submission ok:', data)
+    const data = await res.json().catch(() => ({})) as any
+    console.log('Heygen response data:', JSON.stringify(data, null, 2));
+    
+    // Get user information using auth service if userId is not provided
+    let finalUserId = userId;
+    if (!finalUserId && authToken) {
+      try {
+        const authService = new (await import("../modules/auth/services/auth.service")).default();
+        const user = await authService.getCurrentUser(authToken);
+        if (user) {
+          finalUserId = user._id.toString();
+          console.log('Got userId from auth service:', finalUserId);
+        }
+      } catch (error: any) {
+        console.error('Error getting user from auth service:', error);
+      }
+    }
+    
+    // Handle different status scenarios
+    console.log('Checking Heygen response status:', data?.data?.status);
+    console.log('Avatar ID from Heygen:', data?.data?.avatar_id);
+    
+    if (data?.data?.avatar_id) {
+      console.log(`Starting polling for avatar ${data.data.avatar_id} as status is processing`);
+      const finalResponse = await this.startAvatarStatusPolling(data.data.avatar_id, authToken, finalUserId);
+      console.log('Polling completed with final response:', finalResponse);
+      return finalResponse;
+    } else {
+      // No avatar_id in response, return the original data
+      console.log('No avatar_id in Heygen response, returning original data');
+      return data;
+    }
   }
 
   /**
-   * Process avatar generation (simulated)
+   * Start polling Heygen API every 10 seconds for avatar status
    */
-  private async processAvatarGeneration(avatar_id: string): Promise<void> {
-    try {
-      console.log(`Starting avatar generation for ${avatar_id}`);
-      
-      // Simulate processing time (in real implementation, this would call external service)
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      // Simulate success (in real implementation, this would be based on actual processing result)
-      const success = Math.random() > 0.1; // 90% success rate for simulation
-      
-      if (success) {
-        await this.updateAvatarStatus(avatar_id, 'completed');
-        console.log(`Avatar generation completed for ${avatar_id}`);
-      } else {
-        await this.updateAvatarStatus(avatar_id, 'failed', 'Avatar generation failed due to processing error');
-        console.log(`Avatar generation failed for ${avatar_id}`);
-      }
-    } catch (error: any) {
-      console.error(`Avatar generation error for ${avatar_id}:`, error);
-      await this.updateAvatarStatus(avatar_id, 'failed', error.message);
+  private async startAvatarStatusPolling(avatarId: string, authToken?: string, userId?: string): Promise<any> {
+    const baseUrl = process.env.HEYGEN_BASE_URL;
+    const apiKey = process.env.HEYGEN_API_KEY;
+    
+    if (!baseUrl || !apiKey) {
+      console.log('HEYGEN_BASE_URL/HEYGEN_API_KEY not set; skipping polling');
+      return null;
     }
+
+    const url = `${baseUrl.replace(/\/$/, '')}/video_avatar/${avatarId}`;
+    console.log(`Starting polling for avatar ${avatarId}:`, url);
+
+    return new Promise((resolve, reject) => {
+      const pollInterval = setInterval(async () => {
+        try {
+          console.log(`Polling Heygen API for avatar ${avatarId}...`);
+          
+          const heygenRes = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+            },
+          });
+
+          if (!heygenRes.ok) {
+            console.error(`Heygen API polling error for ${avatarId}: ${heygenRes.status}`);
+            return;
+          }
+
+          const heygenData = await heygenRes.json().catch(() => ({})) as any;
+          console.log(`Heygen polling response for ${avatarId}:`, heygenData);
+
+          // Update local database with Heygen response
+          if (heygenData && Object.keys(heygenData).length > 0) {
+            // await this.updateAvatarFromHeygenResponse(avatarId, heygenData, userId);
+            
+            console.log(`Avatar ${avatarId} current status: ${heygenData.status}`);
+            
+            // Stop polling if status is completed or failed
+            if (heygenData.data.status === 'completed' || heygenData.data.status === 'failed') {
+              console.log(`✅ Avatar ${avatarId} status is ${heygenData.status}, stopping polling`);
+              console.log(`Final response saved for avatar ${avatarId}:`, heygenData);
+              const defaultAvatar = new DefaultAvatar({
+                avatar_id: avatarId,
+                avatar_name: heygenData?.data?.avatar_name,
+                default: true,
+                preview_image_url: heygenData?.data?.preview_image_url,
+                preview_video_url: heygenData?.data?.preview_video_url,
+                userId: userId,
+                status: 'training'
+              });
+                    await defaultAvatar.save();
+              clearInterval(pollInterval);
+              resolve(heygenData); // Resolve with final response
+            } else {
+              console.log(`⏳ Avatar ${avatarId} status is ${heygenData.status}, continuing polling...`);
+            }
+          } else {
+            console.log(`⚠️ No valid response data for avatar ${avatarId}, continuing polling...`);
+          }
+        } catch (error: any) {
+          console.error(`Error polling Heygen API for avatar ${avatarId}:`, error);
+          clearInterval(pollInterval);
+          reject(error);
+        }
+      }, 10000); // Poll every 10 seconds
+
+      // Stop polling after 5 minutes to prevent infinite polling
+      setTimeout(() => {
+        console.log(`Stopping polling for avatar ${avatarId} after 5 minutes`);
+        clearInterval(pollInterval);
+        reject(new Error(`Polling timeout for avatar ${avatarId} after 5 minutes`));
+      }, 10 * 60 * 1000); // 5 minutes timeout
+    });
   }
 
   /**
@@ -395,6 +475,21 @@ export class VideoAvatarService {
       }
     } catch (error: any) {
       console.error(`Error sending callback for avatar ${avatar.avatar_id}:`, error);
+    }
+  }
+
+  /**
+   * Extract S3 key from S3 URL
+   */
+  private extractS3KeyFromUrl(url: string): string | null {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Remove leading slash and return the key
+      return pathname.startsWith('/') ? pathname.slice(1) : pathname;
+    } catch (error) {
+      console.error('Error extracting S3 key from URL:', error);
+      return null;
     }
   }
 
