@@ -9,7 +9,7 @@ router.post('/delete', ctrl.deleteVideo)
 router.get('/download-proxy', ctrl.downloadProxy)
 router.get('/avatars', ctrl.getAvatars)
 router.get('/voices', ctrl.getVoices)
-router.post('/photo-avatar', ctrl.createPhotoAvatarUpload, ctrl.createPhotoAvatar)
+router.post('/photo-avatar', ctrl.createPhotoAvatarUpload as any, ctrl.createPhotoAvatar)
 router.get('/pending-workflows/:userId', ctrl.checkPendingWorkflows)
 
 // PUBLIC ROUTES (no authentication required)

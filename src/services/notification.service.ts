@@ -39,7 +39,14 @@ class NotificationService {
     status: "progress" | "success" | "error",
     data?: any
   ) {
+    // Generate unique notification ID for this avatar creation process
+    const notificationId =
+      data?.avatarId ||
+      data?.avatar_id ||
+      `avatar-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     this.notifyUser(userId, "photo-avatar-update", {
+      notificationId, // Add unique ID to prevent overlapping notifications
       step,
       status,
       data,

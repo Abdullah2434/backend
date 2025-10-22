@@ -1,8 +1,9 @@
 
 import VideoService from "./video.service";
-import { VideoCompleteData, WebhookResult } from "../types";
+import { VideoCompleteData, WebhookResult, WebhookRequest, WebhookResponse, VideoAvatarCallbackPayload } from "../types";
 import VideoScheduleService from "./videoSchedule.service";
 import AutoSocialPostingService from "./autoSocialPosting.service";
+import * as crypto from "crypto";
 
 export class WebhookService {
   private videoService: VideoService;
@@ -104,6 +105,21 @@ export class WebhookService {
   }
 
   /**
+   * Validate user token (placeholder implementation)
+   */
+  private async validateUserToken(token: string): Promise<any> {
+    // This is a placeholder implementation
+    // In a real application, you would validate the JWT token here
+    console.log('Validating user token:', token);
+    return {
+      id: 'user123',
+      email: 'user@example.com',
+      firstName: 'John',
+      lastName: 'Doe'
+    };
+  }
+
+  /**
    * Process webhook with user authentication
    */
   async processWebhookWithAuth(
@@ -132,8 +148,37 @@ export class WebhookService {
     }
   }
 
-      // If video is completed, store captions and auto-post
-      if (finalStatus === "ready" && updatedVideo) {
+  /**
+   * Handle video completion webhook
+   */
+  async handleVideoComplete(data: VideoCompleteData): Promise<WebhookResult> {
+    const { videoId, status, scheduleId, trendIndex } = data;
+    let finalStatus = status;
+    let updatedVideo = null;
+
+    try {
+      // Update video status in database
+      if (videoId) {
+        updatedVideo = await this.videoService.updateVideoStatus(videoId, status as "processing" | "ready" | "failed");
+        console.log(`Video ${videoId} status updated to: ${status}`);
+      }
+
+      // Handle scheduled video completion
+      if (scheduleId && trendIndex !== undefined) {
+        console.log(
+          `🎬 Processing scheduled video completion: ${videoId} for schedule ${scheduleId}, trend ${trendIndex}`
+        );
+
+        // Update schedule status
+        await this.videoScheduleService.updateVideoStatus(
+          scheduleId,
+          trendIndex,
+          finalStatus as "completed" | "failed",
+          videoId
+        );
+
+        // If video is completed, store captions and auto-post
+        if (finalStatus === "ready" && updatedVideo) {
         try {
           // Get the schedule to retrieve captions
           const VideoSchedule = require("../models/VideoSchedule").default;
@@ -246,12 +291,31 @@ export class WebhookService {
         }
       }
     }
+
+    return {
+      success: true,
+      message: 'Video completion processed successfully',
+      data: {
+        videoId,
+        status: finalStatus,
+        scheduleId,
+        trendIndex
+      }
+    };
+  } catch (error: any) {
+    console.error('Error processing video completion:', error);
+    return {
+      success: false,
+      message: `Video completion processing failed: ${error.message}`,
+      data: null
+    };
+  }
   }
 
   /**
    * Handle video completion webhook (legacy method for v1 compatibility)
    */
-  async handleVideoComplete(data: any): Promise<any> {
+  async handleVideoCompleteLegacy(data: any): Promise<any> {
     try {
       const { videoId, status = 'ready', s3Key, metadata, error } = data;
       
@@ -283,6 +347,14 @@ export class WebhookService {
         status: finalStatus,
       },
     };
+  } catch (error: any) {
+    console.error('Error processing legacy video completion:', error);
+    return {
+      success: false,
+      message: `Video completion processing failed: ${error.message}`,
+      data: null
+    };
+  }
   }
 }
 

@@ -2,7 +2,7 @@
 import { Request, Response } from "express";
 import WebhookService from "../services/webhook.service";
 import VideoScheduleService from "../services/videoSchedule.service";
-import { WebhookResult, ApiResponse } from "../types";
+import { WebhookResult, ApiResponse, WebhookRequest } from "../types";
 import WorkflowHistory from "../models/WorkflowHistory";
 import { notificationService } from "../services/notification.service";
 
@@ -224,7 +224,7 @@ export async function getWebhookStatus(req: Request, res: Response) {
 export async function videoComplete(req: Request, res: Response) {
   try {
     console.log('Video complete webhook received:', req.body);
-    const { videoId, status, s3Key, metadata, error } = req.body;
+    const { videoId, status, s3Key, metadata, error, scheduleId, trendIndex, captions } = req.body;
     
     const result = await webhookService.handleVideoComplete({
       videoId,
