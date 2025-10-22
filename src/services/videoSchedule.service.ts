@@ -5,8 +5,11 @@ import { VideoService } from "../modules/video/services/video.service";
 import ScheduleEmailService, {
   ScheduleEmailData,
   VideoGeneratedEmailData,
+  VideoProcessingEmailData,
 } from "./scheduleEmail.service";
 import CaptionGenerationService from "./captionGeneration.service";
+import TimezoneService from "../utils/timezone";
+import { notificationService } from "./notification.service";
 
 export interface ScheduleData {
   frequency: "once_week" | "twice_week" | "three_week" | "daily";
@@ -53,9 +56,12 @@ export class VideoScheduleService {
     }
 
     // Set default duration to one month from start date
-    const startDate = new Date(scheduleData.startDate);
+    const startDate = scheduleData.startDate; // Already converted to UTC in controller
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1); // Add one month
+
+    console.log(`📅 Schedule start date (UTC): ${startDate.toISOString()}`);
+    console.log(`📅 Schedule end date (UTC): ${endDate.toISOString()}`);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = this.calculateNumberOfVideos(
@@ -64,13 +70,91 @@ export class VideoScheduleService {
       endDate
     );
 
-    // Generate trends for the schedule
-    const trends = await generateRealEstateTrends();
-    const selectedTrends = trends.slice(0, numberOfVideos);
+    // Generate trends for the schedule - ensure we have enough for the full month
+    // Generate trends in chunks of 5 to avoid API limits
+    console.log(
+      `🎬 Generating ${numberOfVideos} unique trends in chunks of 5...`
+    );
+
+    const allTrends = [];
+    const chunkSize = 5;
+    const totalChunks = Math.ceil(numberOfVideos / chunkSize);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const remainingTrends = numberOfVideos - allTrends.length;
+      const currentChunkSize = Math.min(chunkSize, remainingTrends);
+
+      console.log(
+        `📦 Generating chunk ${
+          i + 1
+        }/${totalChunks} (${currentChunkSize} trends)...`
+      );
+
+      try {
+        const chunkTrends = await generateRealEstateTrends(
+          currentChunkSize,
+          0,
+          i
+        );
+
+        if (!chunkTrends || chunkTrends.length === 0) {
+          throw new Error(`Failed to generate trends for chunk ${i + 1}`);
+        }
+
+        // Accept partial results if we got at least some trends
+        if (chunkTrends.length < currentChunkSize) {
+          console.warn(
+            `⚠️ Chunk ${i + 1}: Requested ${currentChunkSize} trends but got ${
+              chunkTrends.length
+            } trends`
+          );
+        }
+
+        // Validate chunk trends
+        const invalidTrends = chunkTrends.filter(
+          (trend: any) =>
+            !trend.description ||
+            !trend.keypoints ||
+            !trend.instagram_caption ||
+            !trend.facebook_caption ||
+            !trend.linkedin_caption ||
+            !trend.twitter_caption ||
+            !trend.tiktok_caption ||
+            !trend.youtube_caption
+        );
+
+        if (invalidTrends.length > 0) {
+          throw new Error(
+            `Chunk ${i + 1} has ${
+              invalidTrends.length
+            } trends with missing required fields`
+          );
+        }
+
+        allTrends.push(...chunkTrends);
+        console.log(
+          `✅ Chunk ${i + 1} completed: ${chunkTrends.length} valid trends`
+        );
+
+        // Add a small delay between chunks to avoid rate limiting
+        if (i < totalChunks - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`❌ Error in chunk ${i + 1}:`, error);
+        throw new Error(
+          `Failed to generate trends in chunk ${i + 1}. Please try again.`
+        );
+      }
+    }
+
+    console.log(
+      `✅ Generated ${allTrends.length} valid trends from OpenAI in ${totalChunks} chunks`
+    );
 
     // Create scheduled trends
     const generatedTrends = this.createScheduledTrends(
-      selectedTrends,
+      allTrends,
       scheduleData,
       startDate,
       endDate
@@ -100,6 +184,7 @@ export class VideoScheduleService {
         startDate: startDate,
         endDate: endDate,
         totalVideos: numberOfVideos,
+        timezone: scheduleData.timezone, // Add timezone for email display
         schedule: scheduleData.schedule,
         videos: generatedTrends.map((trend) => ({
           description: trend.description,
@@ -213,17 +298,428 @@ export class VideoScheduleService {
   }
 
   /**
-   * Get pending videos for processing
+   * Update individual post in a schedule
+   */
+  async updateSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string,
+    updateData: {
+      description?: string;
+      keypoints?: string;
+      scheduledFor?: Date;
+      instagram_caption?: string;
+      facebook_caption?: string;
+      linkedin_caption?: string;
+      twitter_caption?: string;
+      tiktok_caption?: string;
+      youtube_caption?: string;
+    }
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Only allow editing if post is still pending
+    if (post.status !== "pending") {
+      throw new Error("Can only edit pending posts");
+    }
+
+    // Update the post fields
+    if (updateData.description !== undefined) {
+      post.description = updateData.description;
+    }
+    if (updateData.keypoints !== undefined) {
+      post.keypoints = updateData.keypoints;
+    }
+    if (updateData.scheduledFor !== undefined) {
+      post.scheduledFor = updateData.scheduledFor;
+    }
+    if (updateData.instagram_caption !== undefined) {
+      post.instagram_caption = updateData.instagram_caption;
+    }
+    if (updateData.facebook_caption !== undefined) {
+      post.facebook_caption = updateData.facebook_caption;
+    }
+    if (updateData.linkedin_caption !== undefined) {
+      post.linkedin_caption = updateData.linkedin_caption;
+    }
+    if (updateData.twitter_caption !== undefined) {
+      post.twitter_caption = updateData.twitter_caption;
+    }
+    if (updateData.tiktok_caption !== undefined) {
+      post.tiktok_caption = updateData.tiktok_caption;
+    }
+    if (updateData.youtube_caption !== undefined) {
+      post.youtube_caption = updateData.youtube_caption;
+    }
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `✅ Updated post ${postIndex} in schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Update individual post in a schedule by post ID
+   */
+  async updateSchedulePostById(
+    scheduleId: string,
+    postId: string,
+    userId: string,
+    updateData: {
+      description?: string;
+      keypoints?: string;
+      scheduledFor?: Date;
+      instagram_caption?: string;
+      facebook_caption?: string;
+      linkedin_caption?: string;
+      twitter_caption?: string;
+      tiktok_caption?: string;
+      youtube_caption?: string;
+    }
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    // Parse post ID to get index
+    const parts = postId.split("_");
+    if (parts.length !== 2) {
+      throw new Error("Invalid post ID format");
+    }
+
+    const postIndex = parseInt(parts[1]);
+    if (
+      isNaN(postIndex) ||
+      postIndex < 0 ||
+      postIndex >= schedule.generatedTrends.length
+    ) {
+      throw new Error("Post not found");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Only allow editing if post is still pending
+    if (post.status !== "pending") {
+      throw new Error("Can only edit pending posts");
+    }
+
+    // Update the post fields
+    if (updateData.description !== undefined) {
+      post.description = updateData.description;
+    }
+    if (updateData.keypoints !== undefined) {
+      post.keypoints = updateData.keypoints;
+    }
+    if (updateData.scheduledFor !== undefined) {
+      post.scheduledFor = updateData.scheduledFor;
+    }
+    if (updateData.instagram_caption !== undefined) {
+      post.instagram_caption = updateData.instagram_caption;
+    }
+    if (updateData.facebook_caption !== undefined) {
+      post.facebook_caption = updateData.facebook_caption;
+    }
+    if (updateData.linkedin_caption !== undefined) {
+      post.linkedin_caption = updateData.linkedin_caption;
+    }
+    if (updateData.twitter_caption !== undefined) {
+      post.twitter_caption = updateData.twitter_caption;
+    }
+    if (updateData.tiktok_caption !== undefined) {
+      post.tiktok_caption = updateData.tiktok_caption;
+    }
+    if (updateData.youtube_caption !== undefined) {
+      post.youtube_caption = updateData.youtube_caption;
+    }
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `✅ Updated post ${postId} in schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Delete individual post from a schedule
+   */
+  async deleteSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Allow deleting posts in any status (pending, completed, processing, failed)
+    // This gives users flexibility to clean up their schedule
+    console.log(`🗑️ Deleting post with status: ${post.status}`);
+
+    // Remove the post from the array
+    schedule.generatedTrends.splice(postIndex, 1);
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `🗑️ Deleted post ${postIndex} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Delete individual post from a schedule by post ID
+   */
+  async deleteSchedulePostById(
+    scheduleId: string,
+    postId: string,
+    userId: string
+  ): Promise<IVideoSchedule | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    // Parse post ID to get index
+    const parts = postId.split("_");
+    if (parts.length !== 2) {
+      throw new Error("Invalid post ID format");
+    }
+
+    const postIndex = parseInt(parts[1]);
+    if (
+      isNaN(postIndex) ||
+      postIndex < 0 ||
+      postIndex >= schedule.generatedTrends.length
+    ) {
+      throw new Error("Post not found");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    // Allow deleting posts in any status (pending, completed, processing, failed)
+    // This gives users flexibility to clean up their schedule
+    console.log(`🗑️ Deleting post with status: ${post.status}`);
+
+    // Remove the post from the array
+    schedule.generatedTrends.splice(postIndex, 1);
+
+    // Save the updated schedule
+    await schedule.save();
+
+    console.log(
+      `🗑️ Deleted post ${postId} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
+    );
+
+    return schedule;
+  }
+
+  /**
+   * Get a single post from a schedule
+   */
+  async getSchedulePost(
+    scheduleId: string,
+    postIndex: number,
+    userId: string
+  ): Promise<{
+    schedule: IVideoSchedule;
+    post: any;
+    postIndex: number;
+  } | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
+      throw new Error("Post index out of range");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    return {
+      schedule,
+      post,
+      postIndex,
+    };
+  }
+
+  /**
+   * Get a single post from a schedule by post ID
+   */
+  async getSchedulePostById(
+    scheduleId: string,
+    postId: string,
+    userId: string
+  ): Promise<{
+    schedule: IVideoSchedule;
+    post: any;
+    postIndex: number;
+  } | null> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    // Parse post ID to get index
+    const parts = postId.split("_");
+    if (parts.length !== 2) {
+      throw new Error("Invalid post ID format");
+    }
+
+    const postIndex = parseInt(parts[1]);
+    if (
+      isNaN(postIndex) ||
+      postIndex < 0 ||
+      postIndex >= schedule.generatedTrends.length
+    ) {
+      throw new Error("Post not found");
+    }
+
+    const post = schedule.generatedTrends[postIndex];
+    if (!post) {
+      throw new Error("Post not found");
+    }
+
+    return {
+      schedule,
+      post,
+      postIndex,
+    };
+  }
+
+  /**
+   * Delete entire schedule
+   */
+  async deleteEntireSchedule(
+    scheduleId: string,
+    userId: string
+  ): Promise<boolean> {
+    const schedule = await VideoSchedule.findOne({
+      _id: scheduleId,
+      userId,
+      isActive: true,
+    });
+
+    if (!schedule) {
+      throw new Error("Schedule not found or not active");
+    }
+
+    // Delete the entire schedule document
+    await VideoSchedule.findByIdAndDelete(scheduleId);
+
+    console.log(`🗑️ Deleted entire schedule ${scheduleId} for user ${userId}`);
+
+    return true;
+  }
+
+  /**
+   * Helper method to calculate days until target day
+   */
+  private getDaysUntilTargetDay(currentDay: string, targetDay: string): number {
+    const daysOfWeek = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const currentIndex = daysOfWeek.indexOf(currentDay);
+    const targetIndex = daysOfWeek.indexOf(targetDay);
+
+    if (targetIndex > currentIndex) {
+      return targetIndex - currentIndex;
+    } else if (targetIndex < currentIndex) {
+      return 7 - (currentIndex - targetIndex);
+    } else {
+      return 7; // Same day, move to next week
+    }
+  }
+
+  /**
+   * Get pending videos for processing (30 minutes early)
    */
   async getPendingVideos(): Promise<IVideoSchedule[]> {
     const now = new Date();
-    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
 
     return await VideoSchedule.find({
       isActive: true,
       "generatedTrends.scheduledFor": {
         $gte: now,
-        $lte: oneHourFromNow,
+        $lte: thirtyMinutesFromNow,
       },
       "generatedTrends.status": "pending",
     });
@@ -250,6 +746,37 @@ export class VideoScheduleService {
     // Update status to processing
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
+
+    // Send processing started email
+    try {
+      const processingEmailData: VideoProcessingEmailData = {
+        userEmail: schedule.email,
+        scheduleId: schedule._id.toString(),
+        videoTitle: trend.description,
+        videoDescription: trend.description,
+        videoKeypoints: trend.keypoints,
+        startedAt: new Date(),
+        timezone: schedule.timezone, // Add timezone for email display
+      };
+
+      await this.emailService.sendVideoProcessingEmail(processingEmailData);
+    } catch (emailError) {
+      console.error("Error sending video processing email:", emailError);
+      // Don't fail the processing if email fails
+    }
+
+    // Send socket notification - Video processing started
+    notificationService.notifyScheduledVideoProgress(
+      schedule.userId.toString(),
+      "video-creation",
+      "progress",
+      {
+        message: `Scheduled video "${trend.description}" is being created`,
+        scheduleId: scheduleId,
+        trendIndex: trendIndex,
+        videoTitle: trend.description,
+      }
+    );
 
     try {
       // Generate social media captions using OpenAI
@@ -281,13 +808,14 @@ export class VideoScheduleService {
         avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
         avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
-        title: `${trend.description} - ${new Date().toLocaleDateString()}`,
+        title: trend.description,
         // Store captions for later retrieval (not sent to webhook)
         _captions: captions,
       };
 
       // ==================== STEP 1: CREATE VIDEO (PROMPT GENERATION) ====================
       console.log("🎬 Step 1: Creating video (prompt generation)...");
+      console.log("📋 API Endpoint: POST /api/video/create");
 
       // Get gender from avatar settings
       const DefaultAvatar = require("../models/avatar").default;
@@ -331,37 +859,125 @@ export class VideoScheduleService {
         trendIndex: trendIndex,
       };
 
+      // Call Step 1: Create Video API endpoint (same as manual)
+      console.log("🔄 Step 1: Calling Create Video API...");
+      console.log(
+        "📋 Request Body:",
+        JSON.stringify(videoCreationData, null, 2)
+      );
+
+      let enhancedContent: any = null;
+      try {
+        enhancedContent = await this.callCreateVideoAPI(videoCreationData);
+        console.log("✅ Step 1: Create Video API completed successfully");
+        console.log(
+          "📋 Enhanced content received:",
+          JSON.stringify(enhancedContent, null, 2)
+        );
+
+        // Validate that we have the required enhanced content
+        if (
+          !enhancedContent ||
+          !enhancedContent.hook ||
+          !enhancedContent.body ||
+          !enhancedContent.conclusion
+        ) {
+          throw new Error(
+            "Enhanced content is incomplete or missing from first API response"
+          );
+        }
+      } catch (error: any) {
+        console.error("❌ Step 1: Create Video API failed:", error);
+        throw new Error(`Create Video API failed: ${error.message}`);
+      }
+
+      // Wait a moment between API calls
+      console.log("⏳ Waiting 2 seconds before Step 2...");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // ==================== STEP 2: GENERATE VIDEO (VIDEO CREATION) ====================
       console.log("🎬 Step 2: Generating video (video creation)...");
+      console.log("📋 API Endpoint: POST /api/video/generate-video");
 
-      // Step 2: Prepare data for video generation API (same format as manual)
-      const { _captions, ...webhookVideoData } = videoData;
+      // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
       const videoGenerationData = {
-        ...webhookVideoData,
+        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
+        body: enhancedContent.body, // ONLY use enhanced body from Step 1
+        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        company_name: userSettings.companyName,
+        social_handles: userSettings.socialHandles,
+        license: userSettings.license,
+        avatar_title: userSettings.titleAvatar,
+        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
+        avatar_conclusion: userSettings.conclusionAvatar,
+        email: userSettings.email,
+        title: trend.description,
         voice: voice_id,
         isDefault: avatarDoc?.default,
         timestamp: new Date().toISOString(),
         isScheduled: true,
         scheduleId: scheduleId,
         trendIndex: trendIndex,
+        // Store captions for later retrieval (not sent to webhook)
+        _captions: captions,
       };
 
-      // Call Step 1: Create Video API endpoint (same as manual)
-      await this.callCreateVideoAPI(videoCreationData);
-
       // Call Step 2: Generate Video API endpoint (same as manual)
-      await this.callGenerateVideoAPI(videoGenerationData);
-
-      // Log processing start (no WebSocket notification)
+      console.log("🔄 Step 2: Calling Generate Video API...");
       console.log(
-        `🎬 Processing scheduled video: "${trend.description}" for user ${schedule.userId}`
+        "📋 Request Body:",
+        JSON.stringify(videoGenerationData, null, 2)
+      );
+      try {
+        await this.callGenerateVideoAPI(videoGenerationData);
+        console.log("✅ Step 2: Generate Video API completed successfully");
+      } catch (error: any) {
+        console.error("❌ Step 2: Generate Video API failed:", error);
+        throw new Error(`Generate Video API failed: ${error.message}`);
+      }
+
+      // Log processing completion
+      console.log("🎉 Both API calls completed successfully!");
+      console.log(
+        `🎬 Scheduled video processing initiated: "${trend.description}" for user ${schedule.userId}`
+      );
+      console.log(
+        "📱 Video will be processed and auto-posted to social media when ready"
+      );
+
+      // Send socket notification - Video creation initiated successfully
+      notificationService.notifyScheduledVideoProgress(
+        schedule.userId.toString(),
+        "video-creation",
+        "success",
+        {
+          message: `Video "${trend.description}" creation initiated successfully`,
+          scheduleId: scheduleId,
+          trendIndex: trendIndex,
+          videoTitle: trend.description,
+          nextStep: "Video will be processed and auto-posted when ready",
+        }
       );
     } catch (error: any) {
       console.error("Error processing scheduled video:", error);
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
 
-      // Log failure (no WebSocket notification)
+      // Send socket notification - Video creation failed
+      notificationService.notifyScheduledVideoProgress(
+        schedule.userId.toString(),
+        "video-creation",
+        "error",
+        {
+          message: `Failed to create video "${trend.description}": ${error.message}`,
+          scheduleId: scheduleId,
+          trendIndex: trendIndex,
+          videoTitle: trend.description,
+          error: error.message,
+        }
+      );
+
+      // Log failure
       console.error(
         `❌ Failed to process scheduled video "${trend.description}" for user ${schedule.userId}:`,
         error.message
@@ -372,11 +988,17 @@ export class VideoScheduleService {
   /**
    * Call Step 1: Create Video API endpoint (same as manual)
    */
-  private async callCreateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:4000";
+  private async callCreateVideoAPI(data: any): Promise<any> {
+    const baseUrl =
+      process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const createVideoUrl = `${baseUrl}/api/video/create`;
 
-    return new Promise<void>((resolve, reject) => {
+    console.log("🌐 Making API call to create video...");
+    console.log(`📋 URL: ${createVideoUrl}`);
+    console.log(`📋 Method: POST`);
+    console.log(`📋 Headers: Content-Type: application/json`);
+
+    return new Promise<any>((resolve, reject) => {
       const https = require("https");
       const http = require("http");
       const url = require("url");
@@ -402,9 +1024,61 @@ export class VideoScheduleService {
             responseData += chunk;
           });
           res.on("end", () => {
+            console.log(
+              `📋 Step 1: Create Video API Response Status: ${res.statusCode}`
+            );
+            console.log(
+              `📋 Step 1: Create Video API Response Body:`,
+              responseData
+            );
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
               console.log("✅ Step 1: Create Video API called successfully");
-              resolve();
+
+              // Parse the response to extract enhanced content
+              try {
+                const response = JSON.parse(responseData);
+
+                // Extract enhanced content from webhookResponse (URL-encoded)
+                const webhookResponse = response.data?.webhookResponse;
+                if (webhookResponse) {
+                  const enhancedContent = {
+                    hook: decodeURIComponent(webhookResponse.hook || "")
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
+                      .trim(),
+                    body: decodeURIComponent(webhookResponse.body || "")
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
+                      .trim(),
+                    conclusion: decodeURIComponent(
+                      webhookResponse.conclusion || ""
+                    )
+                      .replace(/\\n\\n/g, " ")
+                      .replace(/\n\n/g, " ")
+                      .replace(/\\n/g, " ")
+                      .replace(/\n/g, " ")
+                      .trim(),
+                  };
+                  console.log(
+                    "📋 Extracted enhanced content:",
+                    enhancedContent
+                  );
+                  resolve(enhancedContent);
+                } else {
+                  console.warn("⚠️ No webhookResponse found in API response");
+                  resolve(null);
+                }
+              } catch (parseError) {
+                console.warn(
+                  "⚠️ Could not parse enhanced content from response, using fallback"
+                );
+                resolve(null);
+              }
             } else {
               console.error(
                 `❌ Step 1: Create Video API failed with status ${res.statusCode}:`,
@@ -418,6 +1092,8 @@ export class VideoScheduleService {
 
       request.on("error", (error: any) => {
         console.error("❌ Step 1: Create Video API request failed:", error);
+        console.error(`📋 Error details: ${error.message}`);
+        console.error(`📋 Error code: ${error.code}`);
         reject(error);
       });
 
@@ -430,8 +1106,14 @@ export class VideoScheduleService {
    * Call Step 2: Generate Video API endpoint (same as manual)
    */
   private async callGenerateVideoAPI(data: any): Promise<void> {
-    const baseUrl = process.env.API_BASE_URL || "http://localhost:4000";
+    const baseUrl =
+      process.env.API_BASE_URL || "https://backend.edgeairealty.com";
     const generateVideoUrl = `${baseUrl}/api/video/generate-video`;
+
+    console.log("🌐 Making API call to generate video...");
+    console.log(`📋 URL: ${generateVideoUrl}`);
+    console.log(`📋 Method: POST`);
+    console.log(`📋 Headers: Content-Type: application/json`);
 
     return new Promise<void>((resolve, reject) => {
       const https = require("https");
@@ -459,6 +1141,14 @@ export class VideoScheduleService {
             responseData += chunk;
           });
           res.on("end", () => {
+            console.log(
+              `📋 Step 2: Generate Video API Response Status: ${res.statusCode}`
+            );
+            console.log(
+              `📋 Step 2: Generate Video API Response Body:`,
+              responseData
+            );
+
             if (res.statusCode >= 200 && res.statusCode < 300) {
               console.log("✅ Step 2: Generate Video API called successfully");
               resolve();
@@ -475,6 +1165,8 @@ export class VideoScheduleService {
 
       request.on("error", (error: any) => {
         console.error("❌ Step 2: Generate Video API request failed:", error);
+        console.error(`📋 Error details: ${error.message}`);
+        console.error(`📋 Error code: ${error.code}`);
         reject(error);
       });
 
@@ -525,6 +1217,7 @@ export class VideoScheduleService {
             generatedAt: new Date(),
             videoId: videoId,
             isLastVideo: isLastVideo,
+            timezone: schedule.timezone, // Add timezone for email display
           };
 
           await this.emailService.sendVideoGeneratedEmail(emailData);
@@ -601,7 +1294,8 @@ export class VideoScheduleService {
   }
 
   /**
-   * Calculate number of videos needed
+   * Calculate number of videos needed based on frequency and duration
+   * Ensures we calculate for the full month period
    */
   private calculateNumberOfVideos(
     frequency: string,
@@ -613,22 +1307,43 @@ export class VideoScheduleService {
     );
     const weeks = Math.ceil(daysDiff / 7);
 
+    console.log(`📊 Calculating videos for ${frequency}:`);
+    console.log(
+      `📅 Period: ${startDate.toISOString()} to ${endDate.toISOString()}`
+    );
+    console.log(`📅 Days: ${daysDiff}, Weeks: ${weeks}`);
+
+    let numberOfVideos = 0;
+
     switch (frequency) {
       case "once_week":
-        return weeks;
+        numberOfVideos = weeks;
+        console.log(`📊 Once per week: ${numberOfVideos} videos`);
+        break;
       case "twice_week":
-        return weeks * 2;
+        numberOfVideos = weeks * 2;
+        console.log(`📊 Twice per week: ${numberOfVideos} videos`);
+        break;
       case "three_week":
-        return weeks * 3;
+        numberOfVideos = weeks * 3;
+        console.log(`📊 Three times per week: ${numberOfVideos} videos`);
+        break;
       case "daily":
-        return daysDiff;
+        numberOfVideos = daysDiff;
+        console.log(`📊 Daily: ${numberOfVideos} videos`);
+        break;
       default:
-        return 1;
+        numberOfVideos = 1;
+        console.log(`📊 Default: ${numberOfVideos} videos`);
     }
+
+    console.log(`📊 Total videos to generate: ${numberOfVideos}`);
+    return numberOfVideos;
   }
 
   /**
    * Create scheduled trends with proper timing
+   * Handles edge case: if scheduled time is less than 40 minutes away, skip that day
    */
   private createScheduledTrends(
     trends: any[],
@@ -637,12 +1352,162 @@ export class VideoScheduleService {
     endDate: Date
   ): any[] {
     const scheduledTrends = [];
-    const { frequency, schedule } = scheduleData;
+    const { frequency, schedule, timezone } = scheduleData;
 
     let currentDate = new Date(startDate);
     let trendIndex = 0;
+    const now = new Date();
 
-    while (currentDate <= endDate && trendIndex < trends.length) {
+    console.log(
+      `📅 Creating scheduled trends from ${startDate.toISOString()} to ${endDate.toISOString()}`
+    );
+    console.log(`🕐 Current time: ${now.toISOString()}`);
+    console.log(`🌍 User timezone: ${timezone}`);
+
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.toLocaleDateString("en-US", {
+        weekday: "long",
+      });
+
+      console.log(
+        `📅 Checking date: ${currentDate.toISOString()} (${dayOfWeek})`
+      );
+
+      // Check if this day should have a video
+      let shouldSchedule = false;
+      let timeIndex = 0;
+
+      if (frequency === "daily") {
+        shouldSchedule = true;
+        timeIndex = 0;
+      } else {
+        const dayIndex = schedule.days.findIndex((day) => day === dayOfWeek);
+        if (dayIndex !== -1) {
+          shouldSchedule = true;
+          timeIndex = dayIndex;
+        }
+      }
+
+      if (shouldSchedule) {
+        const [hours, minutes] = schedule.times[timeIndex]
+          .split(":")
+          .map(Number);
+
+        // Create the scheduled time by combining the current date with the scheduled time
+        // in the user's timezone, then convert to UTC
+        const dateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+        const timeString = `${hours.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}:00`;
+        const localDateTime = `${dateString} ${timeString}`;
+
+        // Convert from user's timezone to UTC (avoid double-conversion, and skip if timezone is UTC)
+        const finalScheduledTime =
+          timezone === "UTC"
+            ? new Date(`${dateString}T${timeString}Z`)
+            : TimezoneService.ensureUTCDate(localDateTime, timezone);
+
+        console.log(`📅 Local datetime: ${localDateTime} (${timezone})`);
+        console.log(
+          `📅 Final scheduled time (UTC): ${finalScheduledTime.toISOString()}`
+        );
+
+        // Edge case handling: Check if scheduled time is less than 40 minutes away
+        const shouldSkipDay = this.shouldSkipScheduledDay(
+          finalScheduledTime,
+          now,
+          dayOfWeek,
+          schedule.times[timeIndex]
+        );
+
+        if (shouldSkipDay) {
+          // Skip this day, move to next day
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Use unique trend (no cycling since we have exactly the number needed)
+        const trendToUse = trends[trendIndex];
+
+        if (!trendToUse) {
+          console.log(
+            `📊 No more trends available at index ${trendIndex}. Total trends: ${trends.length}`
+          );
+          console.log(
+            `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
+          );
+          break; // Stop creating more posts when we run out of trends
+        }
+
+        // Validate that the trend has all required fields
+        if (
+          !trendToUse.description ||
+          !trendToUse.keypoints ||
+          !trendToUse.instagram_caption ||
+          !trendToUse.facebook_caption ||
+          !trendToUse.linkedin_caption ||
+          !trendToUse.twitter_caption ||
+          !trendToUse.tiktok_caption ||
+          !trendToUse.youtube_caption
+        ) {
+          console.error(
+            `❌ Invalid trend data at index ${trendIndex}:`,
+            trendToUse
+          );
+          throw new Error(
+            `Trend at index ${trendIndex} is missing required fields`
+          );
+        }
+
+        scheduledTrends.push({
+          ...trendToUse,
+          scheduledFor: finalScheduledTime, // Use UTC time
+          status: "pending",
+        });
+
+        trendIndex++;
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    console.log(
+      `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
+    );
+    console.log(
+      `📊 Used ${Math.min(
+        scheduledTrends.length,
+        trends.length
+      )} unique trends (no cycling)`
+    );
+    return scheduledTrends;
+  }
+
+  /**
+   * Create immediate scheduled posts for frequency updates
+   * Only creates posts for the next few upcoming schedule slots
+   */
+  private createImmediateScheduledPosts(
+    trends: any[],
+    scheduleData: ScheduleData,
+    startDate: Date
+  ): any[] {
+    const scheduledTrends = [];
+    const { frequency, schedule } = scheduleData;
+    let trendIndex = 0;
+    const now = new Date();
+
+    console.log(
+      `📅 Creating immediate scheduled posts from ${startDate.toISOString()}`
+    );
+    console.log(`📊 Available trends: ${trends.length}`);
+
+    // Create posts for the next few upcoming schedule slots
+    let currentDate = new Date(startDate);
+    let postsCreated = 0;
+    const maxPostsToCreate = Math.min(trends.length, 10); // Limit to reasonable number
+
+    while (postsCreated < maxPostsToCreate && trendIndex < trends.length) {
       const dayOfWeek = currentDate
         .toLocaleDateString("en-US", { weekday: "long" })
         .toLowerCase();
@@ -668,22 +1533,81 @@ export class VideoScheduleService {
         const [hours, minutes] = schedule.times[timeIndex]
           .split(":")
           .map(Number);
-        const scheduledTime = new Date(currentDate);
-        scheduledTime.setHours(hours, minutes, 0, 0);
+
+        const finalScheduledTime = new Date(currentDate);
+        finalScheduledTime.setUTCHours(hours, minutes, 0, 0);
+
+        // Skip if the time is too close to now
+        const timeDiff = finalScheduledTime.getTime() - now.getTime();
+        if (timeDiff < 40 * 60 * 1000) {
+          // Less than 40 minutes
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        const trendToUse = trends[trendIndex];
+        if (!trendToUse) {
+          console.log(`📊 No more trends available at index ${trendIndex}`);
+          break;
+        }
 
         scheduledTrends.push({
-          ...trends[trendIndex],
-          scheduledFor: scheduledTime,
+          ...trendToUse,
+          scheduledFor: finalScheduledTime,
           status: "pending",
         });
 
         trendIndex++;
+        postsCreated++;
+        console.log(
+          `📅 Created post ${postsCreated} for ${dayOfWeek} at ${finalScheduledTime.toISOString()}`
+        );
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
+    console.log(
+      `📊 Created ${scheduledTrends.length} immediate scheduled posts`
+    );
     return scheduledTrends;
+  }
+
+  /**
+   * Check if a scheduled day should be skipped based on edge case rules
+   * Skips if scheduled time is less than 40 minutes away from current time
+   */
+  private shouldSkipScheduledDay(
+    scheduledTime: Date,
+    currentTime: Date,
+    dayOfWeek: string,
+    scheduledTimeString: string
+  ): boolean {
+    const timeDiff = scheduledTime.getTime() - currentTime.getTime();
+    const minutesUntilScheduled = timeDiff / (1000 * 60); // Convert to minutes
+
+    console.log(
+      `📅 Checking ${dayOfWeek} ${scheduledTimeString}: ${minutesUntilScheduled.toFixed(
+        1
+      )} minutes until scheduled time`
+    );
+
+    // Edge case: If scheduled time is less than 40 minutes away, skip this day
+    if (minutesUntilScheduled < 40) {
+      console.log(
+        `⏰ Skipping ${dayOfWeek} ${scheduledTimeString} - less than 40 minutes away (${minutesUntilScheduled.toFixed(
+          1
+        )} minutes)`
+      );
+      return true;
+    }
+
+    console.log(
+      `✅ Scheduling ${dayOfWeek} ${scheduledTimeString} - ${minutesUntilScheduled.toFixed(
+        1
+      )} minutes away`
+    );
+    return false;
   }
 }
 

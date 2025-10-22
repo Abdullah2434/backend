@@ -44,7 +44,14 @@ app.use(
   cors({
     origin: "*", // or whitelist your frontends for production
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "x-timezone",
+      "timezone",
+      "X-Timezone",
+    ],
     credentials: false,
   })
 );

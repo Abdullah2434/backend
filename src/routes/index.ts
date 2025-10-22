@@ -13,6 +13,8 @@ import userSettingsRoutes from "./v1/user-settings";
 import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 import videoScheduleRoutes from "./v1/videoSchedule";
 import videoAvatarRoutes from "./v2/videoAvatar";
+import scheduleRoutes from "./v1/schedule";
+import cronHealthRoutes from "./v1/cronHealth";
 
 const router = Router();
 
@@ -33,5 +35,8 @@ router.use("/video-schedule", videoScheduleRoutes);
 
 // V2 API Routes
 router.use("/v2", videoAvatarRoutes);
+router.use("/schedule", scheduleRoutes);
+router.use("/cron", cronHealthRoutes);
+router.use("/webhook", webhookRoutes);
 
 export default router;

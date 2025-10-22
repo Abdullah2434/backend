@@ -46,7 +46,34 @@ export class TimezoneService {
    * Convert UTC time to local timezone
    */
   static convertFromUTC(utcTime: Date, timezone: string): string {
-    return moment(utcTime).tz(timezone).format("HH:mm");
+    return moment(utcTime).tz(timezone).format("YYYY-MM-DD HH:mm:ss");
+  }
+
+  /**
+   * Convert local datetime string to UTC Date
+   */
+  static convertLocalDateTimeToUTC(
+    localDateTime: string,
+    timezone: string
+  ): Date {
+    // If already an ISO string with timezone (e.g., ends with Z or +05:00), don't re-interpret as local
+    if (TimezoneService.isISOWithZone(localDateTime)) {
+      return new Date(localDateTime);
+    }
+
+    const momentTime = moment.tz(
+      localDateTime,
+      "YYYY-MM-DD HH:mm:ss",
+      timezone
+    );
+    return momentTime.utc().toDate();
+  }
+
+  /**
+   * Convert UTC Date to local datetime string
+   */
+  static convertUTCToLocalDateTime(utcTime: Date, timezone: string): string {
+    return moment(utcTime).tz(timezone).format("YYYY-MM-DD HH:mm:ss");
   }
 
   /**
@@ -71,6 +98,33 @@ export class TimezoneService {
       const utcTime = this.convertToUTC(time, timezone);
       return moment(utcTime).format("HH:mm");
     });
+  }
+
+  /**
+   * Detect if a datetime string already contains a timezone designator
+   * Examples: 2024-01-15T09:00:00Z, 2024-01-15T09:00:00+05:00
+   */
+  static isISOWithZone(value: string): boolean {
+    if (typeof value !== "string") return false;
+    return /Z$|[+-]\d{2}:?\d{2}$/.test(value);
+  }
+
+  /**
+   * Ensure a value is a UTC Date without double conversion.
+   * - If Date instance: assume already UTC-compatible and return new Date(date).
+   * - If ISO string with zone: new Date(value).
+   * - Otherwise: treat as local datetime string in provided timezone and convert to UTC.
+   */
+  static ensureUTCDate(value: string | Date, timezone: string): Date {
+    if (value instanceof Date) {
+      return new Date(value.getTime());
+    }
+
+    if (TimezoneService.isISOWithZone(value)) {
+      return new Date(value);
+    }
+
+    return TimezoneService.convertLocalDateTimeToUTC(value, timezone);
   }
 
   /**

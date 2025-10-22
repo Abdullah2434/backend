@@ -1,53 +1,18 @@
-import crypto from 'crypto';
-import User from '../models/User';
-import AuthService from './auth.service';
-import VideoService from './video.service';
-import {
-  WebhookRequest,
-  WebhookResponse,
-  VideoAvatarCallbackPayload
-} from '../types';
+
+import VideoService from "./video.service";
+import { VideoCompleteData, WebhookResult } from "../types";
+import VideoScheduleService from "./videoSchedule.service";
+import AutoSocialPostingService from "./autoSocialPosting.service";
 
 export class WebhookService {
-  private authService = new AuthService();
-  private videoService = new VideoService();
+  private videoService: VideoService;
+  private videoScheduleService: VideoScheduleService;
+  private autoSocialPostingService: AutoSocialPostingService;
 
-  /**
-   * Validate user token and get user information
-   */
-  async validateUserToken(token: string): Promise<any> {
-    try {
-      if (!token) {
-        throw new Error('Token is required');
-      }
-
-      // Remove 'Bearer ' prefix if present
-      const cleanToken = token.replace(/^Bearer\s+/i, '');
-      
-      // Verify the JWT token
-      const payload = this.authService.verifyToken(cleanToken);
-      
-      if (!payload || !payload.userId) {
-        throw new Error('Invalid token: missing user information');
-      }
-
-      // Get user from database
-      const user = await User.findById(payload.userId).select('-password');
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      return {
-        id: user._id.toString(),
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName
-      };
-    } catch (error: any) {
-      console.error('Error validating user token:', error);
-      throw new Error(`Token validation failed: ${error.message}`);
-    }
+  constructor() {
+    this.videoService = new VideoService();
+    this.videoScheduleService = new VideoScheduleService();
+    this.autoSocialPostingService = new AutoSocialPostingService();
   }
 
   /**
@@ -167,26 +132,119 @@ export class WebhookService {
     }
   }
 
-  /**
-   * Test webhook endpoint
-   */
-  async testWebhook(webhookUrl: string, userToken?: string): Promise<WebhookResponse> {
-    try {
-      const testPayload: WebhookRequest = {
-        avatar_id: 'test_avatar_123',
-        status: 'completed',
-        avatar_group_id: 'test_group_456',
-        callback_id: 'test_callback_789'
-      };
+      // If video is completed, store captions and auto-post
+      if (finalStatus === "ready" && updatedVideo) {
+        try {
+          // Get the schedule to retrieve captions
+          const VideoSchedule = require("../models/VideoSchedule").default;
+          const schedule = await VideoSchedule.findById(scheduleId);
 
-      return await this.processWebhookWithAuth(webhookUrl, testPayload, userToken);
-    } catch (error: any) {
-      console.error('Error testing webhook:', error);
-      return {
-        success: false,
-        message: `Webhook test failed: ${error.message}`,
-        data: null
-      };
+          if (schedule && schedule.generatedTrends[trendIndex]) {
+            const trend = schedule.generatedTrends[trendIndex];
+
+            // Use existing captions from schedule instead of generating new ones
+            console.log("📋 Using existing captions from schedule database...");
+            console.log("📋 Available captions in schedule:");
+            console.log(
+              `  📱 Instagram: ${
+                trend.instagram_caption ? "Available" : "Missing"
+              }`
+            );
+            console.log(
+              `  📱 Facebook: ${
+                trend.facebook_caption ? "Available" : "Missing"
+              }`
+            );
+            console.log(
+              `  📱 LinkedIn: ${
+                trend.linkedin_caption ? "Available" : "Missing"
+              }`
+            );
+            console.log(
+              `  📱 Twitter: ${trend.twitter_caption ? "Available" : "Missing"}`
+            );
+            console.log(
+              `  📱 TikTok: ${trend.tiktok_caption ? "Available" : "Missing"}`
+            );
+            console.log(
+              `  📱 YouTube: ${trend.youtube_caption ? "Available" : "Missing"}`
+            );
+
+            // Store captions from schedule in video record
+            const captionsFromSchedule = {
+              instagram_caption: trend.instagram_caption,
+              facebook_caption: trend.facebook_caption,
+              linkedin_caption: trend.linkedin_caption,
+              twitter_caption: trend.twitter_caption,
+              tiktok_caption: trend.tiktok_caption,
+              youtube_caption: trend.youtube_caption,
+            };
+
+            await this.videoService.updateVideoCaptions(
+              videoId,
+              captionsFromSchedule
+            );
+            console.log(
+              `✅ Captions from schedule stored for video ${videoId}`
+            );
+
+            // Auto post to social media platforms
+            try {
+              console.log(
+                `🚀 Starting auto social media posting for scheduled video ${videoId}`
+              );
+              console.log(`📋 Video URL: ${updatedVideo.videoUrl}`);
+              console.log(`📋 Video Title: ${trend.description}`);
+              console.log(`📋 User ID: ${schedule.userId}`);
+              console.log(`📋 Schedule ID: ${scheduleId}`);
+              console.log(`📋 Trend Index: ${trendIndex}`);
+
+              const postingResults =
+                await this.autoSocialPostingService.postVideoToSocialMedia({
+                  userId: schedule.userId.toString(),
+                  scheduleId: scheduleId,
+                  trendIndex: trendIndex,
+                  videoUrl: updatedVideo.videoUrl,
+                  videoTitle: trend.description,
+                });
+
+              console.log(`📱 Auto social posting results:`, postingResults);
+
+              // Log posting results
+              const successfulPosts = postingResults.filter((r) => r.success);
+              const failedPosts = postingResults.filter((r) => !r.success);
+
+              if (successfulPosts.length > 0) {
+                console.log(
+                  `✅ Successfully posted to ${successfulPosts.length} platforms:`,
+                  successfulPosts.map((r) => r.accountName).join(", ")
+                );
+              }
+
+              if (failedPosts.length > 0) {
+                console.log(
+                  `❌ Failed to post to ${failedPosts.length} platforms:`,
+                  failedPosts
+                    .map((r) => `${r.accountName} (${r.error})`)
+                    .join(", ")
+                );
+              }
+            } catch (postingError) {
+              console.error(
+                `❌ Error in auto social media posting for video ${videoId}:`,
+                postingError
+              );
+              // Don't fail the webhook if social posting fails
+            }
+          }
+        } catch (captionError) {
+          console.error(
+            `❌ Error storing captions for video ${videoId}:`,
+            captionError
+          );
+          // Don't fail the webhook if caption storage fails
+        }
+      }
     }
   }
 
@@ -215,26 +273,16 @@ export class WebhookService {
         await this.videoService.updateVideoMetadata(videoId, metadata);
       }
 
-      // Update S3 key if provided (log for now)
-      if (s3Key && s3Key !== updatedVideo.s3Key) {
-        console.log(`Video complete webhook: S3 key updated for video ${videoId}`);
-      }
-
-      console.log(`Video complete webhook: Successfully updated video ${videoId} to status ${finalStatus}`);
-
-      return {
-        success: true,
-        message: 'Video status updated successfully',
-        data: {
-          videoId: updatedVideo.videoId,
-          status: updatedVideo.status,
-          updatedAt: updatedVideo.updatedAt
-        }
-      };
-    } catch (error: any) {
-      console.error('Error handling video complete webhook:', error);
-      throw error;
-    }
+    return {
+      success: true,
+      message: `Video ${
+        finalStatus === "ready" ? "completed" : "failed"
+      } successfully`,
+      data: {
+        videoId,
+        status: finalStatus,
+      },
+    };
   }
 }
 

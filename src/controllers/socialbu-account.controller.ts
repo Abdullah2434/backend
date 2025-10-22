@@ -61,6 +61,25 @@ export const disconnectAccount = async (req: Request, res: Response, token: stri
       });
     }
 
+    // Call SocialBu API to disconnect the account
+    try {
+      const socialBuService = (await import("../services/socialbu.service")).default;
+      const socialBuResult = await socialBuService.makeAuthenticatedRequest(
+        'DELETE',
+        `/accounts/${accountIdNumber}`
+      );
+      
+      if (!socialBuResult.success) {
+        console.warn(`Failed to disconnect account ${accountIdNumber} from SocialBu:`, socialBuResult.message);
+        // Continue with local disconnection even if SocialBu API fails
+      } else {
+        console.log(`Account ${accountIdNumber} successfully disconnected from SocialBu`);
+      }
+    } catch (socialBuError) {
+      console.error('Error calling SocialBu API to disconnect account:', socialBuError);
+      // Continue with local disconnection even if SocialBu API fails
+    }
+
     // Remove the account from user's connected accounts
     const removeResult = await webhookService.removeUserSocialBuAccount(userId, accountIdNumber);
 
