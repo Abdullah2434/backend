@@ -49,6 +49,7 @@ const AUTH_ROUTES = {
     "/video-schedule/schedule/details",
     "/video-schedule/schedule/stats",
     "/video-schedule/schedule/:scheduleId",
+    "/api/v2/video_avatar",
   ],
 
   // Video routes (auth required)
@@ -127,6 +128,7 @@ export function authenticate() {
 
     // Validate token and extract user
     const user = await extractUserFromToken(accessToken);
+    console.log(`🔐 Auth Middleware: Extracted user for ${path}:`, user);
     if (!user) {
       console.log(`🔐 Auth Middleware: Invalid access token for ${path}`);
       return res.status(401).json({
@@ -142,6 +144,7 @@ export function authenticate() {
       firstName: user.firstName,
       lastName: user.lastName,
     };
+    console.log(`🔐 Auth Middleware: Set req.user for ${path}:`, req.user);
 
     console.log(`🔐 Auth Middleware: Authentication successful for ${path}`);
     next();

@@ -1,3 +1,4 @@
+
 import { Request, Response } from "express";
 import WebhookService from "../services/webhook.service";
 import VideoScheduleService from "../services/videoSchedule.service";
@@ -7,7 +8,71 @@ import { notificationService } from "../services/notification.service";
 
 const webhookService = new WebhookService();
 
-export async function videoComplete(req: Request, res: Response) {
+/**
+ * Custom webhook endpoint for video avatar notifications
+ * POST /v2/webhook/avatar
+ */
+export async function avatarWebhook(req: Request, res: Response) {
+  try {
+    const {
+      avatar_id,
+      status,
+      avatar_group_id,
+      callback_id,
+      user_id
+    } = req.body;
+
+    // Validate required fields
+    if (!avatar_id || !status || !avatar_group_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: avatar_id, status, and avatar_group_id are required'
+      });
+    }
+
+    // Validate status
+    if (!['completed', 'failed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be "completed" or "failed"'
+      });
+    }
+
+    const webhookPayload: WebhookRequest = {
+      avatar_id,
+      status,
+      avatar_group_id,
+      callback_id,
+      user_id
+    };
+
+    // Get user token from headers
+    const userToken = req.headers.authorization;
+
+    // Process webhook with user authentication
+    const result = await webhookService.processWebhookWithAuth(
+      req.body.webhook_url || 'https://webhook.site/test',
+      webhookPayload,
+      userToken
+    );
+
+    return res.status(200).json(result);
+
+  } catch (error: any) {
+    console.error('Error processing avatar webhook:', error);
+    
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+}
+
+/**
+ * Test webhook endpoint
+ * POST /v2/webhook/test
+ */
+export async function testWebhook(req: Request, res: Response) {
   try {
     console.log("Video complete webhook received:", req.body);
 
@@ -81,6 +146,86 @@ export async function scheduledVideoComplete(req: Request, res: Response) {
     console.log(`  📋 Trend Index: ${trendIndex}`);
     console.log(`  📋 Error: ${error}`);
 
+  } catch (error: any) {
+    console.error('Error testing webhook:', error);
+    
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+}
+
+/**
+ * Verify webhook signature
+ * POST /v2/webhook/verify
+ */
+export async function verifyWebhook(req: Request, res: Response) {
+  try {
+    const { payload, signature } = req.body;
+
+    if (!payload || !signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'payload and signature are required'
+      });
+    }
+
+    const isValid = webhookService.verifyWebhookSignature(payload, signature);
+
+    return res.status(200).json({
+      success: true,
+      message: isValid ? 'Signature is valid' : 'Signature is invalid',
+      data: { isValid }
+    });
+
+  } catch (error: any) {
+    console.error('Error verifying webhook:', error);
+    
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+}
+
+/**
+ * Get webhook status
+ * GET /v2/webhook/status
+ */
+export async function getWebhookStatus(req: Request, res: Response) {
+  try {
+    return res.status(200).json({
+      success: true,
+      message: 'Webhook service is operational',
+      data: {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        features: [
+          'User authentication',
+          'Signature verification',
+          'Custom payloads',
+          'Error handling'
+        ]
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+}
+
+/**
+ * Video complete webhook (legacy function for v1 compatibility)
+ * POST /webhook/video-complete
+ */
+export async function videoComplete(req: Request, res: Response) {
+  try {
+    console.log('Video complete webhook received:', req.body);
+    const { videoId, status, s3Key, metadata, error } = req.body;
+    
     const result = await webhookService.handleVideoComplete({
       videoId,
       status,
@@ -103,12 +248,15 @@ export async function scheduledVideoComplete(req: Request, res: Response) {
   }
 }
 
+/**
+ * Handle workflow error (legacy function for v1 compatibility)
+ * POST /webhook/workflow-error
+ */
 export async function handleWorkflowError(req: Request, res: Response) {
   try {
     console.log("Workflow error webhook received:", req.body);
 
     const { errorMessage, executionId, scheduleId, trendIndex } = req.body;
-
     // Validate required fields
     if (!errorMessage || !executionId) {
       return res.status(400).json({

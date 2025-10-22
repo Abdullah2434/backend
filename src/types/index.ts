@@ -343,6 +343,95 @@ export interface LogEntry {
   metadata?: any;
 }
 
+// ==================== VIDEO AVATAR TYPES ====================
+export interface CreateVideoAvatarRequest {
+  training_footage_url?: string;
+  consent_statement_url?: string;
+  avatar_name: string;
+  avatar_group_id?: string;
+  callback_id?: string;
+  callback_url?: string;
+}
+
+export interface CreateVideoAvatarWithFilesRequest {
+  avatar_name: string;
+  avatar_group_id?: string;
+  callback_id?: string;
+  callback_url?: string;
+  training_footage_file?: Express.Multer.File;
+  consent_statement_file?: Express.Multer.File;
+}
+
+export interface CreateVideoAvatarResponse {
+  avatar_id: string;
+  avatar_group_id: string;
+  status?: string;
+  message?: string;
+  preview_image_url?: string;
+  preview_video_url?: string;
+  default_voice_id?: string;
+  avatar_name?: string;
+  error?: string;
+}
+
+export interface VideoAvatarStatusResponse {
+  avatar_id: string;
+  status: "in_progress"| "training" | "ready" | "processing" | "completed" | "failed";
+  avatar_group_id: string;
+  error?: string;
+  message?: string;
+  loading?: boolean;
+  avatar_name?: string;
+  completedAt?: Date;
+  preview_image_url?: string;
+  preview_video_url?: string;
+  default_voice_id?: string;
+  [key: string]: any; // For other avatar details
+}
+
+export interface VideoAvatarCallbackPayload {
+  avatar_id: string;
+  status: "completed" | "failed";
+  avatar_group_id: string;
+  callback_id?: string;
+  user_id?: string;
+  user?: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+}
+
+export interface WebhookRequest {
+  avatar_id: string;
+  status: "completed" | "failed";
+  avatar_group_id: string;
+  callback_id?: string;
+  user_id?: string;
+}
+
+export interface WebhookResponse {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+export interface VideoAvatarData {
+  avatar_id: string;
+  avatar_group_id: string;
+  avatar_name: string;
+  training_footage_url: string;
+  consent_statement_url: string;
+  status: "processing" | "completed" | "failed";
+  callback_id?: string;
+  callback_url?: string;
+  error?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date;
+}
+
 // ==================== ENVIRONMENT TYPES ====================
 export interface EnvironmentConfig {
   NODE_ENV: string;

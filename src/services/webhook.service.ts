@@ -1,3 +1,4 @@
+
 import VideoService from "./video.service";
 import { VideoCompleteData, WebhookResult } from "../types";
 import VideoScheduleService from "./videoSchedule.service";
@@ -15,62 +16,121 @@ export class WebhookService {
   }
 
   /**
-   * Handle video completion webhook
+   * Send webhook notification with user information
    */
-  async handleVideoComplete(data: VideoCompleteData): Promise<WebhookResult> {
-    const {
-      videoId,
-      status = "ready",
-      s3Key,
-      metadata,
-      error,
-      scheduleId,
-      trendIndex,
-      captions,
-    } = data;
+  async sendWebhookNotification(
+    webhookUrl: string,
+    payload: WebhookRequest,
+    user?: any
+  ): Promise<WebhookResponse> {
+    try {
+      const webhookPayload: VideoAvatarCallbackPayload = {
+        avatar_id: payload.avatar_id,
+        status: payload.status,
+        avatar_group_id: payload.avatar_group_id,
+        callback_id: payload.callback_id,
+        user_id: payload.user_id
+      };
 
-    if (!videoId) {
-      throw new Error("Video ID is required");
+      // Add user information if available
+      if (user) {
+        webhookPayload.user = {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName
+        };
+      }
+
+      console.log(`Sending webhook to ${webhookUrl}:`, webhookPayload);
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'VideoAvatar-Webhook/1.0',
+          'X-Webhook-Signature': this.generateWebhookSignature(webhookPayload)
+        },
+        body: JSON.stringify(webhookPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed: ${response.status} ${response.statusText}`);
+      }
+
+      const responseData = await response.json().catch(() => ({}));
+
+      return {
+        success: true,
+        message: 'Webhook sent successfully',
+        data: responseData
+      };
+    } catch (error: any) {
+      console.error('Error sending webhook:', error);
+      return {
+        success: false,
+        message: `Webhook failed: ${error.message}`,
+        data: null
+      };
     }
+  }
 
-    // If there's an error, mark video as failed
-    const finalStatus = error ? "failed" : status;
+  /**
+   * Generate webhook signature for security
+   */
+  private generateWebhookSignature(payload: any): string {
+    const secret = process.env.WEBHOOK_SECRET || 'default-webhook-secret';
+    const payloadString = JSON.stringify(payload);
+    return crypto
+      .createHmac('sha256', secret)
+      .update(payloadString)
+      .digest('hex');
+  }
 
-    // Update video status
-    const updatedVideo = await this.videoService.updateVideoStatus(
-      videoId,
-      finalStatus as any
-    );
-
-    if (!updatedVideo) {
-      throw new Error("Video not found");
-    }
-
-    // Update metadata if provided
-    if (metadata) {
-      await this.videoService.updateVideoMetadata(videoId, metadata);
-    }
-
-    // Update S3 key if provided (log for now)
-    if (s3Key && s3Key !== updatedVideo.s3Key) {
-      console.log(
-        `Video complete webhook: S3 key updated for video ${videoId}`
+  /**
+   * Verify webhook signature
+   */
+  verifyWebhookSignature(payload: any, signature: string): boolean {
+    try {
+      const expectedSignature = this.generateWebhookSignature(payload);
+      return crypto.timingSafeEqual(
+        Buffer.from(signature, 'hex'),
+        Buffer.from(expectedSignature, 'hex')
       );
+    } catch (error) {
+      console.error('Error verifying webhook signature:', error);
+      return false;
     }
+  }
 
-    // Handle scheduled video completion
-    if (scheduleId && trendIndex !== undefined) {
-      console.log(
-        `🎬 Processing scheduled video completion: ${videoId} for schedule ${scheduleId}, trend ${trendIndex}`
-      );
+  /**
+   * Process webhook with user authentication
+   */
+  async processWebhookWithAuth(
+    webhookUrl: string,
+    payload: WebhookRequest,
+    userToken?: string
+  ): Promise<WebhookResponse> {
+    try {
+      let user = null;
+      
+      // Validate user token if provided
+      if (userToken) {
+        user = await this.validateUserToken(userToken);
+        payload.user_id = user.id;
+      }
 
-      // Update schedule status
-      await this.videoScheduleService.updateVideoStatus(
-        scheduleId,
-        trendIndex,
-        finalStatus as "completed" | "failed",
-        videoId
-      );
+      // Send webhook notification
+      return await this.sendWebhookNotification(webhookUrl, payload, user);
+    } catch (error: any) {
+      console.error('Error processing webhook with auth:', error);
+      return {
+        success: false,
+        message: `Webhook processing failed: ${error.message}`,
+        data: null
+      };
+    }
+  }
 
       // If video is completed, store captions and auto-post
       if (finalStatus === "ready" && updatedVideo) {
@@ -186,25 +246,32 @@ export class WebhookService {
         }
       }
     }
+  }
 
-    // Handle custom video completion - store captions if provided
-    if (
-      finalStatus === "ready" &&
-      updatedVideo &&
-      captions &&
-      !updatedVideo.socialMediaCaptions
-    ) {
-      try {
-        await this.videoService.updateVideoCaptions(videoId, captions);
-        console.log(`✅ Captions stored for custom video ${videoId}`);
-      } catch (captionError) {
-        console.error(
-          `❌ Error storing captions for custom video ${videoId}:`,
-          captionError
-        );
-        // Don't fail the webhook if caption storage fails
+  /**
+   * Handle video completion webhook (legacy method for v1 compatibility)
+   */
+  async handleVideoComplete(data: any): Promise<any> {
+    try {
+      const { videoId, status = 'ready', s3Key, metadata, error } = data;
+      
+      if (!videoId) {
+        throw new Error('Video ID is required');
       }
-    }
+
+      // If there's an error, mark video as failed
+      const finalStatus = error ? 'failed' : status;
+
+      // Update video status
+      const updatedVideo = await this.videoService.updateVideoStatus(videoId, finalStatus);
+      if (!updatedVideo) {
+        throw new Error('Video not found');
+      }
+
+      // Update metadata if provided
+      if (metadata) {
+        await this.videoService.updateVideoMetadata(videoId, metadata);
+      }
 
     return {
       success: true,
