@@ -1,4 +1,5 @@
 import { EmailService } from "./email";
+import TimezoneService from "../utils/timezone";
 
 export interface ScheduleEmailData {
   userEmail: string;
@@ -8,6 +9,7 @@ export interface ScheduleEmailData {
   startDate: Date;
   endDate: Date;
   totalVideos: number;
+  timezone: string; // Add timezone for proper date/time conversion
   schedule: {
     days: string[];
     times: string[];
@@ -30,6 +32,18 @@ export interface VideoGeneratedEmailData {
   videoId?: string;
   isLastVideo: boolean;
   scheduleId: string;
+  timezone: string; // Add timezone for proper date/time conversion
+}
+
+export interface VideoProcessingEmailData {
+  userEmail: string;
+  userName?: string;
+  videoTitle: string;
+  videoDescription: string;
+  videoKeypoints: string;
+  startedAt: Date;
+  scheduleId: string;
+  timezone: string; // Add timezone for proper date/time conversion
 }
 
 class ScheduleEmailService {
@@ -50,6 +64,21 @@ class ScheduleEmailService {
     await this.emailService.send(data.userEmail, subject, html);
 
     console.log(`📧 Schedule created email sent to ${data.userEmail}`);
+  }
+
+  /**
+   * Send email when a video starts processing
+   */
+  async sendVideoProcessingEmail(
+    data: VideoProcessingEmailData
+  ): Promise<void> {
+    const subject = `🎬 Video Processing Started: ${data.videoTitle}`;
+
+    const html = this.generateVideoProcessingTemplate(data);
+
+    await this.emailService.send(data.userEmail, subject, html);
+
+    console.log(`📧 Video processing email sent to ${data.userEmail}`);
   }
 
   /**
@@ -74,6 +103,16 @@ class ScheduleEmailService {
     const frequencyText = this.getFrequencyText(data.frequency);
     const scheduleText = this.getScheduleText(data.schedule);
 
+    // Convert dates to user's timezone for display
+    const startDateLocal = TimezoneService.convertFromUTC(
+      data.startDate,
+      data.timezone
+    );
+    const endDateLocal = TimezoneService.convertFromUTC(
+      data.endDate,
+      data.timezone
+    );
+
     return `
       <!DOCTYPE html>
       <html>
@@ -97,9 +136,14 @@ class ScheduleEmailService {
             <div style="display: grid; gap: 10px;">
               <div><strong>Frequency:</strong> ${frequencyText}</div>
               <div><strong>Schedule:</strong> ${scheduleText}</div>
-              <div><strong>Start Date:</strong> ${data.startDate.toLocaleDateString()}</div>
-              <div><strong>End Date:</strong> ${data.endDate.toLocaleDateString()}</div>
+              <div><strong>Start Date:</strong> ${
+                startDateLocal.split(" ")[0]
+              }</div>
+              <div><strong>End Date:</strong> ${
+                endDateLocal.split(" ")[0]
+              }</div>
               <div><strong>Total Videos:</strong> ${data.totalVideos}</div>
+              <div><strong>Timezone:</strong> ${data.timezone}</div>
             </div>
           </div>
 
@@ -109,8 +153,14 @@ class ScheduleEmailService {
             <div style="display: grid; gap: 10px;">
               ${data.videos
                 .slice(0, 5)
-                .map(
-                  (video, index) => `
+                .map((video, index) => {
+                  // Convert scheduled time to user's timezone
+                  const scheduledLocal = TimezoneService.convertFromUTC(
+                    video.scheduledFor,
+                    data.timezone
+                  );
+                  const [datePart, timePart] = scheduledLocal.split(" ");
+                  return `
                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #5046E5;">
                   <div style="font-weight: bold; color: #282828; margin-bottom: 5px;">
                     Video ${index + 1}: ${video.description}
@@ -119,11 +169,11 @@ class ScheduleEmailService {
                     ${video.keypoints}
                   </div>
                   <div style="color: #5046E5; font-size: 14px; font-weight: bold;">
-                    📅 ${video.scheduledFor.toLocaleDateString()} at ${video.scheduledFor.toLocaleTimeString()}
+                    📅 ${datePart} at ${timePart} (${data.timezone})
                   </div>
                 </div>
-              `
-                )
+              `;
+                })
                 .join("")}
               ${
                 data.videos.length > 5
@@ -159,12 +209,91 @@ class ScheduleEmailService {
   }
 
   /**
+   * Generate video processing email template
+   */
+  private generateVideoProcessingTemplate(
+    data: VideoProcessingEmailData
+  ): string {
+    // Convert started time to user's timezone for display
+    const startedLocal = TimezoneService.convertFromUTC(
+      data.startedAt,
+      data.timezone
+    );
+    const [datePart, timePart] = startedLocal.split(" ");
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Video Processing Started</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+          
+          <!-- Header -->
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #5046E5; margin: 0; font-size: 28px;">🎬 Video Processing Started!</h1>
+            <p style="color: #667085; margin: 10px 0 0 0; font-size: 16px;">Your scheduled video is being created</p>
+          </div>
+
+          <!-- Video Details -->
+          <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h2 style="color: #282828; margin: 0 0 15px 0; font-size: 20px;">🎥 Video Details</h2>
+            <div style="display: grid; gap: 10px;">
+              <div><strong>Title:</strong> ${data.videoTitle}</div>
+              <div><strong>Description:</strong> ${data.videoDescription}</div>
+              <div><strong>Key Points:</strong> ${data.videoKeypoints}</div>
+              <div><strong>Processing Started:</strong> ${datePart} at ${timePart} (${data.timezone})</div>
+            </div>
+          </div>
+
+          <!-- Processing Info -->
+          <div style="background-color: #e8f4fd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="color: #282828; margin: 0 0 10px 0;">⏳ What's Happening Now?</h3>
+            <ul style="color: #667085; margin: 0; padding-left: 20px;">
+              <li>Your video is being generated using AI technology</li>
+              <li>This process typically takes 10-15 minutes</li>
+              <li>You'll receive another email when the video is ready</li>
+              <li>All your profile settings (avatar, voice, company info) are being applied</li>
+            </ul>
+          </div>
+
+          <!-- Next Steps -->
+          <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+            <h3 style="color: #856404; margin: 0 0 10px 0;">📧 What's Next?</h3>
+            <p style="color: #856404; margin: 0;">
+              You'll receive an email notification when your video is ready. No action needed from you right now!
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e5e5;">
+            <p style="color: #667085; margin: 0; font-size: 14px;">
+              Need help? Contact us at support@edgeai.com
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
    * Generate video generated email template
    */
   private generateVideoGeneratedTemplate(
     data: VideoGeneratedEmailData
   ): string {
     const isLastVideo = data.isLastVideo;
+
+    // Convert generated time to user's timezone for display
+    const generatedLocal = TimezoneService.convertFromUTC(
+      data.generatedAt,
+      data.timezone
+    );
+    const [datePart, timePart] = generatedLocal.split(" ");
 
     return `
       <!DOCTYPE html>
@@ -198,7 +327,9 @@ class ScheduleEmailService {
               <div><strong>Title:</strong> ${data.videoTitle}</div>
               <div><strong>Description:</strong> ${data.videoDescription}</div>
               <div><strong>Key Points:</strong> ${data.videoKeypoints}</div>
-              <div><strong>Generated:</strong> ${data.generatedAt.toLocaleDateString()} at ${data.generatedAt.toLocaleTimeString()}</div>
+              <div><strong>Generated:</strong> ${datePart} at ${timePart} (${
+      data.timezone
+    })</div>
               ${
                 data.videoId
                   ? `<div><strong>Video ID:</strong> ${data.videoId}</div>`

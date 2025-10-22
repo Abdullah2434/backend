@@ -5,6 +5,7 @@ import { VideoService } from "../modules/video/services/video.service";
 import ScheduleEmailService, {
   ScheduleEmailData,
   VideoGeneratedEmailData,
+  VideoProcessingEmailData,
 } from "./scheduleEmail.service";
 import CaptionGenerationService from "./captionGeneration.service";
 import TimezoneService from "../utils/timezone";
@@ -183,6 +184,7 @@ export class VideoScheduleService {
         startDate: startDate,
         endDate: endDate,
         totalVideos: numberOfVideos,
+        timezone: scheduleData.timezone, // Add timezone for email display
         schedule: scheduleData.schedule,
         videos: generatedTrends.map((trend) => ({
           description: trend.description,
@@ -745,6 +747,24 @@ export class VideoScheduleService {
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
+    // Send processing started email
+    try {
+      const processingEmailData: VideoProcessingEmailData = {
+        userEmail: schedule.email,
+        scheduleId: schedule._id.toString(),
+        videoTitle: trend.description,
+        videoDescription: trend.description,
+        videoKeypoints: trend.keypoints,
+        startedAt: new Date(),
+        timezone: schedule.timezone, // Add timezone for email display
+      };
+
+      await this.emailService.sendVideoProcessingEmail(processingEmailData);
+    } catch (emailError) {
+      console.error("Error sending video processing email:", emailError);
+      // Don't fail the processing if email fails
+    }
+
     // Send socket notification - Video processing started
     notificationService.notifyScheduledVideoProgress(
       schedule.userId.toString(),
@@ -1197,6 +1217,7 @@ export class VideoScheduleService {
             generatedAt: new Date(),
             videoId: videoId,
             isLastVideo: isLastVideo,
+            timezone: schedule.timezone, // Add timezone for email display
           };
 
           await this.emailService.sendVideoGeneratedEmail(emailData);
