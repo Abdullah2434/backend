@@ -223,14 +223,14 @@ export async function editSchedulePost(req: Request, res: Response) {
       });
     }
 
-    // Convert scheduledFor to UTC if provided
+    // Convert scheduledFor to UTC if provided (avoid double conversion if already UTC/ISO with zone)
     let scheduledForUTC = scheduledFor;
     if (scheduledFor) {
       try {
         // If it's a string, convert it to Date
         if (typeof scheduledFor === "string") {
-          // Convert user's local time to UTC using their timezone
-          scheduledForUTC = TimezoneService.convertLocalDateTimeToUTC(
+          // Convert user's local time to UTC using their timezone, unless the string already contains a timezone
+          scheduledForUTC = TimezoneService.ensureUTCDate(
             scheduledFor,
             timezone
           );
@@ -244,10 +244,7 @@ export async function editSchedulePost(req: Request, res: Response) {
             .replace("T", " ")
             .replace("Z", "")
             .split(".")[0];
-          scheduledForUTC = TimezoneService.convertLocalDateTimeToUTC(
-            dateString,
-            timezone
-          );
+          scheduledForUTC = TimezoneService.ensureUTCDate(dateString, timezone);
           console.log(
             `🕐 Converted Date object from ${timezone} to UTC: ${scheduledForUTC.toISOString()}`
           );

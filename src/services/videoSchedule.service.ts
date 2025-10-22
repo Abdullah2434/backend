@@ -1331,7 +1331,7 @@ export class VideoScheduleService {
     endDate: Date
   ): any[] {
     const scheduledTrends = [];
-    const { frequency, schedule } = scheduleData;
+    const { frequency, schedule, timezone } = scheduleData;
 
     let currentDate = new Date(startDate);
     let trendIndex = 0;
@@ -1341,6 +1341,7 @@ export class VideoScheduleService {
       `📅 Creating scheduled trends from ${startDate.toISOString()} to ${endDate.toISOString()}`
     );
     console.log(`🕐 Current time: ${now.toISOString()}`);
+    console.log(`🌍 User timezone: ${timezone}`);
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.toLocaleDateString("en-US", {
@@ -1371,14 +1372,23 @@ export class VideoScheduleService {
           .split(":")
           .map(Number);
 
-        // Schedule times are already converted to UTC in the controller
-        // No need for additional timezone conversion here
-        const finalScheduledTime = new Date(currentDate);
-        finalScheduledTime.setUTCHours(hours, minutes, 0, 0);
+        // Create the scheduled time by combining the current date with the scheduled time
+        // in the user's timezone, then convert to UTC
+        const dateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+        const timeString = `${hours.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}:00`;
+        const localDateTime = `${dateString} ${timeString}`;
 
+        // Convert from user's timezone to UTC (avoid double-conversion, and skip if timezone is UTC)
+        const finalScheduledTime =
+          timezone === "UTC"
+            ? new Date(`${dateString}T${timeString}Z`)
+            : TimezoneService.ensureUTCDate(localDateTime, timezone);
+
+        console.log(`📅 Local datetime: ${localDateTime} (${timezone})`);
         console.log(
-          `📅 Final scheduled time (UTC):`,
-          finalScheduledTime.toISOString()
+          `📅 Final scheduled time (UTC): ${finalScheduledTime.toISOString()}`
         );
 
         // Edge case handling: Check if scheduled time is less than 40 minutes away

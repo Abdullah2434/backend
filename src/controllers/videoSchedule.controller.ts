@@ -113,16 +113,14 @@ export async function createSchedule(req: Request, res: Response) {
       }
     }
 
-    // Convert times to UTC based on detected timezone
+    // Keep original times - they will be converted to UTC in the service
+    // when combined with specific dates
     if (processedSchedule.times && Array.isArray(processedSchedule.times)) {
-      console.log("🕐 Converting times to UTC from timezone:", timezone);
-      console.log("Original times:", processedSchedule.times);
-
-      processedSchedule.times = TimezoneService.parseScheduleTimes(
-        processedSchedule.times,
-        timezone
+      console.log(
+        "🕐 Keeping original times for timezone conversion in service:",
+        processedSchedule.times
       );
-      console.log("UTC times:", processedSchedule.times);
+      console.log("🌍 User timezone:", timezone);
     }
 
     console.log("Processed schedule:", processedSchedule);
@@ -153,42 +151,36 @@ export async function createSchedule(req: Request, res: Response) {
       email = userSettings.email;
     }
 
-    // Convert startDate from user's timezone to UTC
+    // Convert startDate from user's timezone to UTC (avoid double conversion if already UTC/ISO with zone)
     let startDateUTC: Date;
     if (typeof startDate === "string") {
       // If startDate is just a date (YYYY-MM-DD), treat it as start of day in user's timezone
       if (startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        startDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+        startDateUTC = TimezoneService.ensureUTCDate(
           `${startDate} 00:00:00`,
           timezone
         );
       } else {
         // If it includes time, use as is
-        startDateUTC = TimezoneService.convertLocalDateTimeToUTC(
-          startDate,
-          timezone
-        );
+        startDateUTC = TimezoneService.ensureUTCDate(startDate, timezone);
       }
     } else {
       startDateUTC = new Date(startDate);
     }
 
-    // Convert endDate from user's timezone to UTC if provided
+    // Convert endDate from user's timezone to UTC if provided (avoid double conversion)
     let endDateUTC: Date;
     if (endDate) {
       if (typeof endDate === "string") {
         // If endDate is just a date (YYYY-MM-DD), treat it as end of day in user's timezone
         if (endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          endDateUTC = TimezoneService.convertLocalDateTimeToUTC(
+          endDateUTC = TimezoneService.ensureUTCDate(
             `${endDate} 23:59:59`,
             timezone
           );
         } else {
           // If it includes time, use as is
-          endDateUTC = TimezoneService.convertLocalDateTimeToUTC(
-            endDate,
-            timezone
-          );
+          endDateUTC = TimezoneService.ensureUTCDate(endDate, timezone);
         }
       } else {
         endDateUTC = new Date(endDate);
