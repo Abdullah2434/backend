@@ -102,7 +102,7 @@ Make sure all content reflects CURRENT TRENDS and what's happening in real estat
       const response = await axios.post<GrokResponse>(
         GROK_API_URL,
         {
-          model: "grok-beta",
+          model: "grok-3",
           messages: [
             {
               role: "system",
@@ -114,14 +114,15 @@ Make sure all content reflects CURRENT TRENDS and what's happening in real estat
               content: prompt,
             },
           ],
-          max_tokens: 2000,
-          temperature: 0.8, // Higher temperature for more creative, trending content
+          max_tokens: 1500, // Reduced for faster response
+          temperature: 0.7, // Slightly lower for more consistent output
         },
         {
           headers: {
             Authorization: `Bearer ${GROK_API_KEY}`,
             "Content-Type": "application/json",
           },
+          timeout: 15000, // 15 second timeout
         }
       );
 

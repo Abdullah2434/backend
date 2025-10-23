@@ -4,6 +4,8 @@ import socialBuService from "./socialbu.service";
 import socialBuMediaService from "./socialbu-media.service";
 import { notificationService } from "./notification.service";
 import SocialBuToken from "../models/SocialBuToken";
+import dynamicContentGenerationService from "./dynamicContentGeneration.service";
+import User from "../models/User";
 
 export interface AutoPostingData {
   userId: string;
@@ -164,9 +166,17 @@ export class AutoSocialPostingService {
             `📝 Posting to ${account.accountName} (${account.accountType})`
           );
 
-          // Show which caption will be used for this platform
-          const caption = this.getPlatformCaption(account.accountType, trend);
-          console.log(`📋 Using caption for ${account.accountType}:`);
+          // Generate dynamic caption for this platform
+          const caption = await this.getPlatformCaption(
+            account.accountType,
+            trend,
+            data.userId,
+            data.videoTitle,
+            trend.description || data.videoTitle
+          );
+          console.log(
+            `📋 Generated dynamic caption for ${account.accountType}:`
+          );
           console.log(
             `📋 Caption preview: ${
               caption
@@ -175,7 +185,14 @@ export class AutoSocialPostingService {
             }`
           );
 
-          const result = await this.postToPlatform(account, trend, uploadToken);
+          const result = await this.postToPlatform(
+            account,
+            trend,
+            uploadToken,
+            data.userId,
+            data.videoTitle,
+            trend.description || data.videoTitle
+          );
 
           results.push(result);
 
@@ -289,11 +306,20 @@ export class AutoSocialPostingService {
   private async postToPlatform(
     account: any,
     trend: any,
-    uploadToken: string
+    uploadToken: string,
+    userId: string,
+    videoTitle: string,
+    videoDescription: string
   ): Promise<SocialPostResult> {
     try {
       // Get the appropriate caption for this platform (same logic as manual posting)
-      const caption = this.getPlatformCaption(account.accountType, trend);
+      const caption = await this.getPlatformCaption(
+        account.accountType,
+        trend,
+        userId,
+        videoTitle,
+        videoDescription
+      );
 
       if (!caption) {
         return {
@@ -373,10 +399,83 @@ export class AutoSocialPostingService {
   }
 
   /**
-   * Get the appropriate caption for a platform
-   * Uses same logic as manual posting for consistency
+   * Get the appropriate caption for a platform using dynamic content generation
+   * This replaces static captions with intelligent, anti-repetitive content
    */
-  private getPlatformCaption(accountType: string, trend: any): string | null {
+  private async getPlatformCaption(
+    accountType: string,
+    trend: any,
+    userId: string,
+    videoTitle: string,
+    videoDescription: string
+  ): Promise<string | null> {
+    try {
+      // Map account types to platform names
+      const platformMap: { [key: string]: string } = {
+        "instagram.api": "instagram",
+        "facebook.profile": "facebook",
+        "linkedin.profile": "linkedin",
+        "twitter.profile": "tiktok", // Twitter maps to TikTok for content style
+        "tiktok.profile": "tiktok",
+        "google.youtube": "youtube",
+      };
+
+      const platform = platformMap[accountType];
+      if (!platform) {
+        console.warn(
+          `Unknown platform type: ${accountType}, falling back to static caption`
+        );
+        return this.getStaticCaption(accountType, trend);
+      }
+
+      // Get user information for dynamic content generation
+      const user = await User.findById(userId);
+      if (!user) {
+        console.warn(
+          `User not found: ${userId}, falling back to static caption`
+        );
+        return this.getStaticCaption(accountType, trend);
+      }
+
+      // Determine topic type based on video content
+      const topicType = this.classifyTopic(videoTitle, videoDescription);
+
+      // Generate dynamic content
+      const generatedContent =
+        await dynamicContentGenerationService.generateContent({
+          userId,
+          platform,
+          topicType,
+          videoTitle,
+          videoDescription,
+          agentInfo: {
+            name: user.firstName + " " + user.lastName,
+            location: user.location || "Your Area",
+            specialty: user.specialty || "Real Estate Professional",
+          },
+        });
+
+      console.log(`🎯 Generated dynamic content for ${platform}:`);
+      console.log(`   Template: ${generatedContent.templateUsed}`);
+      console.log(`   Hook: ${generatedContent.hookType}`);
+      console.log(`   Tone: ${generatedContent.toneStyle}`);
+      console.log(`   CTA: ${generatedContent.ctaType}`);
+
+      return generatedContent.content;
+    } catch (error) {
+      console.error(
+        `❌ Error generating dynamic content for ${accountType}:`,
+        error
+      );
+      console.log("🔄 Falling back to static caption");
+      return this.getStaticCaption(accountType, trend);
+    }
+  }
+
+  /**
+   * Fallback to static captions if dynamic generation fails
+   */
+  private getStaticCaption(accountType: string, trend: any): string | null {
     switch (accountType) {
       case "instagram.api":
         return trend.instagram_caption || null;
@@ -394,6 +493,64 @@ export class AutoSocialPostingService {
         console.warn(`Unknown platform type: ${accountType}`);
         return null;
     }
+  }
+
+  /**
+   * Classify topic type based on video content
+   */
+  private classifyTopic(videoTitle: string, videoDescription: string): string {
+    const content = (videoTitle + " " + videoDescription).toLowerCase();
+
+    // Market update indicators
+    if (
+      content.includes("market") ||
+      content.includes("rates") ||
+      content.includes("prices") ||
+      content.includes("trend") ||
+      content.includes("data") ||
+      content.includes("report")
+    ) {
+      return "market_update";
+    }
+
+    // Tips indicators
+    if (
+      content.includes("tip") ||
+      content.includes("advice") ||
+      content.includes("guide") ||
+      content.includes("how to") ||
+      content.includes("steps") ||
+      content.includes("help")
+    ) {
+      return "tips";
+    }
+
+    // Local news indicators
+    if (
+      content.includes("local") ||
+      content.includes("neighborhood") ||
+      content.includes("area") ||
+      content.includes("community") ||
+      content.includes("city") ||
+      content.includes("region")
+    ) {
+      return "local_news";
+    }
+
+    // Industry analysis indicators
+    if (
+      content.includes("analysis") ||
+      content.includes("industry") ||
+      content.includes("professional") ||
+      content.includes("expert") ||
+      content.includes("insight") ||
+      content.includes("research")
+    ) {
+      return "industry_analysis";
+    }
+
+    // Default to general
+    return "general";
   }
 
   /**

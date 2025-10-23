@@ -146,13 +146,13 @@ export class BatchCaptionGenerationService {
         0,
         [userId]
       );
-      topicsToUse = trends.map((trend) => trend.description);
+      topicsToUse = trends.map((trend: any) => trend.description);
     }
 
     // Create batch request
     const batchRequest: BatchCaptionRequest = {
       userId,
-      topics: topicsToUse.slice(0, totalPosts).map((topic) => ({
+      topics: (topicsToUse || []).slice(0, totalPosts).map((topic) => ({
         topic,
         keyPoints: "Key insights and market updates", // Could be enhanced with actual key points
       })),
@@ -234,4 +234,3 @@ export class BatchCaptionGenerationService {
 }
 
 export default BatchCaptionGenerationService;
-

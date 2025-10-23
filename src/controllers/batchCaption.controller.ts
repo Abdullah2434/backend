@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
-import BatchCaptionGenerationService, {
-  UserContext,
-} from "../services/batchCaptionGeneration.service";
+import BatchCaptionGenerationService from "../services/batchCaptionGeneration.service";
+import { UserContext } from "../services/dynamicCaptionGeneration.service";
 import { AuthenticatedRequest } from "../types";
 
 /**
@@ -216,4 +215,3 @@ export async function getBatchGenerationStats(
     });
   }
 }
-
