@@ -243,7 +243,6 @@ class ScheduleEmailService {
             <h2 style="color: #282828; margin: 0 0 15px 0; font-size: 20px;">🎥 Video Details</h2>
             <div style="display: grid; gap: 10px;">
               <div><strong>Title:</strong> ${data.videoTitle}</div>
-              <div><strong>Description:</strong> ${data.videoDescription}</div>
               <div><strong>Key Points:</strong> ${data.videoKeypoints}</div>
               <div><strong>Processing Started:</strong> ${datePart} at ${timePart} (${data.timezone})</div>
             </div>
@@ -325,7 +324,6 @@ class ScheduleEmailService {
             <h2 style="color: #282828; margin: 0 0 15px 0; font-size: 20px;">🎥 Video Details</h2>
             <div style="display: grid; gap: 10px;">
               <div><strong>Title:</strong> ${data.videoTitle}</div>
-              <div><strong>Description:</strong> ${data.videoDescription}</div>
               <div><strong>Key Points:</strong> ${data.videoKeypoints}</div>
               <div><strong>Generated:</strong> ${datePart} at ${timePart} (${
       data.timezone
@@ -336,6 +334,14 @@ class ScheduleEmailService {
                   : ""
               }
             </div>
+          </div>
+
+          <!-- Review Video Button -->
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="https://www.edgeairealty.com/create-video" 
+               style="background-color: #5046E5; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; transition: background-color 0.2s;">
+              🎬 Review Video
+            </a>
           </div>
 
           ${
