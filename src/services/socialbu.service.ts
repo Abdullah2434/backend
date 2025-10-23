@@ -477,6 +477,70 @@ class SocialBuService {
   }
 
   /**
+   * Get scheduled posts from SocialBu API
+   */
+  async getScheduledPosts(
+    userAccountIds?: number[]
+  ): Promise<SocialBuApiResponse> {
+    try {
+      console.log("Fetching scheduled posts from SocialBu API...");
+
+      const result = await this.makeAuthenticatedRequest("GET", "/posts", {
+        type: "scheduled",
+      });
+
+      if (result.success) {
+        console.log("Successfully fetched scheduled posts");
+
+        // If user account IDs are provided, filter the posts
+        if (userAccountIds && userAccountIds.length > 0) {
+          console.log(
+            `Filtering posts for user account IDs: ${userAccountIds.join(", ")}`
+          );
+
+          // SocialBu API returns posts in an 'items' array
+          const allPosts = result.data?.items || [];
+          console.log(`Total posts from SocialBu API: ${allPosts.length}`);
+
+          // Filter posts that match user's connected account IDs
+          const filteredPosts = allPosts.filter((post: any) =>
+            userAccountIds.includes(post.account_id)
+          );
+
+          console.log(
+            `Filtered ${filteredPosts.length} posts from ${allPosts.length} total posts`
+          );
+
+          return {
+            success: true,
+            data: {
+              items: filteredPosts,
+              currentPage: result.data?.currentPage || 1,
+              lastPage: result.data?.lastPage || 1,
+              nextPage: result.data?.nextPage || null,
+              total: filteredPosts.length,
+              originalTotal: result.data?.total || 0,
+              filtered: true,
+            },
+            message: `Found ${filteredPosts.length} scheduled posts for user's connected accounts`,
+          };
+        }
+
+        return result;
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error fetching scheduled posts:", error);
+      return {
+        success: false,
+        message: "Failed to fetch scheduled posts",
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
    * Manual login to SocialBu (for testing)
    */
   async manualLogin(): Promise<SocialBuApiResponse> {
