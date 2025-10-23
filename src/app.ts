@@ -51,6 +51,7 @@ app.use(
       "x-timezone",
       "timezone",
       "X-Timezone",
+      "x-api-key",
     ],
     credentials: false,
   })
@@ -79,6 +80,9 @@ app.use("/api/webhook/socialbu", json({ limit: "10mb" }));
 app.use("/api/webhook/test", json({ limit: "10mb" }));
 app.use("/api/video/generate-video", json({ limit: "1gb" }));
 
+// Handle video avatar endpoint with URL-encoded parsing for form data
+app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "500mb" }));
+
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes
@@ -86,7 +90,8 @@ app.use((req, res, next) => {
     req.path &&
     (req.path.startsWith("/api/webhook") ||
       req.path === "/api/video/photo-avatar" ||
-      req.path === "/api/video/generate-video")
+      req.path === "/api/video/generate-video" ||
+      req.path === "/api/v2/video_avatar")
   ) {
     next();
   } else {
@@ -100,7 +105,8 @@ app.use((req, res, next) => {
     req.path &&
     (req.path.startsWith("/api/webhook") ||
       req.path === "/api/video/photo-avatar" ||
-      req.path === "/api/video/generate-video")
+      req.path === "/api/video/generate-video" ||
+      req.path === "/api/v2/video_avatar")
   ) {
     next();
   } else {
