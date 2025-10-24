@@ -57,6 +57,12 @@ export class ServerRateLimiter {
    */
   middleware() {
     return (req: Request, res: Response, next: NextFunction) => {
+      // Skip rate limiting for video avatar endpoint (permanently disabled)
+      if (req.path.includes("/video_avatar")) {
+        console.log("🚀 Skipping rate limit for video avatar request");
+        return next();
+      }
+
       const clientIP =
         (req.headers["x-forwarded-for"] as string) ||
         (req.headers["x-real-ip"] as string) ||
@@ -114,7 +120,7 @@ export const rateLimitConfigs = {
   },
   videoAvatar: {
     windowMs: 60 * 1000, // 1 minute
-    max: 10, // 10 video avatar requests per minute
+    max: 100, // 100 video avatar requests per minute (increased from 10)
     message:
       "Too many video avatar creation requests. Please wait before creating another avatar.",
   },

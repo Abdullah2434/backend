@@ -133,12 +133,7 @@ app.use((req, res, next) => {
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.use("/api", apiRateLimiter.middleware());
 
-  // Special rate limiting for video avatar endpoint (more lenient)
-  app.use("/api/v2/video_avatar", videoAvatarRateLimiter.middleware());
-}
-
-// Temporary: Disable rate limiting for video avatar in production if needed
-if (process.env.DISABLE_VIDEO_AVATAR_RATE_LIMIT === "true") {
+  // Video avatar endpoint - NO rate limiting (permanently disabled)
   console.log("⚠️ Video avatar rate limiting is DISABLED");
 }
 
