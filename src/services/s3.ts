@@ -112,6 +112,53 @@ export class S3Service {
     
     return `${apiBaseUrl}/api/v2/video_avatar/proxy/${encodeURIComponent(cleanS3Key)}`;
   }
+
+  /**
+   * Get a presigned URL for an S3 object
+   */
+  async getPresignedUrl(Key: string, Bucket: string = this.bucketName, expiresSeconds: number = 3600): Promise<string> {
+    const cmd = new GetObjectCommand({ Bucket, Key });
+    return await getSignedUrl(this.client, cmd, { expiresIn: expiresSeconds });
+  }
+
+  /**
+   * Upload a buffer to S3
+   */
+  async uploadBuffer({ Key, Body, ContentType, Bucket = this.bucketName }: {
+    Key: string;
+    Body: Buffer;
+    ContentType: string;
+    Bucket?: string;
+  }): Promise<string> {
+    const cmd = new PutObjectCommand({ Bucket, Key, Body, ContentType });
+    await this.client.send(cmd);
+    return `https://${Bucket}.s3.${this.region}.amazonaws.com/${Key}`;
+  }
+
+  /**
+   * Upload a file from disk path to S3 (for streaming large files)
+   */
+  async uploadVideoFromPath(s3Key: string, filePath: string, contentType: string, metadata: Record<string, string>): Promise<boolean> {
+    const fs = require('fs');
+    const fileStream = fs.createReadStream(filePath);
+    
+    const cmd = new PutObjectCommand({ 
+      Bucket: this.bucketName, 
+      Key: s3Key, 
+      Body: fileStream, 
+      ContentType: contentType, 
+      Metadata: metadata 
+    });
+    
+    await this.client.send(cmd);
+    
+    // Clean up the temporary file
+    fs.unlink(filePath, (err: any) => {
+      if (err) console.error('Error deleting temp file:', err);
+    });
+    
+    return true;
+  }
 }
 
 let s3Singleton: S3Service | null = null
