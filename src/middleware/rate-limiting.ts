@@ -63,6 +63,12 @@ export class ServerRateLimiter {
         return next();
       }
 
+      // Skip rate limiting for login attempts if user is already authenticated
+      if (req.path.includes("/login") && req.headers.authorization) {
+        console.log("🚀 Skipping rate limit for authenticated login request");
+        return next();
+      }
+
       const clientIP =
         (req.headers["x-forwarded-for"] as string) ||
         (req.headers["x-real-ip"] as string) ||
@@ -94,8 +100,8 @@ export class ServerRateLimiter {
 // Rate limiting configurations for DEVELOPMENT (increased limits)
 export const rateLimitConfigs = {
   login: {
-    windowMs: 5 * 60 * 1000, // 5 minutes (reduced from 15)
-    max: 20, // 20 attempts per window (increased from 5)
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 100, // 100 attempts per 5 minutes (increased from 20)
     message: "Too many login attempts. Please try again in 5 minutes.",
   },
   register: {
@@ -109,8 +115,8 @@ export const rateLimitConfigs = {
     message: "Too many password reset attempts. Please try again in 5 minutes.",
   },
   general: {
-    windowMs: 30 * 1000, // 30 seconds (reduced from 1 minute)
-    max: 50, // 50 requests per 30 seconds (increased from 20 per minute)
+    windowMs: 30 * 1000, // 30 seconds
+    max: 200, // 200 requests per 30 seconds (increased from 50)
     message: "Too many requests. Please try again later.",
   },
   api: {
