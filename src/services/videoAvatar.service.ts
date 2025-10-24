@@ -244,10 +244,10 @@ export class VideoAvatarService {
       const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
       const s3Key = `video_avatars/${avatarId}/${fileType}/${timestamp}_${safeFilename}`;
 
-      // Upload file to S3
-      await this.s3Service.uploadVideoDirectly(
+      // Upload file to S3 using file path (streaming for large files)
+      await this.s3Service.uploadVideoFromPath(
         s3Key,
-        file.buffer,
+        file.path, // Use file.path for disk storage
         file.mimetype,
         {
           avatarId,
