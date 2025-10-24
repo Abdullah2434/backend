@@ -82,8 +82,7 @@ app.use("/api/webhook/test", json({ limit: "10mb" }));
 app.use("/api/video/generate-video", json({ limit: "1gb" }));
 
 // Handle video avatar endpoint with URL-encoded parsing for form data
-app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "500mb" }));
-
+app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "1gb" }));
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
   // Skip all body parsing middleware for webhook routes and file upload routes
