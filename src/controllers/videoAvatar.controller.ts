@@ -1,29 +1,44 @@
-import { Request, Response } from 'express';
-import multer from 'multer';
-import VideoAvatarService from '../services/videoAvatar.service';
-import { getS3 } from '../services/s3';
+import { Request, Response } from "express";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+import VideoAvatarService from "../services/videoAvatar.service";
+import { getS3 } from "../services/s3";
 import {
   CreateVideoAvatarWithFilesRequest,
   VideoAvatarStatusResponse,
-} from '../types';
+} from "../types";
 
 const videoAvatarService = new VideoAvatarService();
 
-// Configure multer for file uploads
+// Configure multer for file uploads with streaming to avoid memory issues
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      // Store temporarily in /tmp directory
+      cb(null, "/tmp/");
+    },
+    filename: (req, file, cb) => {
+      // Generate unique filename
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, file.fieldname + "-" + uniqueSuffix);
+    },
+  }),
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB limit
+    fileSize: 1000 * 1024 * 1024, // 1GB limit
+    fieldSize: 1000 * 1024 * 1024, // 1GB field size limit
+    files: 10, // Allow up to 10 files
+    fields: 20, // Allow up to 20 fields
   },
   fileFilter: (req, file, cb) => {
     // Check if file is a video
-    if (file.mimetype.startsWith('video/')) {
+    if (file.mimetype.startsWith("video/")) {
       cb(null, true);
     } else {
       // Signal error without accept flag per multer types
-      cb(new Error('Only video files are allowed') as any);
+      cb(new Error("Only video files are allowed") as any);
     }
-  }
+  },
 });
 
 /**
@@ -31,8 +46,11 @@ const upload = multer({
  * POST /v2/video_avatar
  */
 export async function createVideoAvatar(req: Request, res: Response) {
+  let trainingFootageFile: Express.Multer.File | undefined;
+  let consentStatementFile: Express.Multer.File | undefined;
+
   try {
-    const rawFiles: any = (req as any).files || {}
+    const rawFiles: any = (req as any).files || {};
     const {
       avatar_name,
       avatar_group_id,
@@ -42,34 +60,54 @@ export async function createVideoAvatar(req: Request, res: Response) {
       consent_statement_url,
     } = req.body;
 
-    const trainingFootageFile = (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined
-    const consentStatementFile = (rawFiles?.consent_statement?.[0] as Express.Multer.File) || undefined
-    console.log('trainingFootageFile:', trainingFootageFile)
+    trainingFootageFile =
+      (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined;
+    consentStatementFile =
+      (rawFiles?.consent_statement?.[0] as Express.Multer.File) || undefined;
+    console.log("trainingFootageFile:", trainingFootageFile);
+    console.log("File paths:", {
+      training: trainingFootageFile?.path,
+      consent: consentStatementFile?.path,
+    });
     if (!avatar_name) {
-      return res.status(400).json({ success: false, message: "avatar_name is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "avatar_name is required" });
     }
 
     if (!trainingFootageFile && !training_footage_url) {
       return res.status(400).json({
         success: false,
-        message: "Either training_footage file or training_footage_url is required",
+        message:
+          "Either training_footage file or training_footage_url is required",
       });
     }
 
     if (!consentStatementFile && !consent_statement_url) {
       return res.status(400).json({
         success: false,
-        message: "Either consent_statement file or consent_statement_url is required",
+        message:
+          "Either consent_statement file or consent_statement_url is required",
       });
     }
-    // Zero-byte guard
-    if (trainingFootageFile && (!trainingFootageFile.buffer || trainingFootageFile.buffer.byteLength === 0)) {
-      console.error('Received empty training_footage buffer')
-      return res.status(400).json({ success: false, message: 'Empty training_footage file' })
+    // Zero-byte guard for disk storage
+    if (
+      trainingFootageFile &&
+      (!trainingFootageFile.path || trainingFootageFile.size === 0)
+    ) {
+      console.error("Received empty training_footage file");
+      return res
+        .status(400)
+        .json({ success: false, message: "Empty training_footage file" });
     }
-    if (consentStatementFile && (!consentStatementFile.buffer || consentStatementFile.buffer.byteLength === 0)) {
-      console.error('Received empty consent_statement buffer')
-      return res.status(400).json({ success: false, message: 'Empty consent_statement file' })
+    if (
+      consentStatementFile &&
+      (!consentStatementFile.path || consentStatementFile.size === 0)
+    ) {
+      console.error("Received empty consent_statement file");
+      return res
+        .status(400)
+        .json({ success: false, message: "Empty consent_statement file" });
     }
 
     // Validate URLs
@@ -77,7 +115,9 @@ export async function createVideoAvatar(req: Request, res: Response) {
       try {
         new URL(callback_url);
       } catch {
-        return res.status(400).json({ success: false, message: "Invalid callback_url format" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid callback_url format" });
       }
     }
 
@@ -94,16 +134,60 @@ export async function createVideoAvatar(req: Request, res: Response) {
 
     // Get userId and auth token from authenticated request
     const userId = (req as any).user?._id;
-    const authToken = req.headers.authorization?.replace('Bearer ', '');
+    const authToken = req.headers.authorization?.replace("Bearer ", "");
 
-    const result = await videoAvatarService.createVideoAvatarWithFiles(request, {
-      training_footage_url: trainingUrlToUse,
-      consent_statement_url: consentUrlToUse,
-    }, userId, authToken);
+    const result = await videoAvatarService.createVideoAvatarWithFiles(
+      request,
+      {
+        training_footage_url: trainingUrlToUse,
+        consent_statement_url: consentUrlToUse,
+      },
+      userId,
+      authToken
+    );
+
+    // Clean up temporary files after successful upload
+    try {
+      if (
+        trainingFootageFile?.path &&
+        fs.existsSync(trainingFootageFile.path)
+      ) {
+        fs.unlinkSync(trainingFootageFile.path);
+        console.log("Cleaned up training footage temp file");
+      }
+      if (
+        consentStatementFile?.path &&
+        fs.existsSync(consentStatementFile.path)
+      ) {
+        fs.unlinkSync(consentStatementFile.path);
+        console.log("Cleaned up consent statement temp file");
+      }
+    } catch (cleanupError) {
+      console.warn("Failed to clean up temp files:", cleanupError);
+    }
 
     return res.status(202).json(result);
   } catch (error: any) {
     console.error("Error creating video avatar:", error);
+
+    // Clean up temporary files on error
+    try {
+      if (
+        trainingFootageFile?.path &&
+        fs.existsSync(trainingFootageFile.path)
+      ) {
+        fs.unlinkSync(trainingFootageFile.path);
+      }
+      if (
+        consentStatementFile?.path &&
+        fs.existsSync(consentStatementFile.path)
+      ) {
+        fs.unlinkSync(consentStatementFile.path);
+      }
+    } catch (cleanupError) {
+      console.warn("Failed to clean up temp files on error:", cleanupError);
+    }
+
     return res.status(500).json({
       success: false,
       message: error.message || "Internal server error",
@@ -115,18 +199,20 @@ export async function createVideoAvatar(req: Request, res: Response) {
  */
 export const uploadMiddleware = (req: any, res: any, next: any) => {
   const mw = upload.fields([
-    { name: 'training_footage', maxCount: 1 },
-    { name: 'consent_statement', maxCount: 1 }
-  ])
+    { name: "training_footage", maxCount: 1 },
+    { name: "consent_statement", maxCount: 1 },
+  ]);
   mw(req, res, (err: any) => {
     if (err) {
-      console.error('Multer error:', err)
-      return res.status(400).json({ success: false, message: 'Upload error', error: String(err) })
+      console.error("Multer error:", err);
+      return res
+        .status(400)
+        .json({ success: false, message: "Upload error", error: String(err) });
     }
-    console.log('Multer parsed files:', Object.keys((req as any).files || {}))
-    next()
-  })
-}
+    console.log("Multer parsed files:", Object.keys((req as any).files || {}));
+    next();
+  });
+};
 
 /**
  * Check Video Avatar Generation Status
@@ -139,28 +225,28 @@ export async function getVideoAvatarStatus(req: Request, res: Response) {
     if (!id) {
       return res.status(400).json({
         success: false,
-        message: 'Avatar ID is required'
+        message: "Avatar ID is required",
       });
     }
 
-    const result: VideoAvatarStatusResponse = await videoAvatarService.getAvatarStatus(id);
+    const result: VideoAvatarStatusResponse =
+      await videoAvatarService.getAvatarStatus(id);
 
     return res.status(200).json(result);
-
   } catch (error: any) {
-    console.error('Error getting video avatar status:', error);
-    
+    console.error("Error getting video avatar status:", error);
+
     // Handle specific error cases
-    if (error.message === 'Avatar ID not found') {
+    if (error.message === "Avatar ID not found") {
       return res.status(404).json({
         success: false,
-        message: 'Avatar ID not found'
+        message: "Avatar ID not found",
       });
     }
-    
+
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || "Internal server error",
     });
   }
 }
@@ -172,14 +258,14 @@ export async function healthCheck(req: Request, res: Response) {
   try {
     return res.status(200).json({
       success: true,
-      message: 'Video Avatar service is healthy',
-      timestamp: new Date().toISOString()
+      message: "Video Avatar service is healthy",
+      timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: 'Video Avatar service is unhealthy',
-      error: error.message
+      message: "Video Avatar service is unhealthy",
+      error: error.message,
     });
   }
 }
@@ -191,41 +277,41 @@ export async function healthCheck(req: Request, res: Response) {
 export async function proxyVideoFile(req: Request, res: Response) {
   try {
     const { s3Key } = req.params;
-    
+
     if (!s3Key) {
       return res.status(400).json({
         success: false,
-        message: 'S3 key is required'
+        message: "S3 key is required",
       });
     }
 
     const s3Service = getS3();
     let actualS3Key = decodeURIComponent(s3Key);
-    
+
     // If the URL has .mp4 but the actual file is .mov, try the original .mov file first
-    if (actualS3Key.endsWith('.mp4')) {
-      const movS3Key = actualS3Key.replace(/\.mp4$/i, '.mov');
+    if (actualS3Key.endsWith(".mp4")) {
+      const movS3Key = actualS3Key.replace(/\.mp4$/i, ".mov");
       try {
         // Try to generate signed URL for .mov file first
         const signedUrl = await s3Service.getSignedVideoUrl(movS3Key, 3600);
         return res.redirect(signedUrl);
       } catch (error) {
         // If .mov doesn't exist, try the .mp4 version
-        console.log('MOV file not found, trying MP4 version:', error);
+        console.log("MOV file not found, trying MP4 version:", error);
       }
     }
-    
+
     // Generate a signed URL for the S3 object
     const signedUrl = await s3Service.getSignedVideoUrl(actualS3Key, 3600);
-    
+
     // Redirect to the signed URL
     return res.redirect(signedUrl);
   } catch (error: any) {
-    console.error('Error proxying video file:', error);
+    console.error("Error proxying video file:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to serve video file',
-      error: error.message
+      message: "Failed to serve video file",
+      error: error.message,
     });
   }
 }

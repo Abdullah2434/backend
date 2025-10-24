@@ -82,7 +82,30 @@ app.use("/api/webhook/test", json({ limit: "10mb" }));
 app.use("/api/video/generate-video", json({ limit: "1gb" }));
 
 // Handle video avatar endpoint with URL-encoded parsing for form data
-app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "500mb" }));
+app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "1gb" }));
+
+// Special middleware for video avatar endpoint to handle large files
+app.use("/api/v2/video_avatar", (req, res, next) => {
+  // Log request details for debugging
+  console.log("🚀 Video Avatar Request Debug:");
+  console.log("- Method:", req.method);
+  console.log("- Content-Type:", req.headers["content-type"]);
+  console.log("- Content-Length:", req.headers["content-length"]);
+  console.log("- User-Agent:", req.headers["user-agent"]);
+  console.log("- X-Forwarded-For:", req.headers["x-forwarded-for"]);
+  console.log("- Host:", req.headers["host"]);
+
+  // Set specific headers for large file uploads
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // Increase timeout for this specific endpoint
+  req.setTimeout(600000); // 10 minutes
+  res.setTimeout(600000); // 10 minutes
+
+  next();
+});
 
 // Then handle all other routes with JSON parsing, explicitly excluding webhooks and file uploads
 app.use((req, res, next) => {
