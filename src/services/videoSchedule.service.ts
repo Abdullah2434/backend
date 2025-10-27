@@ -27,6 +27,160 @@ export class VideoScheduleService {
   private emailService = new ScheduleEmailService();
 
   /**
+   * Create a new video schedule asynchronously (returns immediately with processing status)
+   */
+  async createScheduleAsync(
+    userId: string,
+    email: string,
+    scheduleData: ScheduleData
+  ): Promise<IVideoSchedule> {
+    // Validate schedule data
+    this.validateScheduleData(scheduleData);
+
+    // Check if user already has an active schedule
+    const existingSchedule = await VideoSchedule.findOne({
+      userId,
+      isActive: true,
+    });
+
+    if (existingSchedule) {
+      throw new Error("User already has an active video schedule");
+    }
+
+    // Get user video settings
+    const userSettings = await UserVideoSettings.findOne({ userId });
+    if (!userSettings) {
+      throw new Error(
+        "User video settings not found. Please complete your profile first."
+      );
+    }
+
+    // Set default duration to one month from start date
+    const startDate = scheduleData.startDate; // Already converted to UTC in controller
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1); // Add one month
+
+    console.log(`📅 Schedule start date (UTC): ${startDate.toISOString()}`);
+    console.log(`📅 Schedule end date (UTC): ${endDate.toISOString()}`);
+
+    // Calculate number of videos needed for one month
+    const numberOfVideos = this.calculateNumberOfVideos(
+      scheduleData.frequency,
+      startDate,
+      endDate
+    );
+
+    // Generate basic trends immediately (no dynamic captions yet)
+    console.log(`🎬 Generating ${numberOfVideos} basic trends immediately...`);
+
+    const allTrends = [];
+    const chunkSize = 5;
+    const totalChunks = Math.ceil(numberOfVideos / chunkSize);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const remainingTrends = numberOfVideos - allTrends.length;
+      const currentChunkSize = Math.min(chunkSize, remainingTrends);
+
+      console.log(
+        `📦 Generating chunk ${
+          i + 1
+        }/${totalChunks} (${currentChunkSize} trends)...`
+      );
+
+      try {
+        const chunkTrends = await generateRealEstateTrends(
+          currentChunkSize,
+          0,
+          i
+        );
+
+        if (!chunkTrends || chunkTrends.length === 0) {
+          throw new Error(`Failed to generate trends for chunk ${i + 1}`);
+        }
+
+        // Use basic captions for all videos initially
+        const basicTrends = chunkTrends.map((trend) => ({
+          ...trend,
+          instagram_caption: `${trend.description} - ${trend.keypoints}`,
+          facebook_caption: `${trend.description} - ${trend.keypoints}`,
+          linkedin_caption: `${trend.description} - ${trend.keypoints}`,
+          twitter_caption: `${trend.description} - ${trend.keypoints}`,
+          tiktok_caption: `${trend.description} - ${trend.keypoints}`,
+          youtube_caption: `${trend.description} - ${trend.keypoints}`,
+          enhanced_with_dynamic_posts: false,
+          caption_status: "pending", // Mark for background processing
+        }));
+
+        allTrends.push(...basicTrends);
+        console.log(
+          `✅ Chunk ${i + 1} completed: ${basicTrends.length} trends`
+        );
+
+        // Add a small delay between chunks to avoid rate limiting
+        if (i < totalChunks - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`❌ Error in chunk ${i + 1}:`, error);
+        throw new Error(
+          `Failed to generate trends in chunk ${i + 1}. Please try again.`
+        );
+      }
+    }
+
+    console.log(
+      `✅ Generated ${allTrends.length} basic trends from OpenAI in ${totalChunks} chunks`
+    );
+
+    // Create scheduled trends
+    const generatedTrends = this.createScheduledTrends(
+      allTrends,
+      scheduleData,
+      startDate,
+      endDate
+    );
+
+    // Create the schedule with processing status
+    const schedule = new VideoSchedule({
+      userId,
+      email,
+      timezone: scheduleData.timezone,
+      frequency: scheduleData.frequency,
+      schedule: scheduleData.schedule,
+      isActive: true,
+      status: "processing", // Set initial status to processing
+      startDate: startDate,
+      endDate: endDate,
+      generatedTrends,
+    });
+
+    await schedule.save();
+
+    // Send initial processing notification
+    const { notificationService } = await import("./notification.service");
+    notificationService.notifyScheduleStatus(userId, "processing", {
+      scheduleId: schedule._id.toString(),
+      message: "Schedule creation started",
+      totalVideos: numberOfVideos,
+      processedVideos: 0,
+    });
+
+    // Queue background job to generate dynamic captions for ALL videos
+    this.queueBackgroundCaptionGenerationAsync(
+      schedule._id.toString(),
+      userId,
+      userSettings,
+      numberOfVideos
+    );
+
+    console.log(
+      `✅ Video schedule created for user ${userId}: ${numberOfVideos} videos scheduled (processing)`
+    );
+
+    return schedule;
+  }
+
+  /**
    * Create a new video schedule (automatically set to one month duration)
    */
   async createSchedule(
@@ -1712,6 +1866,237 @@ export class VideoScheduleService {
     }
 
     return enhancedTrends;
+  }
+
+  /**
+   * Queue background job to generate dynamic captions for ALL videos (async version)
+   */
+  private queueBackgroundCaptionGenerationAsync(
+    scheduleId: string,
+    userId: string,
+    userSettings: any,
+    totalVideos: number
+  ): void {
+    console.log(
+      `🔄 Queuing background caption generation for ${totalVideos} videos...`
+    );
+
+    // Process all videos in background
+    setImmediate(async () => {
+      try {
+        await this.processAllBackgroundCaptions(
+          scheduleId,
+          userId,
+          userSettings,
+          totalVideos
+        );
+      } catch (error: any) {
+        console.error("❌ Background caption generation failed:", error);
+
+        // Update schedule status to failed
+        await VideoSchedule.findByIdAndUpdate(scheduleId, {
+          status: "failed",
+        });
+
+        // Send failure notification
+        const { notificationService } = await import("./notification.service");
+        notificationService.notifyScheduleStatus(userId, "failed", {
+          scheduleId,
+          message: "Schedule creation failed",
+          totalVideos,
+          processedVideos: 0,
+          errorDetails: error.message,
+        });
+      }
+    });
+  }
+
+  /**
+   * Process all background captions with progress updates
+   */
+  private async processAllBackgroundCaptions(
+    scheduleId: string,
+    userId: string,
+    userSettings: any,
+    totalVideos: number
+  ): Promise<void> {
+    const schedule = await VideoSchedule.findById(scheduleId);
+    if (!schedule) {
+      throw new Error("Schedule not found");
+    }
+
+    const { notificationService } = await import("./notification.service");
+    let processedCount = 0;
+
+    console.log(
+      `🎯 Starting background caption generation for ${totalVideos} videos...`
+    );
+
+    // Process videos in batches of 3 to avoid rate limiting
+    const batchSize = 3;
+    const totalBatches = Math.ceil(totalVideos / batchSize);
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const startIndex = batchIndex * batchSize;
+      const endIndex = Math.min(startIndex + batchSize, totalVideos);
+
+      console.log(
+        `📦 Processing batch ${batchIndex + 1}/${totalBatches} (videos ${
+          startIndex + 1
+        }-${endIndex})...`
+      );
+
+      // Process videos in this batch
+      const batchPromises = [];
+      for (let i = startIndex; i < endIndex; i++) {
+        if (schedule.generatedTrends[i]) {
+          batchPromises.push(
+            this.generateDynamicCaptionsForSingleTrend(
+              schedule.generatedTrends[i],
+              userSettings,
+              userId,
+              scheduleId,
+              i
+            )
+          );
+        }
+      }
+
+      try {
+        await Promise.all(batchPromises);
+        processedCount = endIndex;
+
+        console.log(
+          `✅ Batch ${
+            batchIndex + 1
+          } completed: ${processedCount}/${totalVideos} videos processed`
+        );
+
+        // Send progress notification
+        notificationService.notifyScheduleStatus(userId, "processing", {
+          scheduleId,
+          message: "Generating dynamic captions...",
+          totalVideos,
+          processedVideos: processedCount,
+        });
+
+        // Add delay between batches to avoid rate limiting
+        if (batchIndex < totalBatches - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      } catch (error: any) {
+        console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
+        // Continue with next batch
+      }
+    }
+
+    // Update schedule status to ready
+    await VideoSchedule.findByIdAndUpdate(scheduleId, {
+      status: "ready",
+    });
+
+    // Send completion notification
+    notificationService.notifyScheduleStatus(userId, "ready", {
+      scheduleId,
+      message: "Schedule creation completed successfully",
+      totalVideos,
+      processedVideos: totalVideos,
+    });
+
+    console.log(
+      `🎉 Background caption generation completed for schedule ${scheduleId}`
+    );
+  }
+
+  /**
+   * Generate dynamic captions for a single trend
+   */
+  private async generateDynamicCaptionsForSingleTrend(
+    trend: any,
+    userSettings: any,
+    userId: string,
+    scheduleId: string,
+    trendIndex: number
+  ): Promise<void> {
+    try {
+      // Create user context from user settings
+      const userContext = {
+        name: userSettings.name,
+        position: userSettings.position,
+        companyName: userSettings.companyName,
+        city: userSettings.city,
+        socialHandles: userSettings.socialHandles,
+      };
+
+      // Generate dynamic posts for this trend
+      const { DynamicPostGenerationService } = await import(
+        "./dynamicPostGeneration.service"
+      );
+      const dynamicPosts =
+        await DynamicPostGenerationService.generateDynamicPosts(
+          trend.description,
+          trend.keypoints,
+          userContext,
+          userId,
+          ["instagram", "facebook", "linkedin", "twitter", "tiktok", "youtube"]
+        );
+
+      // Update captions with dynamic content
+      const updatedCaptions = {
+        instagram_caption: this.getDynamicCaption(dynamicPosts, "instagram"),
+        facebook_caption: this.getDynamicCaption(dynamicPosts, "facebook"),
+        linkedin_caption: this.getDynamicCaption(dynamicPosts, "linkedin"),
+        twitter_caption: this.getDynamicCaption(dynamicPosts, "twitter"),
+        tiktok_caption: this.getDynamicCaption(dynamicPosts, "tiktok"),
+        youtube_caption: this.getDynamicCaption(dynamicPosts, "youtube"),
+        enhanced_with_dynamic_posts: true,
+        caption_status: "ready",
+        caption_processed_at: new Date(),
+      };
+
+      // Update the specific trend in the schedule
+      await VideoSchedule.findByIdAndUpdate(scheduleId, {
+        $set: {
+          [`generatedTrends.${trendIndex}.instagram_caption`]:
+            updatedCaptions.instagram_caption,
+          [`generatedTrends.${trendIndex}.facebook_caption`]:
+            updatedCaptions.facebook_caption,
+          [`generatedTrends.${trendIndex}.linkedin_caption`]:
+            updatedCaptions.linkedin_caption,
+          [`generatedTrends.${trendIndex}.twitter_caption`]:
+            updatedCaptions.twitter_caption,
+          [`generatedTrends.${trendIndex}.tiktok_caption`]:
+            updatedCaptions.tiktok_caption,
+          [`generatedTrends.${trendIndex}.youtube_caption`]:
+            updatedCaptions.youtube_caption,
+          [`generatedTrends.${trendIndex}.enhanced_with_dynamic_posts`]:
+            updatedCaptions.enhanced_with_dynamic_posts,
+          [`generatedTrends.${trendIndex}.caption_status`]:
+            updatedCaptions.caption_status,
+          [`generatedTrends.${trendIndex}.caption_processed_at`]:
+            updatedCaptions.caption_processed_at,
+        },
+      });
+
+      console.log(
+        `✅ Generated dynamic captions for trend ${trendIndex + 1}: "${
+          trend.description
+        }"`
+      );
+    } catch (error: any) {
+      console.error(
+        `❌ Failed to generate dynamic captions for trend ${trendIndex + 1}:`,
+        error
+      );
+
+      // Mark as failed but continue processing others
+      await VideoSchedule.findByIdAndUpdate(scheduleId, {
+        $set: {
+          [`generatedTrends.${trendIndex}.caption_status`]: "failed",
+          [`generatedTrends.${trendIndex}.caption_error`]: error.message,
+        },
+      });
+    }
   }
 
   /**
