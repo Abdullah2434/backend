@@ -110,30 +110,18 @@ export class VideoScheduleService {
           );
         }
 
-        // Validate chunk trends
-        const invalidTrends = chunkTrends.filter(
-          (trend: any) =>
-            !trend.description ||
-            !trend.keypoints ||
-            !trend.instagram_caption ||
-            !trend.facebook_caption ||
-            !trend.linkedin_caption ||
-            !trend.twitter_caption ||
-            !trend.tiktok_caption ||
-            !trend.youtube_caption
+        // Generate dynamic captions for trends during schedule creation
+        const enhancedTrends = await this.generateDynamicCaptionsForTrends(
+          chunkTrends,
+          userSettings,
+          userId
         );
 
-        if (invalidTrends.length > 0) {
-          throw new Error(
-            `Chunk ${i + 1} has ${
-              invalidTrends.length
-            } trends with missing required fields`
-          );
-        }
-
-        allTrends.push(...chunkTrends);
+        allTrends.push(...enhancedTrends);
         console.log(
-          `✅ Chunk ${i + 1} completed: ${chunkTrends.length} valid trends`
+          `✅ Chunk ${i + 1} completed: ${
+            enhancedTrends.length
+          } trends with dynamic captions`
         );
 
         // Add a small delay between chunks to avoid rate limiting
@@ -1608,6 +1596,102 @@ export class VideoScheduleService {
       )} minutes away`
     );
     return false;
+  }
+
+  /**
+   * Generate dynamic captions for trends using Enhanced Dynamic Template System
+   */
+  private async generateDynamicCaptionsForTrends(
+    trends: any[],
+    userSettings: any,
+    userId: string
+  ): Promise<any[]> {
+    console.log(
+      `🎯 Generating dynamic captions for ${trends.length} trends during schedule creation...`
+    );
+
+    const enhancedTrends = [];
+
+    for (const trend of trends) {
+      try {
+        // Create user context from user settings
+        const userContext = {
+          name: userSettings.name,
+          position: userSettings.position,
+          companyName: userSettings.companyName,
+          city: userSettings.city,
+          socialHandles: userSettings.socialHandles,
+        };
+
+        // Generate dynamic posts for this trend
+        const { DynamicPostGenerationService } = await import(
+          "./dynamicPostGeneration.service"
+        );
+        const dynamicPosts =
+          await DynamicPostGenerationService.generateDynamicPosts(
+            trend.description,
+            trend.keypoints,
+            userContext,
+            userId,
+            [
+              "instagram",
+              "facebook",
+              "linkedin",
+              "twitter",
+              "tiktok",
+              "youtube",
+            ]
+          );
+
+        // Create enhanced trend with dynamic captions
+        const enhancedTrend = {
+          ...trend,
+          // Update captions with dynamic content
+          instagram_caption: this.getDynamicCaption(dynamicPosts, "instagram"),
+          facebook_caption: this.getDynamicCaption(dynamicPosts, "facebook"),
+          linkedin_caption: this.getDynamicCaption(dynamicPosts, "linkedin"),
+          twitter_caption: this.getDynamicCaption(dynamicPosts, "twitter"),
+          tiktok_caption: this.getDynamicCaption(dynamicPosts, "tiktok"),
+          youtube_caption: this.getDynamicCaption(dynamicPosts, "youtube"),
+          // Add metadata
+          enhanced_with_dynamic_posts: true,
+          enhancement_timestamp: new Date().toISOString(),
+        };
+
+        enhancedTrends.push(enhancedTrend);
+        console.log(
+          `✅ Generated dynamic captions for trend: "${trend.description}"`
+        );
+      } catch (error) {
+        console.warn(
+          `⚠️ Failed to generate dynamic captions for trend "${trend.description}":`,
+          error
+        );
+        // Keep original trend if enhancement fails
+        enhancedTrends.push({
+          ...trend,
+          enhanced_with_dynamic_posts: false,
+          enhancement_error:
+            error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    return enhancedTrends;
+  }
+
+  /**
+   * Get dynamic caption from generated posts
+   */
+  private getDynamicCaption(dynamicPosts: any[], platform: string): string {
+    const post = dynamicPosts.find((p) => p.platform === platform);
+    if (post && post.content) {
+      return post.content;
+    }
+
+    // Fallback caption when dynamic generation fails
+    console.warn(`⚠️ No dynamic caption found for ${platform}, using fallback`);
+    return `Real Estate Update - Check out the latest market insights!`;
   }
 }
 

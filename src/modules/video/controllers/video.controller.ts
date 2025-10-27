@@ -832,38 +832,117 @@ export async function createVideo(req: Request, res: Response) {
         .substr(2, 9)}`,
     };
 
-    // Generate and store captions for manual/custom on the basis of topic/key points (do not send to N8N)
+    // Generate and store DYNAMIC captions for manual/custom videos using Smart Memory System
     try {
       const topic = String(body.videoTopic || body.name || "").trim();
       const keyPoints = String(body.topicKeyPoints || body.prompt || "").trim();
       if (topic && keyPoints) {
-        const captions = await CaptionGenerationService.generateCaptions(
-          topic,
-          keyPoints,
-          {
+        // Get user ID for dynamic post generation
+        const user = await videoService.getUserByEmail(body.email);
+        if (user) {
+          // Create user context for dynamic posts
+          const userContext = {
             name: body.name,
             position: body.position,
             companyName: body.companyName,
             city: body.city,
             socialHandles: body.socialHandles,
-          }
-        );
-        await PendingCaptions.findOneAndUpdate(
-          { email: body.email, title: body.videoTopic || body.title || topic },
-          {
-            email: body.email,
-            title: body.videoTopic || body.title || topic,
-            captions,
-          },
-          { upsert: true, new: true }
-        );
-        console.log(
-          "📝 Generated and stored pending captions for manual video"
-        );
+          };
+
+          // Generate DYNAMIC posts using Smart Memory System
+          const { DynamicPostGenerationService } = await import(
+            "../../../services/dynamicPostGeneration.service"
+          );
+          const dynamicPosts =
+            await DynamicPostGenerationService.generateDynamicPosts(
+              topic,
+              keyPoints,
+              userContext,
+              user._id.toString(),
+              [
+                "instagram",
+                "facebook",
+                "linkedin",
+                "twitter",
+                "tiktok",
+                "youtube",
+              ]
+            );
+
+          // Convert dynamic posts to traditional caption format for compatibility
+          const captions = {
+            instagram_caption:
+              dynamicPosts.find((p: any) => p.platform === "instagram")
+                ?.content || "",
+            facebook_caption:
+              dynamicPosts.find((p: any) => p.platform === "facebook")
+                ?.content || "",
+            linkedin_caption:
+              dynamicPosts.find((p: any) => p.platform === "linkedin")
+                ?.content || "",
+            twitter_caption:
+              dynamicPosts.find((p: any) => p.platform === "twitter")
+                ?.content || "",
+            tiktok_caption:
+              dynamicPosts.find((p: any) => p.platform === "tiktok")?.content ||
+              "",
+            youtube_caption:
+              dynamicPosts.find((p: any) => p.platform === "youtube")
+                ?.content || "",
+          };
+
+          await PendingCaptions.findOneAndUpdate(
+            {
+              email: body.email,
+              title: body.videoTopic || body.title || topic,
+            },
+            {
+              email: body.email,
+              title: body.videoTopic || body.title || topic,
+              captions,
+              // Store dynamic post metadata
+              dynamicPosts: dynamicPosts,
+              isDynamic: true,
+            },
+            { upsert: true, new: true }
+          );
+          console.log(
+            "🎯 Generated and stored DYNAMIC captions for manual video using Smart Memory System"
+          );
+        } else {
+          console.warn(
+            "User not found for dynamic caption generation, using fallback"
+          );
+          // Fallback to traditional captions
+          const captions = await CaptionGenerationService.generateCaptions(
+            topic,
+            keyPoints,
+            {
+              name: body.name,
+              position: body.position,
+              companyName: body.companyName,
+              city: body.city,
+              socialHandles: body.socialHandles,
+            }
+          );
+          await PendingCaptions.findOneAndUpdate(
+            {
+              email: body.email,
+              title: body.videoTopic || body.title || topic,
+            },
+            {
+              email: body.email,
+              title: body.videoTopic || body.title || topic,
+              captions,
+              isDynamic: false,
+            },
+            { upsert: true, new: true }
+          );
+        }
       }
     } catch (capGenErr) {
       console.warn(
-        "Caption generation (manual) failed, continuing:",
+        "Dynamic caption generation (manual) failed, continuing:",
         capGenErr
       );
     }
@@ -1035,21 +1114,85 @@ export async function generateVideo(req: Request, res: Response) {
     console.log("Using voice_id:", voice_id);
     console.log(body.body, "body body");
 
-    // Generate social media captions using OpenAI
-    console.log("🎨 Generating social media captions for custom video...");
-    const captions = await CaptionGenerationService.generateCustomVideoCaptions(
-      body.hook,
-      body.body,
-      body.conclusion,
-      {
-        name: body.company_name, // Using company name as context
-        position: "Real Estate Professional",
-        companyName: body.company_name,
-        city: "Your City", // Could be extracted from user settings
-        socialHandles: body.social_handles,
+    // Generate DYNAMIC captions using Smart Memory System
+    let captions;
+    try {
+      // Get user ID for dynamic post generation
+      const user = await videoService.getUserByEmail(body.email);
+      if (user) {
+        // Create user context for dynamic posts
+        const userContext = {
+          name: body.company_name,
+          position: "Real Estate Professional",
+          companyName: body.company_name,
+          city: "Your City", // Could be extracted from user settings
+          socialHandles: body.social_handles,
+        };
+
+        // Generate DYNAMIC posts using Smart Memory System
+        const { DynamicPostGenerationService } = await import(
+          "../../../services/dynamicPostGeneration.service"
+        );
+        const dynamicPosts =
+          await DynamicPostGenerationService.generateDynamicPosts(
+            body.title || body.hook,
+            `${body.hook} ${body.body} ${body.conclusion}`,
+            userContext,
+            user._id.toString(),
+            [
+              "instagram",
+              "facebook",
+              "linkedin",
+              "twitter",
+              "tiktok",
+              "youtube",
+            ]
+          );
+
+        // Convert dynamic posts to traditional caption format for compatibility
+        captions = {
+          instagram_caption:
+            dynamicPosts.find((p: any) => p.platform === "instagram")
+              ?.content || "",
+          facebook_caption:
+            dynamicPosts.find((p: any) => p.platform === "facebook")?.content ||
+            "",
+          linkedin_caption:
+            dynamicPosts.find((p: any) => p.platform === "linkedin")?.content ||
+            "",
+          twitter_caption:
+            dynamicPosts.find((p: any) => p.platform === "twitter")?.content ||
+            "",
+          tiktok_caption:
+            dynamicPosts.find((p: any) => p.platform === "tiktok")?.content ||
+            "",
+          youtube_caption:
+            dynamicPosts.find((p: any) => p.platform === "youtube")?.content ||
+            "",
+        };
+        console.log(
+          "✅ DYNAMIC captions generated successfully using Smart Memory System"
+        );
+      } else {
+        throw new Error("User not found for dynamic caption generation");
       }
-    );
-    console.log("✅ Captions generated successfully");
+    } catch (error) {
+      console.warn("Dynamic caption generation failed, using fallback:", error);
+      // Fallback to traditional captions
+      captions = await CaptionGenerationService.generateCustomVideoCaptions(
+        body.hook,
+        body.body,
+        body.conclusion,
+        {
+          name: body.company_name,
+          position: "Real Estate Professional",
+          companyName: body.company_name,
+          city: "Your City",
+          socialHandles: body.social_handles,
+        }
+      );
+      console.log("✅ Fallback captions generated successfully");
+    }
 
     const webhookData = {
       hook: body.hook,
