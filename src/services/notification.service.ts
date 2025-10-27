@@ -98,6 +98,43 @@ class NotificationService {
     });
   }
 
+  // Video avatar creation progress notifications
+  notifyVideoAvatarProgress(
+    userId: string,
+    avatarId: string,
+    step: string,
+    status: "progress" | "success" | "error" | "completed",
+    data?: any
+  ) {
+    const notificationId = avatarId || `video-avatar-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    this.notifyUser(userId, "video-avatar-update", {
+      notificationId,
+      avatarId,
+      step,
+      status,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+
+    // If completed or error, also send a general notification
+    if (status === "completed" || status === "error") {
+      this.notifyUser(userId, "notification", {
+        type: "video-avatar",
+        title: status === "completed" ? "Video Avatar Completed" : "Video Avatar Error",
+        message: status === "completed" 
+          ? `Your video avatar "${data?.avatar_name || avatarId}" has been created successfully!`
+          : `Failed to create video avatar "${data?.avatar_name || avatarId}". ${data?.error || "Unknown error"}`,
+        level: status === "completed" ? "success" : "error",
+        data: {
+          avatarId,
+          ...data
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
   // Enhanced auto-post alert notifications
   notifyAutoPostAlert(
     userId: string,
