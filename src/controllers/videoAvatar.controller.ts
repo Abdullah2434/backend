@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import VideoAvatarService from "../services/videoAvatar.service";
 import { getS3 } from "../services/s3";
+import { notificationService } from "../services/notification.service";
 import {
   CreateVideoAvatarWithFilesRequest,
   VideoAvatarStatusResponse,
@@ -59,6 +60,10 @@ export async function createVideoAvatar(req: Request, res: Response) {
       training_footage_url,
       consent_statement_url,
     } = req.body;
+
+    // Get userId for socket notifications
+    const userId = (req as any).user?._id;
+    const authToken = req.headers.authorization?.replace("Bearer ", "");
 
     trainingFootageFile =
       (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined;
@@ -121,6 +126,20 @@ export async function createVideoAvatar(req: Request, res: Response) {
       }
     }
 
+    // Emit initial socket notification
+    if (userId) {
+      notificationService.notifyVideoAvatarProgress(
+        userId,
+        "temp-avatar-id", // Will be updated with actual avatar ID
+        "validation",
+        "progress",
+        {
+          avatar_name,
+          message: "Validating files and preparing avatar creation..."
+        }
+      );
+    }
+
     let trainingUrlToUse = training_footage_url;
     let consentUrlToUse = consent_statement_url;
     const request: CreateVideoAvatarWithFilesRequest = {
@@ -131,10 +150,6 @@ export async function createVideoAvatar(req: Request, res: Response) {
       training_footage_file: trainingFootageFile,
       consent_statement_file: consentStatementFile,
     };
-
-    // Get userId and auth token from authenticated request
-    const userId = (req as any).user?._id;
-    const authToken = req.headers.authorization?.replace("Bearer ", "");
 
     const result = await videoAvatarService.createVideoAvatarWithFiles(
       request,
@@ -166,9 +181,49 @@ export async function createVideoAvatar(req: Request, res: Response) {
       console.warn("Failed to clean up temp files:", cleanupError);
     }
 
+    // Emit final socket notification based on result
+    if (userId) {
+      const finalStatus = result.status === 'completed' ? 'completed' : 
+                         result.status === 'failed' ? 'error' : 'progress';
+      
+      notificationService.notifyVideoAvatarProgress(
+        userId,
+        result.avatar_id,
+        "final_result",
+        finalStatus,
+        {
+          avatar_name: result.avatar_name || avatar_name,
+          avatar_id: result.avatar_id,
+          avatar_group_id: result.avatar_group_id,
+          status: result.status,
+          message: result.message,
+          preview_image_url: result.preview_image_url,
+          preview_video_url: result.preview_video_url,
+          default_voice_id: result.default_voice_id,
+          error: result.error
+        }
+      );
+    }
+
     return res.status(202).json(result);
   } catch (error: any) {
     console.error("Error creating video avatar:", error);
+
+    // Emit error socket notification
+    const userId = (req as any).user?._id;
+    if (userId) {
+      notificationService.notifyVideoAvatarProgress(
+        userId,
+        "temp-avatar-id",
+        "error",
+        "error",
+        {
+          avatar_name: req.body.avatar_name,
+          error: error.message || "Internal server error",
+          message: "Failed to create video avatar"
+        }
+      );
+    }
 
     // Clean up temporary files on error
     try {

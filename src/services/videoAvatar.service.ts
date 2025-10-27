@@ -3,6 +3,7 @@ import VideoAvatar, { IVideoAvatar } from '../models/VideoAvatar';
 import DefaultAvatar from '../models/avatar';
 import { getS3 } from './s3';
 import WebhookService from './webhook.service';
+import { notificationService } from './notification.service';
 import {
   CreateVideoAvatarWithFilesRequest,
   CreateVideoAvatarResponse,
@@ -32,6 +33,22 @@ export class VideoAvatarService {
       const avatar_group_id = request.avatar_group_id || 
         `group_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
 
+      // Emit socket notification for avatar ID generation
+      if (userId) {
+        notificationService.notifyVideoAvatarProgress(
+          userId,
+          avatar_id,
+          "avatar_created",
+          "progress",
+          {
+            avatar_id,
+            avatar_group_id,
+            avatar_name: request.avatar_name,
+            message: "Avatar ID generated, starting file processing..."
+          }
+        );
+      }
+
       let trainingFootageUrl = urls?.training_footage_url;
       let consentStatementUrl = urls?.consent_statement_url;
       let trainingFootageSignedUrl = trainingFootageUrl;
@@ -39,6 +56,21 @@ export class VideoAvatarService {
 
       // Upload files to S3 if provided
       if (request.training_footage_file) {
+        // Emit socket notification for file upload start
+        if (userId) {
+          notificationService.notifyVideoAvatarProgress(
+            userId,
+            avatar_id,
+            "file_upload",
+            "progress",
+            {
+              avatar_id,
+              avatar_name: request.avatar_name,
+              message: "Uploading training footage to cloud storage..."
+            }
+          );
+        }
+
         const result = await this.uploadFileToS3WithSignedUrl(
           request.training_footage_file,
           avatar_id,
@@ -49,6 +81,21 @@ export class VideoAvatarService {
       }
 
       if (request.consent_statement_file) {
+        // Emit socket notification for consent file upload
+        if (userId) {
+          notificationService.notifyVideoAvatarProgress(
+            userId,
+            avatar_id,
+            "file_upload",
+            "progress",
+            {
+              avatar_id,
+              avatar_name: request.avatar_name,
+              message: "Uploading consent statement to cloud storage..."
+            }
+          );
+        }
+
         const result = await this.uploadFileToS3WithSignedUrl(
           request.consent_statement_file,
           avatar_id,
@@ -107,55 +154,56 @@ export class VideoAvatarService {
 
       // Submit to Heygen if env is configured and wait for completion
       console.log(`🚀 Starting Heygen submission for avatar ${avatar_id}...`);
-      try {
-        const finalResponse = await this.submitToHeygen({
-          training_footage_url: trainingFootageSignedUrl!,
-          video_consent_url: consentStatementSignedUrl!,
-          avatar_name: request.avatar_name,
-          callback_id: request.callback_id,
-          callback_url: request.callback_url,
-        }, userId, authToken)
 
-        console.log(`📋 Heygen submission completed for avatar ${avatar_id}:`, finalResponse);
-
-        // Return the final response from Heygen
-        if (finalResponse) {
-          console.log(`✅ Returning completed response for avatar ${avatar_id}`);
-          return {
-            avatar_id,
-            avatar_group_id,
-            status: finalResponse.data?.status || 'completed',
-            message: 'Avatar generation completed successfully!',
-            preview_image_url: finalResponse.data?.preview_image_url,
-            preview_video_url: finalResponse.data?.preview_video_url,
-            default_voice_id: finalResponse.data?.default_voice_id,
-            avatar_name: finalResponse.data?.avatar_name
-          };
-        }
-
-        console.log(`⚠️ No final response received for avatar ${avatar_id}, returning processing status`);
-        return {
+      // Emit socket notification for Heygen submission start
+      if (userId) {
+        notificationService.notifyVideoAvatarProgress(
+          userId,
           avatar_id,
-          avatar_group_id,
-          status: 'processing',
-          message: 'Avatar generation started. Please check status using the avatar_id.'
-        };
-      } catch (pollingError: any) {
-        // Handle polling timeout or other errors
-        if (pollingError.message && pollingError.message.includes('Polling timeout')) {
-          console.error(`Avatar generation timed out after 5 minutes for ${avatar_id}`);
-          return {
+          "heygen_submission",
+          "progress",
+          {
             avatar_id,
-            avatar_group_id,
-            status: 'failed',
-            message: 'Avatar generation timed out after 5 minutes. Please try again.',
-            error: 'Avatar generation timed out'
-          };
-        }
-        
-        // Re-throw other errors
-        throw pollingError;
+            avatar_name: request.avatar_name,
+            message: "Submitting avatar to AI processing service..."
+          }
+        );
       }
+
+      // Start Heygen submission asynchronously - don't wait for completion
+      this.submitToHeygen({
+        training_footage_url: trainingFootageSignedUrl!,
+        video_consent_url: consentStatementSignedUrl!,
+        avatar_name: request.avatar_name,
+        callback_id: request.callback_id,
+        callback_url: request.callback_url,
+      }, userId, authToken).catch(error => {
+        console.error(`Error in async Heygen submission for ${avatar_id}:`, error);
+        // Emit error socket notification
+        if (userId) {
+          notificationService.notifyVideoAvatarProgress(
+            userId,
+            avatar_id,
+            "heygen_error",
+            "error",
+            {
+              avatar_id,
+              avatar_name: request.avatar_name,
+              error: error.message,
+              message: "Failed to submit avatar to AI processing service"
+            }
+          );
+        }
+      });
+
+      // Return immediately with processing status - socket will handle real-time updates
+      console.log(`✅ Returning processing status for avatar ${avatar_id} - socket will provide updates`);
+      return {
+        avatar_id,
+        avatar_group_id,
+        status: 'processing',
+        message: 'Avatar generation started. Real-time updates will be provided via socket.'
+      };
     } catch (error: any) {
       console.error('Error creating video avatar:', error);
       throw new Error(`Failed to create video avatar: ${error.message}`);
@@ -327,7 +375,7 @@ export class VideoAvatarService {
       },
       body: JSON.stringify(payload),
     })
-    console.log(JSON?.stringify(res,null,2))
+    console.log(JSON?.stringify(res, null, 2))
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(`Heygen responded ${res.status}: ${text}`)
@@ -335,7 +383,7 @@ export class VideoAvatarService {
 
     const data = await res.json().catch(() => ({})) as any
     console.log('Heygen response data:', JSON.stringify(data, null, 2));
-    
+
     // Get user information using auth service if userId is not provided
     let finalUserId = userId;
     if (!finalUserId && authToken) {
@@ -350,11 +398,11 @@ export class VideoAvatarService {
         console.error('Error getting user from auth service:', error);
       }
     }
-    
+
     // Handle different status scenarios
     console.log('Checking Heygen response status:', data?.data?.status);
     console.log('Avatar ID from Heygen:', data?.data?.avatar_id);
-    
+
     if (data?.data?.avatar_id) {
       console.log(`Starting polling for avatar ${data.data.avatar_id} as status is processing`);
       const finalResponse = await this.startAvatarStatusPolling(data.data.avatar_id, authToken, finalUserId);
@@ -406,13 +454,48 @@ export class VideoAvatarService {
           // Update local database with Heygen response
           if (heygenData && Object.keys(heygenData).length > 0) {
             // await this.updateAvatarFromHeygenResponse(avatarId, heygenData, userId);
-            
-            console.log(`Avatar ${avatarId} current status: ${heygenData.status}`);
-            
+            if (userId) {
+              notificationService.notifyVideoAvatarProgress(
+                userId,
+                avatarId,
+                "ai_processing",
+                "progress",
+                {
+                  avatar_id: avatarId,
+                  avatar_name: heygenData?.data?.avatar_name,
+                  status: heygenData.data?.status,
+                  message: `AI is processing your avatar... Status: ${heygenData.data?.status || 'processing'}`
+                }
+              );
+            }
+
             // Stop polling if status is completed or failed
             if (heygenData.data.status === 'completed' || heygenData.data.status === 'failed') {
               console.log(`✅ Avatar ${avatarId} status is ${heygenData.status}, stopping polling`);
               console.log(`Final response saved for avatar ${avatarId}:`, heygenData);
+
+              // Emit final socket notification
+              if (userId) {
+                const finalStatus = heygenData.data.status === 'completed' ? 'completed' : 'error';
+                notificationService.notifyVideoAvatarProgress(
+                  userId,
+                  avatarId,
+                  "ai_processing_complete",
+                  finalStatus,
+                  {
+                    avatar_id: avatarId,
+                    avatar_name: heygenData?.data?.avatar_name,
+                    status: heygenData.data?.status,
+                    preview_image_url: heygenData?.data?.preview_image_url,
+                    preview_video_url: heygenData?.data?.preview_video_url,
+                    default_voice_id: heygenData?.data?.default_voice_id,
+                    message: finalStatus === 'completed'
+                      ? "Avatar creation completed successfully!"
+                      : "Avatar creation failed"
+                  }
+                );
+              }
+
               const defaultAvatar = new DefaultAvatar({
                 avatar_id: avatarId,
                 avatar_name: heygenData?.data?.avatar_name,
@@ -422,7 +505,7 @@ export class VideoAvatarService {
                 userId: userId,
                 status: 'training'
               });
-                    await defaultAvatar.save();
+              await defaultAvatar.save();
               clearInterval(pollInterval);
               resolve(heygenData); // Resolve with final response
             } else {
@@ -433,6 +516,22 @@ export class VideoAvatarService {
           }
         } catch (error: any) {
           console.error(`Error polling Heygen API for avatar ${avatarId}:`, error);
+
+          // Emit error socket notification
+          if (userId) {
+            notificationService.notifyVideoAvatarProgress(
+              userId,
+              avatarId,
+              "polling_error",
+              "error",
+              {
+                avatar_id: avatarId,
+                error: error.message,
+                message: "Error occurred while checking avatar status"
+              }
+            );
+          }
+
           clearInterval(pollInterval);
           reject(error);
         }
@@ -441,6 +540,22 @@ export class VideoAvatarService {
       // Stop polling after 5 minutes to prevent infinite polling
       setTimeout(() => {
         console.log(`Stopping polling for avatar ${avatarId} after 5 minutes`);
+
+        // Emit timeout socket notification
+        if (userId) {
+          notificationService.notifyVideoAvatarProgress(
+            userId,
+            avatarId,
+            "timeout",
+            "error",
+            {
+              avatar_id: avatarId,
+              error: "Avatar creation timed out after 5 minutes",
+              message: "Avatar creation timed out. Please try again."
+            }
+          );
+        }
+
         clearInterval(pollInterval);
         reject(new Error(`Polling timeout for avatar ${avatarId} after 5 minutes`));
       }, 10 * 60 * 1000); // 5 minutes timeout
