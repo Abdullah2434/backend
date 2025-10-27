@@ -206,7 +206,7 @@ export async function createSchedule(req: Request, res: Response) {
       timezone, // Include timezone information
     };
 
-    const createdSchedule = await videoScheduleService.createSchedule(
+    const createdSchedule = await videoScheduleService.createScheduleAsync(
       payload.userId,
       email,
       scheduleData
@@ -214,9 +214,10 @@ export async function createSchedule(req: Request, res: Response) {
 
     return res.status(201).json({
       success: true,
-      message: "Video schedule created successfully for one month duration",
+      message: "Video schedule creation started successfully",
       data: {
         scheduleId: createdSchedule._id,
+        status: "processing",
         frequency: createdSchedule.frequency,
         schedule: createdSchedule.schedule,
         startDate: createdSchedule.startDate,
@@ -224,6 +225,8 @@ export async function createSchedule(req: Request, res: Response) {
         duration: "1 month",
         totalVideos: createdSchedule.generatedTrends.length,
         isActive: createdSchedule.isActive,
+        message:
+          "Your schedule is being created in the background. You'll receive a notification when it's ready!",
       },
     });
   } catch (e: any) {

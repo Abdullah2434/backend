@@ -97,8 +97,6 @@ class NotificationService {
       timestamp: new Date().toISOString(),
     });
   }
-
-  // Video avatar creation progress notifications
   notifyVideoAvatarProgress(
     userId: string,
     avatarId: string,
@@ -133,6 +131,60 @@ class NotificationService {
         timestamp: new Date().toISOString(),
       });
     }
+  }
+  // Schedule creation status notifications
+  notifyScheduleStatus(
+    userId: string,
+    status: "processing" | "ready" | "failed",
+    data: {
+      scheduleId: string;
+      message: string;
+      totalVideos?: number;
+      processedVideos?: number;
+      errorDetails?: string;
+    }
+  ) {
+    let alertMessage = "";
+    let alertLevel = "info";
+
+    switch (status) {
+      case "processing":
+        alertMessage = `🔄 Schedule is being created... Processing ${
+          data.processedVideos || 0
+        }/${data.totalVideos || 0} videos`;
+        alertLevel = "info";
+        break;
+      case "ready":
+        alertMessage = `🎉 Schedule created successfully! Your ${
+          data.totalVideos || 0
+        } videos are ready to go!`;
+        alertLevel = "success";
+        break;
+      case "failed":
+        alertMessage = `❌ Schedule creation failed: ${
+          data.errorDetails || "Unknown error"
+        }`;
+        alertLevel = "error";
+        break;
+    }
+
+    this.notifyUser(userId, "schedule-status", {
+      status,
+      alertLevel,
+      alertMessage,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Also send a general notification
+    this.notifyUser(userId, "notification", {
+      type: "schedule-status",
+      title: "Schedule Update",
+      message: alertMessage,
+      level: alertLevel,
+      data,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // Enhanced auto-post alert notifications

@@ -15,6 +15,7 @@ export interface IVideoSchedule extends Document {
     times: string[]; // ["09:00", "14:30", etc.] in HH:MM format
   };
   isActive: boolean;
+  status: "processing" | "ready" | "failed"; // Schedule creation status
   startDate: Date;
   endDate: Date;
   generatedTrends: Array<{
@@ -88,6 +89,11 @@ const videoScheduleSchema = new Schema<IVideoSchedule>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    status: {
+      type: String,
+      enum: ["processing", "ready", "failed"],
+      default: "processing",
     },
     startDate: {
       type: Date,
