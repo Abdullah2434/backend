@@ -29,6 +29,10 @@ export interface IVideoSchedule extends Document {
     scheduledFor: Date;
     status: "pending" | "processing" | "completed" | "failed";
     videoId?: string;
+    enhanced_with_dynamic_posts?: boolean;
+    caption_status?: "pending" | "ready" | "failed";
+    caption_processed_at?: Date;
+    caption_error?: string;
   }>;
   createdAt: Date;
   updatedAt: Date;

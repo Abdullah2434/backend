@@ -668,6 +668,10 @@ CRITICAL INSTRUCTIONS:
 5. Make it authentic to ${platform} culture, not templated or robotic
 6. Reference ${topicAnalysis.topic} naturally throughout
 7. Keep it natural and conversational - this should sound human
+8. CRITICAL: Write as ONE FLOWING PARAGRAPH - do NOT use separate sections like [HASHTAGS] or [CONCLUSION]
+9. Integrate hashtags naturally within the text flow, not at the end
+10. Weave the call-to-action naturally into the content, not as a separate section
+11. IMPORTANT: Do NOT include quotation marks ("") in your content. Write clean, natural text without any quotation marks.
 
 Platform-Specific Guidelines:
 ${platformGuidelines}
@@ -691,7 +695,12 @@ Generate the post now, following the template structure and variation requiremen
         max_tokens: 1500,
       });
 
-      return response.choices[0].message.content || "";
+      const aiResponse = response.choices[0].message.content || "";
+
+      // Clean quotation marks from AI response
+      const cleanedContent = aiResponse.replace(/"/g, "");
+
+      return cleanedContent;
     } catch (error) {
       console.error("Error generating AI content:", error);
       throw new Error("Failed to generate content with AI");

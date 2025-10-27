@@ -17,6 +17,7 @@ export interface SocialMediaCaptions {
   linkedin_caption: string;
   twitter_caption: string;
   tiktok_caption: string;
+  youtube_caption: string;
 }
 
 export class CaptionGenerationService {
@@ -54,13 +55,16 @@ TOPIC: ${topic}
 KEY POINTS: ${keyPoints}${userContextText}
 
 CONTENT STRUCTURE REQUIREMENTS:
-Each caption must include:
+Each caption must be ONE FLOWING PARAGRAPH that naturally includes:
 1. HOOK: Attention-grabbing opening (2-3 sentences)
 2. DESCRIPTION: Detailed explanation of the topic (3-4 sentences)  
-3. KEY POINTS: Main benefits/features in bullet or numbered format
-4. CONCLUSION: Strong call-to-action with contact information
-5. HASHTAGS: 10-15 relevant real estate hashtags
-6. EMOJIS: Strategic use of real estate emojis (🏠🏘️🏢💰📈)
+3. KEY POINTS: Main benefits/features integrated naturally
+4. CALL-TO-ACTION: Naturally woven into the content with contact information
+5. HASHTAGS: 10-15 relevant real estate hashtags integrated naturally within the text
+6. EMOJIS: Strategic use of real estate emojis (🏠🏘️🏢💰📈) placed naturally
+
+CRITICAL: Do NOT use separate sections like [HASHTAGS] or [CONCLUSION]. Everything must flow as ONE NATURAL PARAGRAPH.
+IMPORTANT: Do NOT include quotation marks ("") in your captions. Write clean, natural text without any quotation marks.
 
 PLATFORM SPECIFICATIONS:
 - Instagram (max 2200 chars): Visual storytelling, use line breaks, include 10-15 hashtags, multiple emojis
@@ -72,12 +76,12 @@ PLATFORM SPECIFICATIONS:
 
 FORMAT YOUR RESPONSE AS JSON:
 {
-  "instagram_caption": "[HOOK] Attention-grabbing opening\n\n[DESCRIPTION] Detailed explanation\n\n[KEY POINTS] Main benefits\n\n[CONCLUSION] Call-to-action\n\n[HASHTAGS] #RealEstate #Property #Home #Investment #Market #Trends #Opportunity #Value #Growth #Success #DreamHome #FirstTimeBuyer #Investment #Rental #Commercial #Residential",
-  "facebook_caption": "[HOOK] Attention-grabbing opening\n\n[DESCRIPTION] Detailed explanation\n\n[KEY POINTS] Main benefits\n\n[CONCLUSION] Call-to-action\n\n[HASHTAGS] #RealEstate #Property #Home #Investment #Market #Trends #Opportunity #Value #Growth #Success #DreamHome #FirstTimeBuyer #Investment #Rental #Commercial #Residential #RealEstateAgent #PropertyInvestment",
-  "linkedin_caption": "[HOOK] Professional opening\n\n[DESCRIPTION] Industry insights\n\n[KEY POINTS] Business benefits\n\n[CONCLUSION] Professional call-to-action\n\n[HASHTAGS] #RealEstate #PropertyInvestment #MarketTrends #BusinessGrowth #ProfessionalNetworking #IndustryInsights #PropertyManagement #RealEstateInvestment",
-  "twitter_caption": "[HOOK] Concise opening [DESCRIPTION] Key points [CONCLUSION] Call-to-action [HASHTAGS] #RealEstate #Property #Investment",
-  "tiktok_caption": "[HOOK] Trendy opening [DESCRIPTION] Quick benefits [CONCLUSION] Action [HASHTAGS] #RealEstate #Property #FYP #Trending #Investment #Home #DreamHome #Success",
-  "youtube_caption": "[HOOK] SEO-optimized opening\n\n[DESCRIPTION] Detailed explanation with keywords\n\n[KEY POINTS] Comprehensive benefits\n\n[CONCLUSION] Strong call-to-action\n\n[HASHTAGS] #RealEstate #PropertyInvestment #MarketTrends #RealEstateTips #PropertyInvestment #HomeBuying #RealEstateAgent #PropertyManagement #RealEstateInvestment #PropertyInvestment #RealEstateMarket #PropertyTrends #RealEstateNews #PropertyInvestment #RealEstateAdvice"
+  "instagram_caption": "Attention-grabbing opening that flows naturally into detailed explanation of the topic. Include key benefits and features seamlessly woven throughout. End with a natural call-to-action and contact information. Integrate hashtags like #RealEstate #Property #Home #Investment #Market #Trends #Opportunity #Value #Growth #Success #DreamHome #FirstTimeBuyer naturally within the text. Use emojis strategically 🏠🏘️🏢💰📈",
+  "facebook_caption": "Attention-grabbing opening that flows naturally into detailed explanation of the topic. Include key benefits and features seamlessly woven throughout. End with a natural call-to-action and contact information. Integrate hashtags like #RealEstate #Property #Home #Investment #Market #Trends #Opportunity #Value #Growth #Success #DreamHome #FirstTimeBuyer #Investment #Rental #Commercial #Residential #RealEstateAgent #PropertyInvestment naturally within the text. Use emojis strategically 🏠🏘️🏢💰📈",
+  "linkedin_caption": "Professional opening that flows naturally into industry insights and business benefits. Include professional call-to-action and contact information seamlessly. Integrate hashtags like #RealEstate #PropertyInvestment #MarketTrends #BusinessGrowth #ProfessionalNetworking #IndustryInsights #PropertyManagement naturally within the text. Use minimal emojis strategically 🏢📈",
+  "twitter_caption": "Concise opening that flows into key points and natural call-to-action. Integrate hashtags like #RealEstate #Property #Investment naturally within the text. Use 1-2 emojis strategically 🏠💰",
+  "tiktok_caption": "Trendy opening that flows into quick benefits and natural action. Integrate hashtags like #RealEstate #Property #FYP #Trending #Investment #Home #DreamHome #Success naturally within the text. Use multiple emojis strategically 🏠🏘️🏢💰📈",
+  "youtube_caption": "SEO-optimized opening that flows naturally into detailed explanation with keywords and comprehensive benefits. Include strong call-to-action and contact information seamlessly. Integrate hashtags like #RealEstate #PropertyInvestment #MarketTrends #RealEstateTips #PropertyInvestment #HomeBuying #RealEstateAgent #PropertyManagement #RealEstateInvestment #PropertyInvestment #RealEstateMarket #PropertyTrends #RealEstateNews #PropertyInvestment #RealEstateAdvice naturally within the text. Use emojis strategically 🏠🏘️🏢💰📈"
 }
 
 Make sure each caption is unique, detailed, and tailored to the platform's audience with proper formatting.`;
@@ -135,6 +139,16 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
       // Parse JSON response
       const captions = JSON.parse(cleanedContent) as SocialMediaCaptions;
 
+      // Clean quotation marks from all captions
+      const cleanedCaptions: SocialMediaCaptions = {
+        instagram_caption: captions.instagram_caption?.replace(/"/g, "") || "",
+        facebook_caption: captions.facebook_caption?.replace(/"/g, "") || "",
+        linkedin_caption: captions.linkedin_caption?.replace(/"/g, "") || "",
+        twitter_caption: captions.twitter_caption?.replace(/"/g, "") || "",
+        tiktok_caption: captions.tiktok_caption?.replace(/"/g, "") || "",
+        youtube_caption: captions.youtube_caption?.replace(/"/g, "") || "",
+      };
+
       // Validate that all required captions are present
       const requiredCaptions = [
         "instagram_caption",
@@ -142,15 +156,16 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
         "linkedin_caption",
         "twitter_caption",
         "tiktok_caption",
+        "youtube_caption",
       ];
 
       for (const caption of requiredCaptions) {
-        if (!captions[caption as keyof SocialMediaCaptions]) {
+        if (!cleanedCaptions[caption as keyof SocialMediaCaptions]) {
           throw new Error(`Missing ${caption} in OpenAI response`);
         }
       }
 
-      return captions;
+      return cleanedCaptions;
     } catch (error: any) {
       console.error("Error generating captions:", error);
 
@@ -161,6 +176,7 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
         linkedin_caption: `Professional insight: ${topic}. ${keyPoints}. Let's connect to discuss real estate opportunities.`,
         twitter_caption: `${topic}: ${keyPoints} #RealEstate #Property`,
         tiktok_caption: `POV: You need to know about ${topic} 🏠 #RealEstate #Property #FYP`,
+        youtube_caption: `${topic}: ${keyPoints}. Learn more about real estate opportunities and market insights.`,
       };
     }
   }
