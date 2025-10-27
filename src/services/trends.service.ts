@@ -94,75 +94,42 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
     {
       description: `${city} Luxury Homes`,
       keypoints: `High-end properties in ${cityInfo.neighborhoods[0]}`,
-      instagram_caption: `🏠 Discover luxury homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      facebook_caption: `Explore luxury real estate opportunities in ${city}. ${cityInfo.marketTrend}. Find your dream home in ${cityInfo.popularAreas[0]}.`,
-      linkedin_caption: `${city} luxury real estate market offers exceptional investment opportunities. ${cityInfo.marketTrend} with properties featuring ${cityInfo.keyFeatures[0]}.`,
-      twitter_caption: `🏠 Luxury homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      tiktok_caption: `🏠 ${city} luxury homes! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      youtube_caption: `Discover luxury real estate opportunities in ${city}. ${cityInfo.marketTrend} with premium properties in ${cityInfo.popularAreas[0]}.`,
+      instagram_caption: "",
+      facebook_caption: "",
+      linkedin_caption: "",
+      twitter_caption: "",
+      tiktok_caption: "",
+      youtube_caption: "",
     },
     {
       description: `${city} Investment Properties`,
       keypoints: "Rental income, appreciation potential",
-      instagram_caption: `💰 ${city} investment properties! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #Investment`,
-      facebook_caption: `Invest in ${city} real estate for strong rental income and long-term appreciation.`,
-      linkedin_caption: `${city} real estate investment opportunities with strong rental yields and growth potential.`,
-      twitter_caption: `💰 ${city} investment properties! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #Investment`,
-      tiktok_caption: `💰 ${city} investments! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #Investment`,
-      youtube_caption: `Maximize your returns with ${city} real estate investments. Strong rental income and appreciation potential.`,
+      instagram_caption: "",
+      facebook_caption: "",
+      linkedin_caption: "",
+      twitter_caption: "",
+      tiktok_caption: "",
+      youtube_caption: "",
     },
     {
       description: `${city} First-Time Buyers`,
       keypoints: "Affordable options, starter homes",
-      instagram_caption: `🏡 First-time buyer homes in ${city}! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #FirstTimeBuyer`,
-      facebook_caption: `Find your first home in ${city} with our first-time buyer programs and affordable options.`,
-      linkedin_caption: `${city} offers excellent opportunities for first-time homebuyers with various financing options.`,
-      twitter_caption: `🏡 First-time buyer homes in ${city}! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #FirstTimeBuyer`,
-      tiktok_caption: `🏡 ${city} first homes! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #FirstTimeBuyer`,
-      youtube_caption: `Start your homeownership journey in ${city} with our first-time buyer programs and affordable housing options.`,
+      instagram_caption: "",
+      facebook_caption: "",
+      linkedin_caption: "",
+      twitter_caption: "",
+      tiktok_caption: "",
+      youtube_caption: "",
     },
     {
       description: `${city} Market Trends`,
       keypoints: "Price growth, market insights",
-      instagram_caption: `📈 ${city} real estate trends! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #MarketTrends`,
-      facebook_caption: `Stay updated with ${city} real estate market trends and price movements.`,
-      linkedin_caption: `${city} real estate market analysis shows strong growth trends and investment potential.`,
-      twitter_caption: `📈 ${city} market trends! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #MarketTrends`,
-      tiktok_caption: `📈 ${city} trends! #${city.replace(
-        /\s+/g,
-        ""
-      )}RealEstate #MarketTrends`,
-      youtube_caption: `Analyze ${city} real estate market trends and make informed investment decisions.`,
+      instagram_caption: "",
+      facebook_caption: "",
+      linkedin_caption: "",
+      twitter_caption: "",
+      tiktok_caption: "",
+      youtube_caption: "",
     },
     {
       description: `${city} New Developments`,
@@ -213,12 +180,6 @@ interface OpenAIResponse {
 interface TrendData {
   description: string;
   keypoints: string;
-  instagram_caption: string;
-  facebook_caption: string;
-  linkedin_caption: string;
-  twitter_caption: string;
-  tiktok_caption: string;
-  youtube_caption: string;
 }
 
 /**
@@ -341,18 +302,12 @@ function generateFastTrends(city: string, count: number): TrendData[] {
     {
       description: `${city} Luxury Homes`,
       keypoints: `High-end properties in ${cityInfo.neighborhoods[0]}`,
-      instagram_caption: `🏠 Discover luxury homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      facebook_caption: `Explore luxury real estate opportunities in ${city}. ${cityInfo.marketTrend}. Find your dream home in ${cityInfo.popularAreas[0]}.`,
-      linkedin_caption: `${city} luxury real estate market offers exceptional investment opportunities. ${cityInfo.marketTrend} with properties featuring ${cityInfo.keyFeatures[0]}.`,
-      twitter_caption: `🏠 Luxury homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      tiktok_caption: `🏠 ${city} luxury homes! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #LuxuryHomes`,
-      youtube_caption: `Discover luxury real estate opportunities in ${city}. ${cityInfo.marketTrend} with premium properties in ${cityInfo.popularAreas[0]}.`,
+      instagram_caption: "",
+      facebook_caption: "",
+      linkedin_caption: "",
+      twitter_caption: "",
+      tiktok_caption: "",
+      youtube_caption: "",
     },
     {
       description: `${city} Investment Properties`,
@@ -515,12 +470,6 @@ Return only valid JSON:
     return {
       description: description,
       keypoints: parsed.keypoints || "",
-      instagram_caption: parsed.instagram_caption || "",
-      facebook_caption: parsed.facebook_caption || "",
-      linkedin_caption: parsed.linkedin_caption || "",
-      twitter_caption: parsed.twitter_caption || "",
-      tiktok_caption: parsed.tiktok_caption || "",
-      youtube_caption: parsed.youtube_caption || "",
     };
   } catch (error) {
     console.error(`Error generating content from description:`, error);
@@ -529,21 +478,6 @@ Return only valid JSON:
     return {
       description: description,
       keypoints: "Property features, Location benefits, Investment potential",
-      instagram_caption: `🏠 ${description.substring(
-        0,
-        50
-      )}... #RealEstate #Property`,
-      facebook_caption: `${description}. Discover this amazing property opportunity with great potential.`,
-      linkedin_caption: `${description}. This property offers excellent investment potential and market opportunities.`,
-      twitter_caption: `🏠 ${description.substring(
-        0,
-        50
-      )}... #RealEstate #Property`,
-      tiktok_caption: `🏠 ${description.substring(
-        0,
-        50
-      )}... #RealEstate #Property`,
-      youtube_caption: `${description}. Explore this property's features and investment potential in our detailed analysis.`,
     };
   }
 }
@@ -595,25 +529,13 @@ CRITICAL: Return exactly ${count} items in the JSON array. Do not include any ad
 For each trend, include:
 1. A short, catchy description (5–6 words max)
 2. Key points (no more than 5 words)
-3. Platform-specific captions:
-   - Instagram: engaging, emoji-rich, 1–2 sentences  
-   - Facebook: informative, 2–3 sentences  
-   - LinkedIn: professional, 2–3 sentences  
-   - Twitter: concise, hashtag-friendly, 1–2 sentences  
-   - TikTok: trendy, engaging, 1–2 sentences  
-   - YouTube: descriptive, SEO-friendly, 2–3 sentences  
+3. NO platform-specific captions - these will be generated later with dynamic post generation  
 
 Return your result as a valid JSON array with EXACTLY ${count} objects like this:
 [
   {
     "description": "",
-    "keypoints": "",
-    "instagram_caption": "",
-    "facebook_caption": "",
-    "linkedin_caption": "",
-    "twitter_caption": "",
-    "tiktok_caption": "",
-    "youtube_caption": ""
+    "keypoints": ""
   }
 ]
 Ensure all fields are filled and formatted as strings.
@@ -669,21 +591,6 @@ Ensure all fields are filled and formatted as strings.
           parsed.push({
             description: `${city} Real Estate Trend ${i + 1}`,
             keypoints: "Market insights",
-            instagram_caption: `🏠 Discover ${city} real estate opportunities! #${city.replace(
-              /\s+/g,
-              ""
-            )}RealEstate`,
-            facebook_caption: `Explore ${city} real estate market trends and opportunities.`,
-            linkedin_caption: `${city} real estate market analysis and trends.`,
-            twitter_caption: `🏠 ${city} real estate trends #${city.replace(
-              /\s+/g,
-              ""
-            )}RealEstate`,
-            tiktok_caption: `🏠 ${city} real estate! #${city.replace(
-              /\s+/g,
-              ""
-            )}RealEstate`,
-            youtube_caption: `Discover ${city} real estate market trends and investment opportunities.`,
           });
         }
       } else {
@@ -697,12 +604,6 @@ Ensure all fields are filled and formatted as strings.
       keypoints: Array.isArray(item.keypoints)
         ? item.keypoints.join(", ")
         : item.keypoints || "",
-      instagram_caption: item.instagram_caption || "",
-      facebook_caption: item.facebook_caption || "",
-      linkedin_caption: item.linkedin_caption || "",
-      twitter_caption: item.twitter_caption || "",
-      tiktok_caption: item.tiktok_caption || "",
-      youtube_caption: item.youtube_caption || "",
     }));
 
     // Cache the results
@@ -747,25 +648,13 @@ CRITICAL: Return exactly ${count} items in the JSON array. Do not include any ad
 For each trend, include:
 1. A short, catchy description (5–6 words max)
 2. Key points (no more than 5 words)
-3. Platform-specific captions:
-   - Instagram: engaging, emoji-rich, 1–2 sentences  
-   - Facebook: informative, 2–3 sentences  
-   - LinkedIn: professional, 2–3 sentences  
-   - Twitter: concise, hashtag-friendly, 1–2 sentences  
-   - TikTok: trendy, engaging, 1–2 sentences  
-   - YouTube: descriptive, SEO-friendly, 2–3 sentences  
+3. NO platform-specific captions - these will be generated later with dynamic post generation  
 
 Return your result as a valid JSON array with EXACTLY ${count} objects like this:
 [
   {
     "description": "",
-    "keypoints": "",
-    "instagram_caption": "",
-    "facebook_caption": "",
-    "linkedin_caption": "",
-    "twitter_caption": "",
-    "tiktok_caption": "",
-    "youtube_caption": ""
+    "keypoints": ""
   }
 ]
 Ensure all fields are filled and formatted as strings.
@@ -821,12 +710,6 @@ Ensure all fields are filled and formatted as strings.
       keypoints: Array.isArray(item.keypoints)
         ? item.keypoints.join(", ")
         : item.keypoints || "",
-      instagram_caption: item.instagram_caption || "",
-      facebook_caption: item.facebook_caption || "",
-      linkedin_caption: item.linkedin_caption || "",
-      twitter_caption: item.twitter_caption || "",
-      tiktok_caption: item.tiktok_caption || "",
-      youtube_caption: item.youtube_caption || "",
     }));
 
     // Log if we got fewer trends than requested
