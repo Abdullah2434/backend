@@ -421,6 +421,11 @@ export async function getScheduleDetails(req: Request, res: Response) {
           scheduledFor: trend.scheduledFor,
           status: trend.status,
           videoId: trend.videoId,
+          caption_status: trend.caption_status || "ready", // Show caption processing status
+          enhanced_with_dynamic_posts:
+            trend.enhanced_with_dynamic_posts || false,
+          caption_processed_at: trend.caption_processed_at,
+          caption_error: trend.caption_error,
           socialCaptions: {
             instagram: trend.instagram_caption,
             facebook: trend.facebook_caption,

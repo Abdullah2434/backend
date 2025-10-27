@@ -110,30 +110,45 @@ export class VideoScheduleService {
           );
         }
 
-        // Validate chunk trends
-        const invalidTrends = chunkTrends.filter(
-          (trend: any) =>
-            !trend.description ||
-            !trend.keypoints ||
-            !trend.instagram_caption ||
-            !trend.facebook_caption ||
-            !trend.linkedin_caption ||
-            !trend.twitter_caption ||
-            !trend.tiktok_caption ||
-            !trend.youtube_caption
-        );
-
-        if (invalidTrends.length > 0) {
-          throw new Error(
-            `Chunk ${i + 1} has ${
-              invalidTrends.length
-            } trends with missing required fields`
+        // Hybrid approach: Generate dynamic captions for first video only
+        // Remaining videos will be processed in background
+        let enhancedTrends;
+        if (i === 0) {
+          // First chunk: Generate dynamic captions immediately
+          console.log(
+            `🎯 Generating dynamic captions for first video (chunk ${i + 1})...`
           );
+          enhancedTrends = await this.generateDynamicCaptionsForTrends(
+            chunkTrends,
+            userSettings,
+            userId
+          );
+          console.log(
+            `✅ First video captions generated: ${enhancedTrends.length} trends`
+          );
+        } else {
+          // Remaining chunks: Use basic captions, queue for background processing
+          console.log(
+            `⏳ Using basic captions for chunk ${
+              i + 1
+            }, queuing for background processing...`
+          );
+          enhancedTrends = chunkTrends.map((trend) => ({
+            ...trend,
+            instagram_caption: `${trend.description} - ${trend.keypoints}`,
+            facebook_caption: `${trend.description} - ${trend.keypoints}`,
+            linkedin_caption: `${trend.description} - ${trend.keypoints}`,
+            twitter_caption: `${trend.description} - ${trend.keypoints}`,
+            tiktok_caption: `${trend.description} - ${trend.keypoints}`,
+            youtube_caption: `${trend.description} - ${trend.keypoints}`,
+            enhanced_with_dynamic_posts: false,
+            caption_status: "pending", // Mark for background processing
+          }));
         }
 
-        allTrends.push(...chunkTrends);
+        allTrends.push(...enhancedTrends);
         console.log(
-          `✅ Chunk ${i + 1} completed: ${chunkTrends.length} valid trends`
+          `✅ Chunk ${i + 1} completed: ${enhancedTrends.length} trends`
         );
 
         // Add a small delay between chunks to avoid rate limiting
@@ -174,6 +189,13 @@ export class VideoScheduleService {
     });
 
     await schedule.save();
+
+    // Queue background job to generate dynamic captions for remaining videos
+    this.queueBackgroundCaptionGeneration(
+      schedule._id.toString(),
+      userId,
+      userSettings
+    );
 
     // Send schedule created email
     try {
@@ -1608,6 +1630,254 @@ export class VideoScheduleService {
       )} minutes away`
     );
     return false;
+  }
+
+  /**
+   * Generate dynamic captions for trends using Enhanced Dynamic Template System
+   */
+  private async generateDynamicCaptionsForTrends(
+    trends: any[],
+    userSettings: any,
+    userId: string
+  ): Promise<any[]> {
+    console.log(
+      `🎯 Generating dynamic captions for ${trends.length} trends during schedule creation...`
+    );
+
+    const enhancedTrends = [];
+
+    for (const trend of trends) {
+      try {
+        // Create user context from user settings
+        const userContext = {
+          name: userSettings.name,
+          position: userSettings.position,
+          companyName: userSettings.companyName,
+          city: userSettings.city,
+          socialHandles: userSettings.socialHandles,
+        };
+
+        // Generate dynamic posts for this trend
+        const { DynamicPostGenerationService } = await import(
+          "./dynamicPostGeneration.service"
+        );
+        const dynamicPosts =
+          await DynamicPostGenerationService.generateDynamicPosts(
+            trend.description,
+            trend.keypoints,
+            userContext,
+            userId,
+            [
+              "instagram",
+              "facebook",
+              "linkedin",
+              "twitter",
+              "tiktok",
+              "youtube",
+            ]
+          );
+
+        // Create enhanced trend with dynamic captions
+        const enhancedTrend = {
+          ...trend,
+          // Update captions with dynamic content
+          instagram_caption: this.getDynamicCaption(dynamicPosts, "instagram"),
+          facebook_caption: this.getDynamicCaption(dynamicPosts, "facebook"),
+          linkedin_caption: this.getDynamicCaption(dynamicPosts, "linkedin"),
+          twitter_caption: this.getDynamicCaption(dynamicPosts, "twitter"),
+          tiktok_caption: this.getDynamicCaption(dynamicPosts, "tiktok"),
+          youtube_caption: this.getDynamicCaption(dynamicPosts, "youtube"),
+          // Add metadata
+          enhanced_with_dynamic_posts: true,
+          enhancement_timestamp: new Date().toISOString(),
+        };
+
+        enhancedTrends.push(enhancedTrend);
+        console.log(
+          `✅ Generated dynamic captions for trend: "${trend.description}"`
+        );
+      } catch (error) {
+        console.warn(
+          `⚠️ Failed to generate dynamic captions for trend "${trend.description}":`,
+          error
+        );
+        // Keep original trend if enhancement fails
+        enhancedTrends.push({
+          ...trend,
+          enhanced_with_dynamic_posts: false,
+          enhancement_error:
+            error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    return enhancedTrends;
+  }
+
+  /**
+   * Queue background job to generate dynamic captions for remaining videos
+   */
+  private queueBackgroundCaptionGeneration(
+    scheduleId: string,
+    userId: string,
+    userSettings: any
+  ): void {
+    console.log(
+      `🚀 Queuing background caption generation for schedule ${scheduleId}`
+    );
+
+    // Start background processing immediately (non-blocking)
+    setImmediate(async () => {
+      try {
+        console.log(
+          `🔄 Starting background caption generation for schedule ${scheduleId}...`
+        );
+        await this.processBackgroundCaptions(scheduleId, userId, userSettings);
+        console.log(
+          `✅ Background caption generation completed for schedule ${scheduleId}`
+        );
+      } catch (error) {
+        console.error(
+          `❌ Background caption generation failed for schedule ${scheduleId}:`,
+          error
+        );
+      }
+    });
+
+    console.log(
+      `📋 Background caption generation queued for schedule ${scheduleId}`
+    );
+    console.log(`⏰ Enhanced captions will be available within 5-10 minutes`);
+  }
+
+  /**
+   * Process background caption generation for pending videos
+   */
+  private async processBackgroundCaptions(
+    scheduleId: string,
+    userId: string,
+    userSettings: any
+  ): Promise<void> {
+    const schedule = await VideoSchedule.findById(scheduleId);
+    if (!schedule) {
+      throw new Error(`Schedule ${scheduleId} not found`);
+    }
+
+    const pendingTrends = schedule.generatedTrends.filter(
+      (trend: any) => trend.caption_status === "pending"
+    );
+
+    console.log(
+      `📊 Found ${pendingTrends.length} videos pending caption generation`
+    );
+
+    for (let i = 0; i < pendingTrends.length; i++) {
+      const trendIndex = schedule.generatedTrends.findIndex(
+        (t: any) => t.description === pendingTrends[i].description
+      );
+
+      try {
+        console.log(
+          `🎯 Processing video ${i + 1}/${pendingTrends.length}: "${
+            pendingTrends[i].description
+          }"`
+        );
+
+        // Generate dynamic captions for this trend
+        const userContext = {
+          name: userSettings.name,
+          position: userSettings.position,
+          companyName: userSettings.companyName,
+          city: userSettings.city,
+          socialHandles: userSettings.socialHandles,
+        };
+
+        const { DynamicPostGenerationService } = await import(
+          "./dynamicPostGeneration.service"
+        );
+        const dynamicPosts =
+          await DynamicPostGenerationService.generateDynamicPosts(
+            pendingTrends[i].description,
+            pendingTrends[i].keypoints,
+            userContext,
+            userId,
+            [
+              "instagram",
+              "facebook",
+              "linkedin",
+              "twitter",
+              "tiktok",
+              "youtube",
+            ]
+          );
+
+        // Update trend with dynamic captions
+        schedule.generatedTrends[trendIndex].instagram_caption =
+          dynamicPosts.find((p) => p.platform === "instagram")?.content ||
+          schedule.generatedTrends[trendIndex].instagram_caption;
+        schedule.generatedTrends[trendIndex].facebook_caption =
+          dynamicPosts.find((p) => p.platform === "facebook")?.content ||
+          schedule.generatedTrends[trendIndex].facebook_caption;
+        schedule.generatedTrends[trendIndex].linkedin_caption =
+          dynamicPosts.find((p) => p.platform === "linkedin")?.content ||
+          schedule.generatedTrends[trendIndex].linkedin_caption;
+        schedule.generatedTrends[trendIndex].twitter_caption =
+          dynamicPosts.find((p) => p.platform === "twitter")?.content ||
+          schedule.generatedTrends[trendIndex].twitter_caption;
+        schedule.generatedTrends[trendIndex].tiktok_caption =
+          dynamicPosts.find((p) => p.platform === "tiktok")?.content ||
+          schedule.generatedTrends[trendIndex].tiktok_caption;
+        schedule.generatedTrends[trendIndex].youtube_caption =
+          dynamicPosts.find((p) => p.platform === "youtube")?.content ||
+          schedule.generatedTrends[trendIndex].youtube_caption;
+
+        schedule.generatedTrends[trendIndex].enhanced_with_dynamic_posts = true;
+        schedule.generatedTrends[trendIndex].caption_status = "ready";
+        schedule.generatedTrends[trendIndex].caption_processed_at = new Date();
+
+        // Save after each video to prevent data loss
+        await schedule.save();
+
+        console.log(
+          `✅ Video ${i + 1}/${
+            pendingTrends.length
+          } captions generated and saved`
+        );
+
+        // Small delay between videos to avoid rate limiting
+        if (i < pendingTrends.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        console.error(
+          `❌ Failed to generate captions for video ${i + 1}:`,
+          error
+        );
+        // Mark as failed but continue with other videos
+        schedule.generatedTrends[trendIndex].caption_status = "failed";
+        schedule.generatedTrends[trendIndex].caption_error =
+          error instanceof Error ? error.message : "Unknown error";
+        await schedule.save();
+      }
+    }
+
+    console.log(
+      `🎉 Background caption generation completed for schedule ${scheduleId}`
+    );
+  }
+
+  /**
+   * Get dynamic caption from generated posts
+   */
+  private getDynamicCaption(dynamicPosts: any[], platform: string): string {
+    const post = dynamicPosts.find((p) => p.platform === platform);
+    if (post && post.content) {
+      return post.content;
+    }
+
+    // Fallback caption when dynamic generation fails
+    console.warn(`⚠️ No dynamic caption found for ${platform}, using fallback`);
+    return `Real Estate Update - Check out the latest market insights!`;
   }
 }
 
