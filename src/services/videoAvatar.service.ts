@@ -170,40 +170,20 @@ export class VideoAvatarService {
         );
       }
 
-      // Start Heygen submission asynchronously - don't wait for completion
-      this.submitToHeygen({
+
+      // Return immediately with processing status - socket will handle real-time updates
+      console.log(`✅ Returning processing status for avatar ${avatar_id} - socket will provide updates`);
+      
+      // Wait for Heygen response and return it
+      const heygenResponse = await this.submitToHeygen({
         training_footage_url: trainingFootageSignedUrl!,
         video_consent_url: consentStatementSignedUrl!,
         avatar_name: request.avatar_name,
         callback_id: request.callback_id,
         callback_url: request.callback_url,
-      }, userId, authToken).catch(error => {
-        console.error(`Error in async Heygen submission for ${avatar_id}:`, error);
-        // Emit error socket notification
-        if (userId) {
-          notificationService.notifyVideoAvatarProgress(
-            userId,
-            avatar_id,
-            "heygen_error",
-            "error",
-            {
-              avatar_id,
-              avatar_name: request.avatar_name,
-              error: error.message,
-              message: "Failed to submit avatar to AI processing service"
-            }
-          );
-        }
-      });
-
-      // Return immediately with processing status - socket will handle real-time updates
-      console.log(`✅ Returning processing status for avatar ${avatar_id} - socket will provide updates`);
-      return {
-        avatar_id,
-        avatar_group_id,
-        status: 'processing',
-        message: 'Avatar generation started. Real-time updates will be provided via socket.'
-      };
+      }, userId, authToken);
+      
+      return heygenResponse;
     } catch (error: any) {
       console.error('Error creating video avatar:', error);
       throw new Error(`Failed to create video avatar: ${error.message}`);
@@ -365,8 +345,6 @@ export class VideoAvatarService {
       return
     }
     const url = `${baseUrl.replace(/\/$/, '')}/video_avatar`
-    console.log('Heygen submission URL:', url)
-    console.log('Heygen submission payload:', payload)
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -375,7 +353,6 @@ export class VideoAvatarService {
       },
       body: JSON.stringify(payload),
     })
-    console.log(JSON?.stringify(res, null, 2))
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(`Heygen responded ${res.status}: ${text}`)
@@ -399,20 +376,18 @@ export class VideoAvatarService {
       }
     }
 
-    // Handle different status scenarios
-    console.log('Checking Heygen response status:', data?.data?.status);
-    console.log('Avatar ID from Heygen:', data?.data?.avatar_id);
 
     if (data?.data?.avatar_id) {
       console.log(`Starting polling for avatar ${data.data.avatar_id} as status is processing`);
-      const finalResponse = await this.startAvatarStatusPolling(data.data.avatar_id, authToken, finalUserId);
-      console.log('Polling completed with final response:', finalResponse);
-      return finalResponse;
-    } else {
-      // No avatar_id in response, return the original data
-      console.log('No avatar_id in Heygen response, returning original data');
-      return data;
+      // Start polling in background - don't wait for completion
+      this.startAvatarStatusPolling(data.data.avatar_id, authToken, finalUserId).catch(error => {
+        console.error(`Error in background polling for ${data.data.avatar_id}:`, error);
+      });
     }
+    
+    // Return the initial Heygen response immediately
+    console.log('Returning initial Heygen response:', data);
+    return data;
   }
 
   /**
