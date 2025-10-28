@@ -8,11 +8,13 @@ import DefaultAvatar from "../../../models/avatar";
 import DefaultVoice from "../../../models/voice";
 import WorkflowHistory from "../../../models/WorkflowHistory";
 import { photoAvatarQueue } from "../../../queues/photoAvatarQueue";
-import { notificationService } from "../../../services/notification.service";
+import { UserVideoSettingsService } from "../../../services/userVideoSettings.service";
+import { VOICE_ENERGY_PRESETS } from "../../../constants/voiceEnergy";
 import multer from "multer";
 import https from "https";
 import url from "url";
 import User from "../../../models/User";
+import { notificationService } from "../../../services/notification.service";
 import mongoose from "mongoose";
 import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
@@ -1098,7 +1100,130 @@ export async function generateVideo(req: Request, res: Response) {
         .status(500)
         .json({ success: false, message: "Subscription check failed" });
     }
-    // Get gender from DefaultAvatar
+    // Get energy profile settings - either from request body or user settings
+    let voiceEnergyParams = VOICE_ENERGY_PRESETS.mid; // Default to mid energy
+    let musicTrackInfo = null;
+    let energyLevel = "mid"; // Default energy level
+
+    // Check if specific music track ID is passed (user selected after previewing)
+    if (body.selectedMusicTrackId) {
+      try {
+        const { MusicService } = await import(
+          "../../../services/music.service"
+        );
+        const { S3Service } = await import("../../../services/s3");
+
+        const s3Service = new S3Service({
+          region: process.env.AWS_REGION || "us-east-1",
+          bucketName: process.env.AWS_S3_BUCKET || "",
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+        });
+        const musicService = new MusicService(s3Service);
+
+        const selectedTrack = await musicService.getMusicTrackById(
+          body.selectedMusicTrackId
+        );
+        if (selectedTrack) {
+          musicTrackInfo = {
+            trackUrl: selectedTrack.s3FullTrackUrl,
+            trackName: selectedTrack.name,
+            energyCategory: selectedTrack.energyCategory,
+          };
+
+          // Use custom voice energy if provided, otherwise match music energy
+          if (
+            body.customVoiceEnergy &&
+            ["high", "mid", "low"].includes(body.customVoiceEnergy)
+          ) {
+            energyLevel = body.customVoiceEnergy;
+            voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
+            console.log(
+              `🎯 Custom voice energy: ${energyLevel} with music: ${selectedTrack.name}`
+            );
+          } else {
+            energyLevel = selectedTrack.energyCategory;
+            voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
+            console.log(
+              `🎵 User selected specific music track: ${selectedTrack.name} (${energyLevel} energy)`
+            );
+          }
+        }
+      } catch (musicError) {
+        console.warn("Failed to get selected music track:", musicError);
+      }
+    }
+    // Check if energy level is passed in request body (frontend override)
+    else if (
+      body.energyLevel &&
+      ["high", "mid", "low"].includes(body.energyLevel)
+    ) {
+      energyLevel = body.energyLevel;
+      voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
+
+      console.log(`🎯 Using energy level from request: ${energyLevel}`);
+
+      // Get random music track for this energy level
+      try {
+        const { MusicService } = await import(
+          "../../../services/music.service"
+        );
+        const { S3Service } = await import("../../../services/s3");
+
+        const s3Service = new S3Service({
+          region: process.env.AWS_REGION || "us-east-1",
+          bucketName: process.env.AWS_S3_BUCKET || "",
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+        });
+        const musicService = new MusicService(s3Service);
+
+        const randomTrack = await musicService.getRandomTrackByEnergy(
+          energyLevel
+        );
+        if (randomTrack) {
+          musicTrackInfo = {
+            trackUrl: randomTrack.s3FullTrackUrl,
+            trackName: randomTrack.name,
+            energyCategory: randomTrack.energyCategory,
+          };
+          console.log(
+            `🎵 Selected random music track: ${randomTrack.name} (${energyLevel} energy)`
+          );
+        }
+      } catch (musicError) {
+        console.warn("Failed to get random music track:", musicError);
+      }
+    } else {
+      // Fallback: Get from user's saved settings
+      try {
+        const userVideoSettingsService = new UserVideoSettingsService();
+        const energyProfile = await userVideoSettingsService.getEnergyProfile(
+          body.email
+        );
+
+        if (energyProfile) {
+          voiceEnergyParams = energyProfile.voiceParams;
+          energyLevel = energyProfile.voiceEnergy;
+
+          if (energyProfile.selectedMusicTrack) {
+            musicTrackInfo = {
+              trackUrl: energyProfile.selectedMusicTrack.s3FullTrackUrl,
+              trackName: energyProfile.selectedMusicTrack.name,
+              energyCategory: energyProfile.selectedMusicTrack.energyCategory,
+            };
+            console.log(
+              `🎵 Using saved music track: ${energyProfile.selectedMusicTrack.name}`
+            );
+          }
+        }
+      } catch (energyError) {
+        console.warn(
+          "Failed to get energy profile from user settings, using defaults:",
+          energyError
+        );
+      }
+    }
     const avatarDoc = await DefaultAvatar.findOne({
       avatar_id: body.avatar_title,
     });
@@ -1209,6 +1334,19 @@ export async function generateVideo(req: Request, res: Response) {
       voice: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
+      // New voice energy parameters
+      voiceEnergy: {
+        stability: voiceEnergyParams.stability,
+        similarity_boost: voiceEnergyParams.similarity_boost,
+        style: voiceEnergyParams.style,
+        use_speaker_boost: voiceEnergyParams.use_speaker_boost,
+        speed: voiceEnergyParams.speed,
+        emotion_tags: voiceEnergyParams.emotion_tags,
+      },
+      // Energy level for reference
+      energyLevel: energyLevel,
+      // New music track information
+      musicTrack: musicTrackInfo,
       // Optional schedule context for auto runs (forward to N8N)
       ...(body.scheduleId ? { scheduleId: body.scheduleId } : {}),
       ...(body.trendIndex !== undefined
