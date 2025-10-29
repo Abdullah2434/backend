@@ -822,8 +822,8 @@ export async function createVideo(req: Request, res: Response) {
       topicKeyPoints: body.topicKeyPoints,
       city: body.city,
       preferredTone: body.preferredTone,
-      zipCode: 90014,
-      zipKeyPoints: "new bars and restaurants",
+      zipCode: body.zipCode || null,
+      zipKeyPoints: body.zipKeyPoints || null,
       callToAction: body.callToAction,
       email: body.email,
       timestamp: new Date().toISOString(),
@@ -849,48 +849,8 @@ export async function createVideo(req: Request, res: Response) {
             socialHandles: body.socialHandles,
           };
 
-          // Generate DYNAMIC posts using Smart Memory System
-          const { DynamicPostGenerationService } = await import(
-            "../../../services/dynamicPostGeneration.service"
-          );
-          const dynamicPosts =
-            await DynamicPostGenerationService.generateDynamicPosts(
-              topic,
-              keyPoints,
-              userContext,
-              user._id.toString(),
-              [
-                "instagram",
-                "facebook",
-                "linkedin",
-                "twitter",
-                "tiktok",
-                "youtube",
-              ]
-            );
-
-          // Convert dynamic posts to traditional caption format for compatibility
-          const captions = {
-            instagram_caption:
-              dynamicPosts.find((p: any) => p.platform === "instagram")
-                ?.content || "",
-            facebook_caption:
-              dynamicPosts.find((p: any) => p.platform === "facebook")
-                ?.content || "",
-            linkedin_caption:
-              dynamicPosts.find((p: any) => p.platform === "linkedin")
-                ?.content || "",
-            twitter_caption:
-              dynamicPosts.find((p: any) => p.platform === "twitter")
-                ?.content || "",
-            tiktok_caption:
-              dynamicPosts.find((p: any) => p.platform === "tiktok")?.content ||
-              "",
-            youtube_caption:
-              dynamicPosts.find((p: any) => p.platform === "youtube")
-                ?.content || "",
-          };
-
+          // Store the dynamic generation data for later processing after webhooks complete
+          // This will be triggered by the webhook handlers after both webhooks are done
           await PendingCaptions.findOneAndUpdate(
             {
               email: body.email,
@@ -899,15 +859,30 @@ export async function createVideo(req: Request, res: Response) {
             {
               email: body.email,
               title: body.videoTopic || body.title || topic,
-              captions,
-              // Store dynamic post metadata
-              dynamicPosts: dynamicPosts,
+              topic,
+              keyPoints,
+              userContext,
+              userId: user._id.toString(),
+              platforms: [
+                "instagram",
+                "facebook",
+                "linkedin",
+                "twitter",
+                "tiktok",
+                "youtube",
+              ],
               isDynamic: true,
+              isPending: true, // Flag to indicate this needs dynamic generation
+              captions: null, // Will be populated after webhooks complete
+              dynamicPosts: null, // Will be populated after webhooks complete
             },
             { upsert: true, new: true }
           );
+
           console.log(
-            "🎯 Generated and stored DYNAMIC captions for manual video using Smart Memory System"
+            `📝 Stored dynamic generation data for later processing: ${
+              body.videoTopic || body.title || topic
+            }`
           );
         } else {
           console.warn(

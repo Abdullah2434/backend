@@ -93,7 +93,7 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
   const fallbackTrends = [
     {
       description: `${city} Luxury Homes`,
-      keypoints: `High-end properties in ${cityInfo.neighborhoods[0]}`,
+      keypoints: `High-end properties, Premium locations, Exclusive amenities`,
       instagram_caption: "",
       facebook_caption: "",
       linkedin_caption: "",
@@ -103,7 +103,7 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
     },
     {
       description: `${city} Investment Properties`,
-      keypoints: "Rental income, appreciation potential",
+      keypoints: "Rental income, Appreciation potential, Strong ROI",
       instagram_caption: "",
       facebook_caption: "",
       linkedin_caption: "",
@@ -113,7 +113,7 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
     },
     {
       description: `${city} First-Time Buyers`,
-      keypoints: "Affordable options, starter homes",
+      keypoints: "Affordable options, Starter homes, Financing assistance",
       instagram_caption: "",
       facebook_caption: "",
       linkedin_caption: "",
@@ -123,7 +123,7 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
     },
     {
       description: `${city} Market Trends`,
-      keypoints: "Price growth, market insights",
+      keypoints: "Price growth, Market insights, Inventory updates",
       instagram_caption: "",
       facebook_caption: "",
       linkedin_caption: "",
@@ -133,7 +133,7 @@ function generateFallbackTrends(city: string, count: number): TrendData[] {
     },
     {
       description: `${city} New Developments`,
-      keypoints: "Modern amenities, new construction",
+      keypoints: "Modern amenities, New construction, Growing neighborhoods",
       instagram_caption: `🏗️ New developments in ${city}! #${city.replace(
         /\s+/g,
         ""
@@ -289,7 +289,11 @@ function extractJsonFromText(content: string): any {
 }
 
 // Ultra-fast template-based generation (2-3 seconds)
-function generateFastTrends(city: string, count: number): TrendData[] {
+function generateFastTrends(
+  city: string,
+  position: string,
+  count: number
+): TrendData[] {
   const cityInfo = cityData[city] || {
     neighborhoods: ["Downtown", "Suburbs", "Waterfront"],
     priceRange: "$200K - $2M+",
@@ -298,82 +302,121 @@ function generateFastTrends(city: string, count: number): TrendData[] {
     popularAreas: ["Downtown", "Suburbs"],
   };
 
-  const templates = [
-    {
-      description: `${city} Luxury Homes`,
-      keypoints: `High-end properties in ${cityInfo.neighborhoods[0]}`,
-      instagram_caption: "",
-      facebook_caption: "",
-      linkedin_caption: "",
-      twitter_caption: "",
-      tiktok_caption: "",
-      youtube_caption: "",
-    },
-    {
-      description: `${city} Investment Properties`,
-      keypoints: `Rental income in ${cityInfo.neighborhoods[1]}`,
-      instagram_caption: `💰 ${city} investment properties! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #Investment`,
-      facebook_caption: `Invest in ${city} real estate for strong rental income. ${cityInfo.marketTrend} with properties in ${cityInfo.popularAreas[1]}.`,
-      linkedin_caption: `${city} real estate investment opportunities with strong rental yields. ${cityInfo.marketTrend} in ${cityInfo.neighborhoods[1]}.`,
-      twitter_caption: `💰 ${city} investment properties! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #Investment`,
-      tiktok_caption: `💰 ${city} investments! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #Investment`,
-      youtube_caption: `Maximize your returns with ${city} real estate investments. ${cityInfo.marketTrend} with strong rental income potential.`,
-    },
-    {
-      description: `${city} First-Time Buyers`,
-      keypoints: `Affordable options in ${cityInfo.neighborhoods[2]}`,
-      instagram_caption: `🏡 First-time buyer homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #FirstTimeBuyer`,
-      facebook_caption: `Find your first home in ${city} with our first-time buyer programs. ${cityInfo.marketTrend} with affordable options in ${cityInfo.popularAreas[2]}.`,
-      linkedin_caption: `${city} offers excellent opportunities for first-time homebuyers. ${cityInfo.marketTrend} with various financing options in ${cityInfo.neighborhoods[2]}.`,
-      twitter_caption: `🏡 First-time buyer homes in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #FirstTimeBuyer`,
-      tiktok_caption: `🏡 ${city} first homes! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #FirstTimeBuyer`,
-      youtube_caption: `Start your homeownership journey in ${city} with our first-time buyer programs. ${cityInfo.marketTrend} with affordable housing options.`,
-    },
-    {
-      description: `${city} Market Trends`,
-      keypoints: `Price growth in ${cityInfo.neighborhoods[0]}`,
-      instagram_caption: `📈 ${city} real estate trends! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #MarketTrends`,
-      facebook_caption: `Stay updated with ${city} real estate market trends. ${cityInfo.marketTrend} with price movements in ${cityInfo.popularAreas[0]}.`,
-      linkedin_caption: `${city} real estate market analysis shows strong growth trends. ${cityInfo.marketTrend} with investment potential in ${cityInfo.neighborhoods[0]}.`,
-      twitter_caption: `📈 ${city} market trends! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #MarketTrends`,
-      tiktok_caption: `📈 ${city} trends! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #MarketTrends`,
-      youtube_caption: `Analyze ${city} real estate market trends and make informed investment decisions. ${cityInfo.marketTrend} with detailed market analysis.`,
-    },
-    {
-      description: `${city} New Developments`,
-      keypoints: `Modern amenities in ${cityInfo.neighborhoods[1]}`,
-      instagram_caption: `🏗️ New developments in ${city}! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #NewConstruction`,
-      facebook_caption: `Explore new residential developments in ${city} with modern amenities. ${cityInfo.marketTrend} with contemporary design in ${cityInfo.popularAreas[1]}.`,
-      linkedin_caption: `${city} new construction projects offer modern living. ${cityInfo.marketTrend} with cutting-edge amenities in ${cityInfo.neighborhoods[1]}.`,
-      twitter_caption: `🏗️ New ${city} developments! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #NewConstruction`,
-      tiktok_caption: `🏗️ ${city} new builds! ${
-        cityInfo.priceRange
-      } #${city.replace(/\s+/g, "")}RealEstate #NewConstruction`,
-      youtube_caption: `Discover new residential developments in ${city} featuring modern amenities. ${cityInfo.marketTrend} with contemporary living options.`,
-    },
-  ];
+  // Position-specific templates (minimum 3 keypoints each)
+  const positionTemplates = {
+    "Real Estate Agent": [
+      {
+        description: `${city} Luxury Homes`,
+        keypoints: `High-end properties, Premium locations, Exclusive amenities`,
+      },
+      {
+        description: `${city} Investment Properties`,
+        keypoints: `Rental income potential, Strong ROI, Market appreciation`,
+      },
+      {
+        description: `${city} First-Time Buyers`,
+        keypoints: `Affordable pricing, Financing assistance, Educational resources`,
+      },
+      {
+        description: `${city} New Developments`,
+        keypoints: `Modern amenities, Latest design trends, Growing neighborhoods`,
+      },
+      {
+        description: `${city} Market Trends`,
+        keypoints: `Price analysis, Inventory updates, Buyer demand insights`,
+      },
+    ],
+    "Real Estate Broker": [
+      {
+        description: `${city} Commercial Properties`,
+        keypoints: `Business opportunities, Strategic locations, Investment potential`,
+      },
+      {
+        description: `${city} Luxury Market`,
+        keypoints: `Premium properties, High-end clientele, Exclusive listings`,
+      },
+      {
+        description: `${city} Investment Portfolio`,
+        keypoints: `Diversified assets, Risk management, Long-term returns`,
+      },
+      {
+        description: `${city} Market Leadership`,
+        keypoints: `Brokerage excellence, Industry expertise, Proven results`,
+      },
+      {
+        description: `${city} Client Success`,
+        keypoints: `Track record, Client satisfaction, Market knowledge`,
+      },
+    ],
+    "Loan Broker": [
+      {
+        description: `${city} Mortgage Solutions`,
+        keypoints: `Flexible financing, Multiple lenders, Best rates`,
+      },
+      {
+        description: `${city} First-Time Buyers`,
+        keypoints: `Low down payment, First-time programs, Educational support`,
+      },
+      {
+        description: `${city} Refinancing Boom`,
+        keypoints: `Lower rates, Cash-out options, Reduced payments`,
+      },
+      {
+        description: `${city} Investment Loans`,
+        keypoints: `Rental property financing, Portfolio loans, Investment strategies`,
+      },
+      {
+        description: `${city} Loan Approval`,
+        keypoints: `Fast pre-approval, Streamlined process, Expert guidance`,
+      },
+    ],
+    "Loan Officer": [
+      {
+        description: `${city} Home Loans`,
+        keypoints: `Competitive rates, Flexible terms, Quick approval`,
+      },
+      {
+        description: `${city} VA Loans`,
+        keypoints: `Military benefits, Zero down payment, No PMI required`,
+      },
+      {
+        description: `${city} FHA Loans`,
+        keypoints: `Low down payment, Flexible credit, Government backing`,
+      },
+      {
+        description: `${city} Conventional Loans`,
+        keypoints: `Traditional products, Fixed rates, Standard terms`,
+      },
+      {
+        description: `${city} Loan Process`,
+        keypoints: `Streamlined application, Expert guidance, Fast closing`,
+      },
+    ],
+  };
+
+  // Get templates for the specific position (case-insensitive matching)
+  // Normalize position for template lookup while preserving original for cache/logging
+  const normalizedForTemplate = position.trim();
+
+  // Find matching template key (case-insensitive)
+  let templates = positionTemplates["Real Estate Agent"]; // Default fallback
+  const templateKeys = Object.keys(positionTemplates) as Array<
+    keyof typeof positionTemplates
+  >;
+  const matchedKey = templateKeys.find(
+    (key) => key.toLowerCase() === normalizedForTemplate.toLowerCase()
+  );
+
+  if (matchedKey) {
+    templates = positionTemplates[matchedKey];
+    console.log(
+      `✅ Matched template for position: "${position}" → "${matchedKey}"`
+    );
+  } else {
+    console.warn(
+      `⚠️ No template match for position: "${position}", using default "Real Estate Agent" templates`
+    );
+  }
 
   // Generate requested number of trends
   const result: TrendData[] = [];
@@ -389,6 +432,165 @@ function generateFastTrends(city: string, count: number): TrendData[] {
   return result;
 }
 
+// Validate if description is real estate/property related
+async function validateRealEstateDescription(
+  description: string
+): Promise<boolean> {
+  try {
+    if (!OPENAI_API_KEY) {
+      // If no API key, use keyword-based validation as fallback
+      return validateWithKeywords(description);
+    }
+
+    const validationPrompt = `Analyze this description and determine if it's related to real estate, property, housing, mortgages, loans, or real estate professionals (agents, brokers, loan officers).
+
+Description: "${description}"
+
+Return ONLY a JSON object with this exact format:
+{
+  "isRealEstateRelated": true or false,
+  "reason": "brief explanation"
+}
+
+The description is real estate related if it mentions:
+- Properties, homes, houses, apartments, condos, real estate
+- Buying, selling, renting, investing in property
+- Real estate agents, brokers, loan officers, mortgage brokers
+- Mortgages, loans, financing, refinancing
+- Property values, market trends, housing market
+- Neighborhoods, locations, real estate transactions
+
+Return ONLY valid JSON, no additional text.`;
+
+    const response = await axios.post<OpenAIResponse>(
+      OPENAI_API_URL,
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a validation expert. Analyze descriptions and determine if they are real estate related. Return only valid JSON format.",
+          },
+          {
+            role: "user",
+            content: validationPrompt,
+          },
+        ],
+        temperature: 0.3, // Lower temperature for more consistent validation
+        max_tokens: 200,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        timeout: 15000,
+      }
+    );
+
+    const content = response.data.choices[0]?.message?.content?.trim();
+    if (!content) {
+      // Fallback to keyword validation
+      return validateWithKeywords(description);
+    }
+
+    let parsed: any = extractJsonFromText(content);
+    if (parsed && typeof parsed.isRealEstateRelated === "boolean") {
+      return parsed.isRealEstateRelated;
+    }
+
+    // Fallback to keyword validation if AI response is invalid
+    return validateWithKeywords(description);
+  } catch (error) {
+    console.warn(
+      "Error validating description with AI, falling back to keyword validation:",
+      error
+    );
+    return validateWithKeywords(description);
+  }
+}
+
+// Keyword-based validation fallback
+function validateWithKeywords(description: string): boolean {
+  const lowerDescription = description.toLowerCase();
+
+  const realEstateKeywords = [
+    // Property types
+    "property",
+    "properties",
+    "home",
+    "homes",
+    "house",
+    "houses",
+    "housing",
+    "apartment",
+    "apartments",
+    "condo",
+    "condos",
+    "townhouse",
+    "townhouse",
+    "real estate",
+    "realestate",
+    "realty",
+
+    // Actions
+    "buy",
+    "buying",
+    "sell",
+    "selling",
+    "sale",
+    "rent",
+    "renting",
+    "rental",
+    "invest",
+    "investment",
+    "investing",
+    "mortgage",
+    "refinance",
+    "refinancing",
+
+    // Professionals
+    "agent",
+    "broker",
+    "loan officer",
+    "realtor",
+    "mortgage broker",
+
+    // Terms
+    "listing",
+    "listings",
+    "market",
+    "marketplace",
+    "neighborhood",
+    "neighborhoods",
+    "location",
+    "locations",
+    "property value",
+    "appraisal",
+    "closing",
+    "escrow",
+    "down payment",
+    "interest rate",
+    "loan",
+    "loans",
+    "financing",
+    "financing",
+    "title",
+    "deed",
+    "owner",
+    "ownership",
+    "landlord",
+    "tenant",
+    "tenants",
+  ];
+
+  // Check if description contains at least one real estate keyword
+  return realEstateKeywords.some((keyword) =>
+    lowerDescription.includes(keyword)
+  );
+}
+
 // Generate keypoints and captions from a description
 export async function generateFromDescription(
   description: string,
@@ -398,6 +600,22 @@ export async function generateFromDescription(
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
+
+    // Validate that description is real estate related
+    console.log(
+      `🔍 Validating description: "${description.substring(0, 100)}..."`
+    );
+    const isRealEstateRelated = await validateRealEstateDescription(
+      description
+    );
+
+    if (!isRealEstateRelated) {
+      throw new Error(
+        "VALIDATION_ERROR: Description is not related to real estate topics. Please provide a description related to: (1) Real Estate - properties, homes, houses, apartments, condos, commercial real estate; (2) Property - buying, selling, renting, investing in properties; (3) Housing - residential properties, housing market, homeownership, rental properties; (4) Mortgages/Loans - mortgage loans, refinancing, home financing, loan products; (5) Real Estate Professionals - real estate agents, brokers, loan officers, mortgage brokers, realtors."
+      );
+    }
+
+    console.log(`✅ Description validated as real estate related`);
 
     const cityInfo = city ? cityData[city] : null;
     const cityContext = cityInfo
@@ -409,7 +627,7 @@ export async function generateFromDescription(
 Generate keypoints and social media captions${cityContext}.
 
 Return a JSON object with:
-- keypoints: 3-5 key points (comma-separated)
+- keypoints: MUST include at least 3 keypoints, separated by commas (minimum 3, maximum 5 keypoints). Format: "keypoint1, keypoint2, keypoint3"
 - instagram_caption: engaging, emoji-rich, 1-2 sentences
 - facebook_caption: informative, 2-3 sentences  
 - linkedin_caption: professional, 2-3 sentences
@@ -419,7 +637,7 @@ Return a JSON object with:
 
 Return only valid JSON:
 {
-  "keypoints": "",
+  "keypoints": "keypoint1, keypoint2, keypoint3",
   "instagram_caption": "",
   "facebook_caption": "",
   "linkedin_caption": "",
@@ -467,14 +685,44 @@ Return only valid JSON:
       throw new Error("Parsed response is not a valid object");
     }
 
+    // Ensure minimum 3 keypoints - split by comma and validate
+    let keypoints = parsed.keypoints || "";
+    const keypointArray = keypoints
+      .split(",")
+      .map((kp: string) => kp.trim())
+      .filter((kp: string) => kp.length > 0);
+
+    // If less than 3 keypoints, add default ones
+    if (keypointArray.length < 3) {
+      const defaultKeypoints = [
+        "Market insights",
+        "Expert guidance",
+        "Local expertise",
+      ];
+      const needed = 3 - keypointArray.length;
+      for (let i = 0; i < needed; i++) {
+        keypointArray.push(defaultKeypoints[i] || `Key point ${i + 1}`);
+      }
+      keypoints = keypointArray.join(", ");
+    }
+
     return {
       description: description,
-      keypoints: parsed.keypoints || "",
+      keypoints: keypoints,
     };
   } catch (error) {
     console.error(`Error generating content from description:`, error);
 
-    // Return fallback content if AI fails
+    // Re-throw validation errors (they should be returned as 400 errors)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      errorMessage.includes("not related to real estate") ||
+      errorMessage.includes("not real estate related")
+    ) {
+      throw error; // Re-throw validation errors
+    }
+
+    // Return fallback content only for AI/processing errors, not validation errors
     return {
       description: description,
       keypoints: "Property features, Location benefits, Investment potential",
@@ -484,30 +732,56 @@ Return only valid JSON:
 
 export async function generateCityBasedTrends(
   city: string,
+  position: string,
   count: number = 10,
   retryCount = 0,
   seed: number = 0
 ): Promise<TrendData[]> {
   try {
-    // Check cache first
-    const cacheKey = `${city.toLowerCase()}_${count}`;
+    // Normalize city and position for consistent cache keys
+    // Trim spaces and convert to lowercase to handle any variations
+    const normalizedCity = city.trim().toLowerCase();
+    const normalizedPosition = position.trim().toLowerCase();
+
+    // Check cache first with city and position
+    // Cache key includes both city and position - any change to either will generate new cache
+    const cacheKey = `${normalizedCity}_${normalizedPosition}_${count}`;
     const cached = trendsCache.get(cacheKey);
 
+    console.log(
+      `🔍 Cache lookup: City="${city}", Position="${position}" → Cache Key: "${cacheKey}"`
+    );
+
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`Returning cached trends for ${city}`);
+      console.log(
+        `✅ Cache HIT: Returning cached trends for ${city} (${position}) - Cache Key: ${cacheKey}`
+      );
       return cached.data;
+    }
+
+    if (cached) {
+      console.log(
+        `⏰ Cache EXPIRED: Generating new trends for ${city} (${position}) - Cache Key: ${cacheKey}`
+      );
+    } else {
+      console.log(
+        `🆕 Cache MISS: Generating new trends for ${city} (${position}) - Cache Key: ${cacheKey}`
+      );
     }
 
     // For fast mode or small counts, use template-based generation
     if (count <= 5) {
-      console.log(`Using fast template generation for ${city}`);
-      const trends = generateFastTrends(city, count);
+      console.log(`Using fast template generation for ${city} (${position})`);
+      const trends = generateFastTrends(city, position, count);
 
-      // Cache the results
+      // Cache the results with city and position in key
       trendsCache.set(cacheKey, {
         data: trends,
         timestamp: Date.now(),
       });
+      console.log(
+        `💾 Cache SAVED: Trends cached for ${city} (${position}) - Cache Key: ${cacheKey}`
+      );
 
       return trends;
     }
@@ -517,28 +791,28 @@ export async function generateCityBasedTrends(
     }
 
     const prompt = `
-Generate EXACTLY ${count} current topic trends for creating video ads about real estate in ${city} (batch ${
+Generate EXACTLY ${count} current topic trends for creating video ads about real estate in ${city} specifically for ${position}s (batch ${
       seed + 1
     }). You MUST return exactly ${count} trends - no more, no less.
-Each trend should highlight a unique aspect of the real estate industry specific to ${city} that's ideal for engaging video advertising.
-Focus on local market conditions, city-specific amenities, neighborhood trends, and regional real estate opportunities in ${city}.  
-Avoid generic trends and focus on what makes ${city} real estate unique.
+Each trend should highlight a unique aspect of the real estate industry specific to ${city} that's ideal for engaging video advertising for ${position}s.
+Focus on local market conditions, city-specific amenities, neighborhood trends, and regional real estate opportunities in ${city} that would be relevant for ${position}s.  
+Avoid generic trends and focus on what makes ${city} real estate unique for ${position}s.
 
 CRITICAL: Return exactly ${count} items in the JSON array. Do not include any additional text, explanations, or comments outside the JSON array.
 
 For each trend, include:
 1. A short, catchy description (5–6 words max)
-2. Key points (no more than 5 words)
+2. Key points: MUST include at least 3 keypoints, separated by commas (minimum 3, maximum 5 keypoints)
 3. NO platform-specific captions - these will be generated later with dynamic post generation  
 
 Return your result as a valid JSON array with EXACTLY ${count} objects like this:
 [
   {
     "description": "",
-    "keypoints": ""
+    "keypoints": "keypoint1, keypoint2, keypoint3"
   }
 ]
-Ensure all fields are filled and formatted as strings.
+Ensure all fields are filled and formatted as strings. Keypoints must be a comma-separated string with at least 3 items.
 `;
 
     const response = await axios.post<OpenAIResponse>(
@@ -548,7 +822,7 @@ Ensure all fields are filled and formatted as strings.
         messages: [
           {
             role: "system",
-            content: `You are a real estate marketing strategist and video content expert specializing in ${city} real estate market. Provide concise, clear, and engaging trend ideas suitable for multiple social platforms. You MUST always return exactly the requested number of trends - no more, no less. Return only valid JSON array format with no additional text.`,
+            content: `You are a real estate marketing strategist and video content expert specializing in ${city} real estate market for ${position}s. Provide concise, clear, and engaging trend ideas suitable for multiple social platforms that are specifically relevant to ${position}s. You MUST always return exactly the requested number of trends - no more, no less. Return only valid JSON array format with no additional text.`,
           },
           {
             role: "user",
@@ -590,7 +864,7 @@ Ensure all fields are filled and formatted as strings.
         for (let i = 0; i < missing; i++) {
           parsed.push({
             description: `${city} Real Estate Trend ${i + 1}`,
-            keypoints: "Market insights",
+            keypoints: "Market insights, Expert guidance, Local expertise",
           });
         }
       } else {
@@ -599,24 +873,59 @@ Ensure all fields are filled and formatted as strings.
       }
     }
 
-    const mappedTrends = parsed.map((item: any) => ({
-      description: item.description || "",
-      keypoints: Array.isArray(item.keypoints)
+    const mappedTrends = parsed.map((item: any) => {
+      let keypoints = Array.isArray(item.keypoints)
         ? item.keypoints.join(", ")
-        : item.keypoints || "",
-    }));
+        : item.keypoints || "";
 
-    // Cache the results
+      // Ensure minimum 3 keypoints - split by comma and validate
+      const keypointArray = keypoints
+        .split(",")
+        .map((kp: string) => kp.trim())
+        .filter((kp: string) => kp.length > 0);
+
+      // If less than 3 keypoints, add default ones
+      if (keypointArray.length < 3) {
+        const defaultKeypoints = [
+          "Market insights",
+          "Expert guidance",
+          "Local expertise",
+        ];
+        const needed = 3 - keypointArray.length;
+        for (let i = 0; i < needed; i++) {
+          keypointArray.push(defaultKeypoints[i] || `Key point ${i + 1}`);
+        }
+        keypoints = keypointArray.join(", ");
+      }
+
+      return {
+        description: item.description || "",
+        keypoints: keypoints,
+      };
+    });
+
+    // Cache the results with city and position in key
     trendsCache.set(cacheKey, {
       data: mappedTrends,
       timestamp: Date.now(),
     });
+    console.log(
+      `💾 Cache SAVED: AI-generated trends cached for ${city} (${position}) - Cache Key: ${cacheKey}`
+    );
 
     return mappedTrends;
   } catch (error) {
     if (retryCount < 1) {
-      console.warn(`First attempt failed for ${city}, retrying once...`);
-      return await generateCityBasedTrends(city, count, retryCount + 1, seed);
+      console.warn(
+        `First attempt failed for ${city} (${position}), retrying once...`
+      );
+      return await generateCityBasedTrends(
+        city,
+        position,
+        count,
+        retryCount + 1,
+        seed
+      );
     }
     console.error(`Error generating trends for ${city}:`, error);
 

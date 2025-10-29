@@ -1,4 +1,3 @@
-
 import { Request, Response } from "express";
 import WebhookService from "../services/webhook.service";
 import VideoScheduleService from "../services/videoSchedule.service";
@@ -14,27 +13,23 @@ const webhookService = new WebhookService();
  */
 export async function avatarWebhook(req: Request, res: Response) {
   try {
-    const {
-      avatar_id,
-      status,
-      avatar_group_id,
-      callback_id,
-      user_id
-    } = req.body;
+    const { avatar_id, status, avatar_group_id, callback_id, user_id } =
+      req.body;
 
     // Validate required fields
     if (!avatar_id || !status || !avatar_group_id) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: avatar_id, status, and avatar_group_id are required'
+        message:
+          "Missing required fields: avatar_id, status, and avatar_group_id are required",
       });
     }
 
     // Validate status
-    if (!['completed', 'failed'].includes(status)) {
+    if (!["completed", "failed"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Must be "completed" or "failed"'
+        message: 'Invalid status. Must be "completed" or "failed"',
       });
     }
 
@@ -43,7 +38,7 @@ export async function avatarWebhook(req: Request, res: Response) {
       status,
       avatar_group_id,
       callback_id,
-      user_id
+      user_id,
     };
 
     // Get user token from headers
@@ -51,19 +46,18 @@ export async function avatarWebhook(req: Request, res: Response) {
 
     // Process webhook with user authentication
     const result = await webhookService.processWebhookWithAuth(
-      req.body.webhook_url || 'https://webhook.site/test',
+      req.body.webhook_url || "https://webhook.site/test",
       webhookPayload,
       userToken
     );
 
     return res.status(200).json(result);
-
   } catch (error: any) {
-    console.error('Error processing avatar webhook:', error);
-    
+    console.error("Error processing avatar webhook:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || "Internal server error",
     });
   }
 }
@@ -145,13 +139,12 @@ export async function scheduledVideoComplete(req: Request, res: Response) {
     console.log(`  📋 Schedule ID: ${scheduleId}`);
     console.log(`  📋 Trend Index: ${trendIndex}`);
     console.log(`  📋 Error: ${error}`);
-
   } catch (error: any) {
-    console.error('Error testing webhook:', error);
-    
+    console.error("Error testing webhook:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || "Internal server error",
     });
   }
 }
@@ -167,7 +160,7 @@ export async function verifyWebhook(req: Request, res: Response) {
     if (!payload || !signature) {
       return res.status(400).json({
         success: false,
-        message: 'payload and signature are required'
+        message: "payload and signature are required",
       });
     }
 
@@ -175,16 +168,15 @@ export async function verifyWebhook(req: Request, res: Response) {
 
     return res.status(200).json({
       success: true,
-      message: isValid ? 'Signature is valid' : 'Signature is invalid',
-      data: { isValid }
+      message: isValid ? "Signature is valid" : "Signature is invalid",
+      data: { isValid },
     });
-
   } catch (error: any) {
-    console.error('Error verifying webhook:', error);
-    
+    console.error("Error verifying webhook:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || "Internal server error",
     });
   }
 }
@@ -197,22 +189,49 @@ export async function getWebhookStatus(req: Request, res: Response) {
   try {
     return res.status(200).json({
       success: true,
-      message: 'Webhook service is operational',
+      message: "Webhook service is operational",
       data: {
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
+        version: "1.0.0",
         features: [
-          'User authentication',
-          'Signature verification',
-          'Custom payloads',
-          'Error handling'
-        ]
-      }
+          "User authentication",
+          "Signature verification",
+          "Custom payloads",
+          "Error handling",
+        ],
+      },
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || "Internal server error",
+    });
+  }
+}
+
+/**
+ * Caption complete webhook
+ * POST /webhook/caption-complete
+ */
+export async function captionComplete(req: Request, res: Response) {
+  try {
+    console.log("Caption complete webhook received:", req.body);
+    const { videoId, status, email, title } = req.body;
+
+    const result = await webhookService.handleCaptionComplete({
+      videoId,
+      status,
+      email,
+      title,
+    });
+
+    return res.json(result);
+  } catch (e: any) {
+    console.error("Caption complete webhook error:", e);
+
+    return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
     });
   }
 }
@@ -223,9 +242,18 @@ export async function getWebhookStatus(req: Request, res: Response) {
  */
 export async function videoComplete(req: Request, res: Response) {
   try {
-    console.log('Video complete webhook received:', req.body);
-    const { videoId, status, s3Key, metadata, error, scheduleId, trendIndex, captions } = req.body;
-    
+    console.log("Video complete webhook received:", req.body);
+    const {
+      videoId,
+      status,
+      s3Key,
+      metadata,
+      error,
+      scheduleId,
+      trendIndex,
+      captions,
+    } = req.body;
+
     const result = await webhookService.handleVideoComplete({
       videoId,
       status,

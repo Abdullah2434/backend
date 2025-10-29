@@ -10,6 +10,7 @@ import {
 const router = Router();
 
 router.post("/video-complete", ctrl.videoComplete);
+router.post("/caption-complete", ctrl.captionComplete);
 router.post("/scheduled-video-complete", ctrl.scheduledVideoComplete);
 router.post("/workflow-error", ctrl.handleWorkflowError);
 router.post("/stripe", handleStripeWebhook);
