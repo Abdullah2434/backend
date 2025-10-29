@@ -117,6 +117,7 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
       success: true,
       data: {
         id: schedule._id, // Changed from scheduleId to id
+        status: schedule.status, // Schedule status (processing, ready, failed)
         timezone: timezone,
         totalPosts: allPosts.length,
         totalPendingPosts: pendingPosts.length,
@@ -135,6 +136,7 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
+          status: schedule.status, // Schedule creation status (processing, ready, failed)
         },
       },
     });
