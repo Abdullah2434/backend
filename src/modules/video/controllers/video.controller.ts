@@ -1089,6 +1089,23 @@ export async function generateVideo(req: Request, res: Response) {
     console.log("Using voice_id:", voice_id);
     console.log(body.body, "body body");
 
+    // Resolve avatar types for title/body/conclusion avatars
+    const avatarIdsToResolve = [
+      String(body.avatar_title || "").trim(),
+      String(body.avatar_body || "").trim(),
+      String(body.avatar_conclusion || "").trim(),
+    ].filter(Boolean) as string[];
+
+    const avatarTypeById: Record<string, string | undefined> = {};
+    if (avatarIdsToResolve.length > 0) {
+      const avatars = await DefaultAvatar.find({
+        avatar_id: { $in: avatarIdsToResolve },
+      });
+      for (const av of avatars) {
+        avatarTypeById[av.avatar_id] = (av as any).avatarType;
+      }
+    }
+
     // Generate DYNAMIC captions using Smart Memory System
     let captions;
     try {
@@ -1170,18 +1187,28 @@ export async function generateVideo(req: Request, res: Response) {
     }
 
     const webhookData = {
-      hook: body.hook,
-      body: body.body,
-      conclusion: body.conclusion,
+      hook: {
+        text: body.hook,
+        avatar: body.avatar_title,
+        avatarType: avatarTypeById[String(body.avatar_title || "").trim()],
+      },
+      body: {
+        text: body.body,
+        avatar: body.avatar_body,
+        avatarType: avatarTypeById[String(body.avatar_body || "").trim()],
+      },
+      conclusion: {
+        text: body.conclusion,
+        avatar: body.avatar_conclusion,
+        avatarType: avatarTypeById[String(body.avatar_conclusion || "").trim()],
+      },
       company_name: body.company_name,
       social_handles: body.social_handles,
       license: body.license,
-      avatar_body: body.avatar_body,
-      avatar_conclusion: body.avatar_conclusion,
-      avatar_title: body.avatar_title,
       email: body.email,
       title: body.title,
-      voice: voice_id,
+      voice: voice_id, // backward compatibility
+      voice_id: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
       // Optional schedule context for auto runs (forward to N8N)
@@ -1194,7 +1221,7 @@ export async function generateVideo(req: Request, res: Response) {
         : {}),
       // Store captions for later retrieval (not sent to webhook)
       _captions: captions,
-    };
+    } as any;
     // Remove captions from webhook data (captions are stored separately)
     const { _captions, ...webhookPayload } = webhookData;
 
