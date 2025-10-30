@@ -298,6 +298,9 @@ export const worker = new Worker(
           }
         );
 
+        const returnedAvatarType =
+          (response as any)?.data?.data?.avatarType || "photo_avatar";
+
         await DefaultAvatar.create({
           avatar_id: avatar_id,
           avatar_name: name,
@@ -309,6 +312,7 @@ export const worker = new Worker(
           ethnicity,
           status: "pending",
           age_group,
+          avatarType: returnedAvatarType,
         });
 
         // Cleanup temp image
