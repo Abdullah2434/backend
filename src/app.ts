@@ -200,14 +200,14 @@ app.use(
 );
 
 // Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
-cron.schedule("55 14 * * 2", async () => {
-  console.log("Weekly avatar sync job started...");
-  await fetchAndStoreDefaultAvatars();
-  console.log("Weekly avatar sync job finished.");
-  console.log("Weekly voice sync job started...");
-  await fetchAndStoreDefaultVoices();
-  console.log("Weekly voice sync job finished.");
-});
+// cron.schedule("55 14 * * 2", async () => {
+//   console.log("Weekly avatar sync job started...");
+//   await fetchAndStoreDefaultAvatars();
+//   console.log("Weekly avatar sync job finished.");
+//   console.log("Weekly voice sync job started...");
+//   await fetchAndStoreDefaultVoices();
+//   console.log("Weekly voice sync job finished.");
+// });
 
 // Schedule avatar status check every 5 minutes
 cron.schedule("*/2 * * * *", async () => {

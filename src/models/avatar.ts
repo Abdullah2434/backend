@@ -32,6 +32,12 @@ const DefaultAvatarSchema: Schema = new Schema({
   default: { type: Boolean, default: true },
   ethnicity: { type: String, required: false },
   age_group: { type: String, required: false },
+  avatarType: { 
+    type: String,
+    enum:['photo_avatar','video_avatar'],
+    required: false,
+    default: 'null'
+   },
   status: {
     type: String,
     enum: ['pending', 'training', 'ready', 'processing', 'completed', 'failed'],
