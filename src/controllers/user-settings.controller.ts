@@ -33,6 +33,7 @@ export async function getUserVideoSettings(req: Request, res: Response) {
         avatar: userSettings.avatar,
         titleAvatar: userSettings.titleAvatar,
         conclusionAvatar: userSettings.conclusionAvatar,
+        bodyAvatar: userSettings.bodyAvatar || undefined,
         name: userSettings.name,
         position: userSettings.position,
         companyName: userSettings.companyName,
@@ -65,6 +66,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       avatar,
       titleAvatar,
       conclusionAvatar,
+      bodyAvatar,
       name,
       position,
       companyName,
@@ -77,9 +79,34 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       email,
     } = req.body;
 
-    // Handle avatar field - it might be sent as a string, array, or object with numeric keys
+    // Helper function to parse avatar object (can be string or object)
+    const parseAvatarObject = (fieldName: string, value: any): any => {
+      if (!value) return null;
+      
+      // If it's already an object with avatar_id and avatarType
+      if (typeof value === 'object' && value !== null && value.avatar_id && value.avatarType) {
+        return {
+          avatar_id: String(value.avatar_id).trim(),
+          avatarType: String(value.avatarType).trim()
+        };
+      }
+      
+      // If it's a string, treat it as just the avatar_id (backward compatibility)
+      if (typeof value === 'string') {
+        return {
+          avatar_id: value.trim(),
+          avatarType: 'video_avatar' // Default type
+        };
+      }
+      
+      console.warn(`Invalid ${fieldName} format:`, value);
+      return null;
+    };
+
+    // Handle avatar array field - it might be sent as a string, array, or object with numeric keys
     let avatarArray = avatar;
-    console.log(avatar, "avatar");
+    console.log("[saveUserVideoSettings] Raw avatar field:", avatar);
+    
     if (typeof avatar === "string") {
       try {
         avatarArray = JSON.parse(avatar);
@@ -104,11 +131,28 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       });
     }
 
+    // Parse avatar objects (titleAvatar, conclusionAvatar, bodyAvatar)
+    const parsedTitleAvatar = parseAvatarObject('titleAvatar', titleAvatar);
+    const parsedConclusionAvatar = parseAvatarObject('conclusionAvatar', conclusionAvatar);
+    const parsedBodyAvatar = bodyAvatar ? parseAvatarObject('bodyAvatar', bodyAvatar) : undefined;
+
+    if (!parsedTitleAvatar) {
+      return res.status(400).json({
+        success: false,
+        message: "titleAvatar is required and must be an object with avatar_id and avatarType, or a string",
+      });
+    }
+
+    if (!parsedConclusionAvatar) {
+      return res.status(400).json({
+        success: false,
+        message: "conclusionAvatar is required and must be an object with avatar_id and avatarType, or a string",
+      });
+    }
+
     // Validate required fields
     const requiredFields = [
       "prompt",
-      "titleAvatar",
-      "conclusionAvatar",
       "name",
       "position",
       "companyName",
@@ -121,7 +165,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       "email",
     ];
 
-    // Validate avatar separately
+    // Validate avatar array separately
     if (!avatar) {
       return res.status(400).json({
         success: false,
@@ -133,6 +177,15 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       return res.status(400).json({
         success: false,
         message: "avatar must be a non-empty array",
+      });
+    }
+
+    // Ensure all avatar IDs in array are strings
+    avatarArray = avatarArray.map(id => String(id).trim()).filter(id => id.length > 0);
+    if (avatarArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "avatar array must contain at least one valid avatar ID",
       });
     }
 
@@ -158,8 +211,9 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
     const savedSettings = await userVideoSettingsService.saveUserVideoSettings({
       prompt,
       avatar: avatarArray,
-      titleAvatar,
-      conclusionAvatar,
+      titleAvatar: parsedTitleAvatar,
+      conclusionAvatar: parsedConclusionAvatar,
+      bodyAvatar: parsedBodyAvatar,
       name,
       position,
       companyName,
@@ -180,6 +234,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
         avatar: savedSettings.avatar,
         titleAvatar: savedSettings.titleAvatar,
         conclusionAvatar: savedSettings.conclusionAvatar,
+        bodyAvatar: savedSettings.bodyAvatar || undefined,
         name: savedSettings.name,
         position: savedSettings.position,
         companyName: savedSettings.companyName,
