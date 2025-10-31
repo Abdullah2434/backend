@@ -1106,8 +1106,8 @@ export async function generateVideo(req: Request, res: Response) {
       }
     }
 
-    // Generate DYNAMIC captions using Smart Memory System
-    let captions;
+    // Store caption generation data for asynchronous processing after webhook
+    // Caption generation will happen after n8n webhook completes (second hook)
     try {
       // Get user ID for dynamic post generation
       const user = await videoService.getUserByEmail(body.email);
@@ -1121,69 +1121,72 @@ export async function generateVideo(req: Request, res: Response) {
           socialHandles: body.social_handles,
         };
 
-        // Generate DYNAMIC posts using Smart Memory System
-        const { DynamicPostGenerationService } = await import(
-          "../../../services/dynamicPostGeneration.service"
-        );
-        const dynamicPosts =
-          await DynamicPostGenerationService.generateDynamicPosts(
-            body.title || body.hook,
-            `${body.hook} ${body.body} ${body.conclusion}`,
+        // Store the dynamic generation data for later processing after webhook completes
+        await PendingCaptions.findOneAndUpdate(
+          {
+            email: body.email,
+            title: body.title,
+          },
+          {
+            email: body.email,
+            title: body.title,
+            topic: body.title || body.hook,
+            keyPoints: `${body.hook} ${body.body} ${body.conclusion}`,
             userContext,
-            user._id.toString(),
-            [
+            userId: user._id.toString(),
+            platforms: [
               "instagram",
               "facebook",
               "linkedin",
               "twitter",
               "tiktok",
               "youtube",
-            ]
-          );
+            ],
+            isDynamic: true,
+            isPending: true, // Will be processed after webhook completes
+            captions: null, // Will be populated after generation
+            dynamicPosts: null, // Will be populated after generation
+          },
+          { upsert: true, new: true }
+        );
 
-        // Convert dynamic posts to traditional caption format for compatibility
-        captions = {
-          instagram_caption:
-            dynamicPosts.find((p: any) => p.platform === "instagram")
-              ?.content || "",
-          facebook_caption:
-            dynamicPosts.find((p: any) => p.platform === "facebook")?.content ||
-            "",
-          linkedin_caption:
-            dynamicPosts.find((p: any) => p.platform === "linkedin")?.content ||
-            "",
-          twitter_caption:
-            dynamicPosts.find((p: any) => p.platform === "twitter")?.content ||
-            "",
-          tiktok_caption:
-            dynamicPosts.find((p: any) => p.platform === "tiktok")?.content ||
-            "",
-          youtube_caption:
-            dynamicPosts.find((p: any) => p.platform === "youtube")?.content ||
-            "",
-        };
         console.log(
-          "✅ DYNAMIC captions generated successfully using Smart Memory System"
+          `📝 Stored dynamic generation data for later processing after webhook: ${body.title}`
         );
       } else {
-        throw new Error("User not found for dynamic caption generation");
+        console.warn(
+          "User not found for dynamic caption generation, will use fallback when webhook completes"
+        );
+        // Store fallback data
+        await PendingCaptions.findOneAndUpdate(
+          {
+            email: body.email,
+            title: body.title,
+          },
+          {
+            email: body.email,
+            title: body.title,
+            topic: body.title || body.hook,
+            keyPoints: `${body.hook} ${body.body} ${body.conclusion}`,
+            userContext: {
+              name: body.company_name,
+              position: "Real Estate Professional",
+              companyName: body.company_name,
+              city: "Your City",
+              socialHandles: body.social_handles,
+            },
+            isDynamic: false,
+            isPending: true,
+            captions: null,
+          },
+          { upsert: true, new: true }
+        );
       }
-    } catch (error) {
-      console.warn("Dynamic caption generation failed, using fallback:", error);
-      // Fallback to traditional captions
-      captions = await CaptionGenerationService.generateCustomVideoCaptions(
-        body.hook,
-        body.body,
-        body.conclusion,
-        {
-          name: body.company_name,
-          position: "Real Estate Professional",
-          companyName: body.company_name,
-          city: "Your City",
-          socialHandles: body.social_handles,
-        }
+    } catch (capGenErr) {
+      console.warn(
+        "Failed to store caption generation data, will continue without captions:",
+        capGenErr
       );
-      console.log("✅ Fallback captions generated successfully");
     }
 
     const webhookData = {
@@ -1219,11 +1222,9 @@ export async function generateVideo(req: Request, res: Response) {
       ...(body.scheduleId !== undefined || body.trendIndex !== undefined
         ? { isScheduled: true }
         : {}),
-      // Store captions for later retrieval (not sent to webhook)
-      _captions: captions,
     } as any;
-    // Remove captions from webhook data (captions are stored separately)
-    const { _captions, ...webhookPayload } = webhookData;
+    // Captions are now generated asynchronously after webhook completes
+    const webhookPayload = webhookData;
 
     // Log schedule context if present
     if (

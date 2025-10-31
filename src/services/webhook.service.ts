@@ -457,18 +457,23 @@ export class WebhookService {
       }
 
       // Process dynamic generation for manual videos (non-scheduled)
-      // This happens after the video is ready and webhooks have completed
-      if (finalStatus === "ready" && updatedVideo && !scheduleId) {
+      // Trigger caption generation asynchronously after n8n webhook completes (second hook)
+      // This happens regardless of video status (processing/ready) - captions generate in background
+      if (updatedVideo && !scheduleId) {
         try {
           console.log(
             `📊 Tracking video webhook completion for manual video: ${videoId}`
           );
-          await this.trackWebhookCompletion(
-            videoId,
-            "video",
-            updatedVideo.email,
-            updatedVideo.title
-          );
+          
+          // Only track if video is ready (for webhook tracking system)
+          if (finalStatus === "ready") {
+            await this.trackWebhookCompletion(
+              videoId,
+              "video",
+              updatedVideo.email,
+              updatedVideo.title
+            );
+          }
         } catch (trackingError) {
           console.error(
             `❌ Error tracking webhook completion for video ${videoId}:`,
@@ -476,6 +481,30 @@ export class WebhookService {
           );
           // Don't fail the webhook if tracking fails
         }
+
+        // Trigger caption generation asynchronously after webhook response
+        // This happens after n8n webhook completes (second hook), even if video is still processing
+        (async () => {
+          try {
+            console.log(
+              `🎨 Starting asynchronous caption generation for video: ${videoId} after n8n webhook completion (video status: ${finalStatus})`
+            );
+            await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
+              videoId,
+              updatedVideo.email,
+              updatedVideo.title
+            );
+            console.log(
+              `✅ Asynchronous caption generation completed for video: ${videoId}`
+            );
+          } catch (captionError) {
+            console.error(
+              `❌ Error in asynchronous caption generation for video ${videoId}:`,
+              captionError
+            );
+            // Don't fail the webhook response if caption generation fails
+          }
+        })();
       }
 
       return {

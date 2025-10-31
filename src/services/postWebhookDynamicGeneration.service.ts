@@ -23,16 +23,15 @@ export class PostWebhookDynamicGenerationService {
       console.log(`📧 Email: ${email}`);
       console.log(`📝 Title: ${title}`);
 
-      // Find pending captions that need dynamic generation
+      // Find pending captions that need generation (dynamic or fallback)
       const pendingCaption = await PendingCaptions.findOne({
         email: email,
         title: title,
-        isDynamic: true,
         isPending: true,
       });
 
       if (!pendingCaption) {
-        console.log(`📝 No pending dynamic generation found for: ${title}`);
+        console.log(`📝 No pending caption generation found for: ${title}`);
         return;
       }
 
@@ -48,46 +47,85 @@ export class PostWebhookDynamicGenerationService {
         );
       }
 
-      console.log(`📝 Found pending dynamic generation for: ${title}`);
+      console.log(`📝 Found pending caption generation for: ${title}`);
       console.log(`📝 Topic: ${pendingCaption.topic}`);
       console.log(`📝 Key Points: ${pendingCaption.keyPoints}`);
+      console.log(`📝 Is Dynamic: ${pendingCaption.isDynamic}`);
 
-      // Generate DYNAMIC posts using Smart Memory System
-      const { DynamicPostGenerationService } = await import(
-        "./dynamicPostGeneration.service"
-      );
+      let dynamicPosts: any[] = [];
+      let captions: any;
 
-      const dynamicPosts =
-        await DynamicPostGenerationService.generateDynamicPosts(
-          pendingCaption.topic!,
-          pendingCaption.keyPoints!,
-          pendingCaption.userContext!,
-          pendingCaption.userId!,
-          pendingCaption.platforms!
+      // Generate DYNAMIC posts using Smart Memory System if dynamic is enabled
+      if (pendingCaption.isDynamic && pendingCaption.userId && pendingCaption.platforms) {
+        try {
+          const { DynamicPostGenerationService } = await import(
+            "./dynamicPostGeneration.service"
+          );
+
+          dynamicPosts =
+            await DynamicPostGenerationService.generateDynamicPosts(
+              pendingCaption.topic!,
+              pendingCaption.keyPoints!,
+              pendingCaption.userContext!,
+              pendingCaption.userId!,
+              pendingCaption.platforms!
+            );
+
+          console.log(`🎯 Generated ${dynamicPosts.length} dynamic posts`);
+
+          // Convert dynamic posts to traditional caption format for compatibility
+          captions = {
+            instagram_caption:
+              dynamicPosts.find((p: any) => p.platform === "instagram")
+                ?.content || "",
+            facebook_caption:
+              dynamicPosts.find((p: any) => p.platform === "facebook")?.content ||
+              "",
+            linkedin_caption:
+              dynamicPosts.find((p: any) => p.platform === "linkedin")?.content ||
+              "",
+            twitter_caption:
+              dynamicPosts.find((p: any) => p.platform === "twitter")?.content ||
+              "",
+            tiktok_caption:
+              dynamicPosts.find((p: any) => p.platform === "tiktok")?.content || "",
+            youtube_caption:
+              dynamicPosts.find((p: any) => p.platform === "youtube")?.content ||
+              "",
+          };
+        } catch (dynamicError) {
+          console.warn(
+            "Dynamic generation failed, falling back to traditional captions:",
+            dynamicError
+          );
+          // Fall through to generate fallback captions
+          captions = await this.generateFallbackCaptions(
+            pendingCaption.topic || title,
+            pendingCaption.keyPoints || "",
+            pendingCaption.userContext || {
+              name: "Real Estate Professional",
+              position: "Real Estate Professional",
+              companyName: "Real Estate Company",
+              city: "Your City",
+              socialHandles: "@realestate",
+            }
+          );
+        }
+      } else {
+        // Generate fallback captions for non-dynamic or when dynamic fails
+        console.log("📝 Generating fallback captions (non-dynamic)");
+        captions = await this.generateFallbackCaptions(
+          pendingCaption.topic || title,
+          pendingCaption.keyPoints || "",
+          pendingCaption.userContext || {
+            name: "Real Estate Professional",
+            position: "Real Estate Professional",
+            companyName: "Real Estate Company",
+            city: "Your City",
+            socialHandles: "@realestate",
+          }
         );
-
-      console.log(`🎯 Generated ${dynamicPosts.length} dynamic posts`);
-
-      // Convert dynamic posts to traditional caption format for compatibility
-      const captions = {
-        instagram_caption:
-          dynamicPosts.find((p: any) => p.platform === "instagram")?.content ||
-          "",
-        facebook_caption:
-          dynamicPosts.find((p: any) => p.platform === "facebook")?.content ||
-          "",
-        linkedin_caption:
-          dynamicPosts.find((p: any) => p.platform === "linkedin")?.content ||
-          "",
-        twitter_caption:
-          dynamicPosts.find((p: any) => p.platform === "twitter")?.content ||
-          "",
-        tiktok_caption:
-          dynamicPosts.find((p: any) => p.platform === "tiktok")?.content || "",
-        youtube_caption:
-          dynamicPosts.find((p: any) => p.platform === "youtube")?.content ||
-          "",
-      };
+      }
 
       // Update the pending captions with generated content
       await PendingCaptions.findOneAndUpdate(
@@ -97,7 +135,7 @@ export class PostWebhookDynamicGenerationService {
         },
         {
           captions,
-          dynamicPosts: dynamicPosts,
+          dynamicPosts: dynamicPosts.length > 0 ? dynamicPosts : undefined,
           isPending: false, // Mark as completed
         },
         { new: true }
