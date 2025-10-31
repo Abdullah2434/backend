@@ -1075,6 +1075,21 @@ export class VideoScheduleService {
       console.log("🎬 Step 2: Generating video (video creation)...");
       console.log("📋 API Endpoint: POST /api/video/generate-video");
 
+      // Extract avatar IDs from userSettings (handle both string and object formats)
+      // userSettings can have avatars as strings (avatar_id) or objects ({avatar_id, avatarType})
+      const extractAvatarId = (avatarValue: any): string => {
+        if (!avatarValue) return "";
+        if (typeof avatarValue === "string") return avatarValue.trim();
+        if (typeof avatarValue === "object" && avatarValue !== null && avatarValue.avatar_id) {
+          return String(avatarValue.avatar_id).trim();
+        }
+        return String(avatarValue).trim();
+      };
+
+      const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
+      const bodyAvatarId = extractAvatarId(userSettings.avatar[0]);
+      const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
+
       // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
       const videoGenerationData = {
         hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
@@ -1083,9 +1098,9 @@ export class VideoScheduleService {
         company_name: userSettings.companyName,
         social_handles: userSettings.socialHandles,
         license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
+        avatar_title: titleAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
+        avatar_body: bodyAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
+        avatar_conclusion: conclusionAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
         email: userSettings.email,
         title: trend.description,
         voice: voice_id,
