@@ -492,8 +492,26 @@ class SocialBuService {
       if (result.success) {
         console.log("Successfully fetched scheduled posts");
 
-        // If user account IDs are provided, filter the posts
-        if (userAccountIds && userAccountIds.length > 0) {
+        // If user account IDs are provided (even if empty array), filter the posts
+        if (userAccountIds !== undefined && userAccountIds !== null) {
+          // If user has no connected accounts, return empty results
+          if (userAccountIds.length === 0) {
+            console.log("User has no connected SocialBu accounts, returning empty results");
+            return {
+              success: true,
+              data: {
+                items: [],
+                currentPage: 1,
+                lastPage: 1,
+                nextPage: null,
+                total: 0,
+                originalTotal: result.data?.total || 0,
+                filtered: true,
+              },
+              message: "No scheduled posts found. User has no connected SocialBu accounts.",
+            };
+          }
+
           console.log(
             `Filtering posts for user account IDs: ${userAccountIds.join(", ")}`
           );
@@ -502,14 +520,56 @@ class SocialBuService {
           const allPosts = result.data?.items || [];
           console.log(`Total posts from SocialBu API: ${allPosts.length}`);
 
+          // Normalize userAccountIds to numbers for comparison
+          const normalizedUserAccountIds = userAccountIds.map(id => Number(id));
+          console.log(`Normalized user account IDs: ${normalizedUserAccountIds.join(", ")}`);
+
+          // Sample a few posts to check account_id types (for debugging)
+          if (allPosts.length > 0) {
+            const samplePost = allPosts[0];
+            console.log(`Sample post account_id type: ${typeof samplePost.account_id}, value: ${samplePost.account_id}`);
+          }
+
           // Filter posts that match user's connected account IDs
-          const filteredPosts = allPosts.filter((post: any) =>
-            userAccountIds.includes(post.account_id)
-          );
+          // Handle both number and string types for account_id
+          const filteredPosts = allPosts.filter((post: any) => {
+            // Check if account_id exists in the post
+            if (!post.account_id && post.account_id !== 0) {
+              console.warn(`Post missing account_id field:`, JSON.stringify(post).substring(0, 200));
+              return false; // Exclude posts without account_id
+            }
+            
+            const postAccountId = Number(post.account_id);
+            
+            // Check if conversion was successful
+            if (isNaN(postAccountId)) {
+              console.warn(`Post has invalid account_id: ${post.account_id} (type: ${typeof post.account_id})`);
+              return false; // Exclude posts with invalid account_id
+            }
+            
+            const isMatch = normalizedUserAccountIds.includes(postAccountId);
+            
+            // Debug logging for first few posts
+            if (allPosts.indexOf(post) < 3) {
+              console.log(`Post ${allPosts.indexOf(post)}: account_id=${post.account_id} (type: ${typeof post.account_id}, normalized: ${postAccountId}) - Match: ${isMatch}`);
+            }
+            
+            return isMatch;
+          });
 
           console.log(
             `Filtered ${filteredPosts.length} posts from ${allPosts.length} total posts`
           );
+
+          // Log account IDs found in posts vs user's account IDs
+          const postAccountIds: number[] = Array.from(new Set(allPosts.map((p: any) => {
+            const accountId = Number(p.account_id);
+            return isNaN(accountId) ? null : accountId;
+          }).filter((id: number | null): id is number => id !== null)));
+          console.log(`Account IDs found in posts: ${postAccountIds.join(", ")}`);
+          console.log(`User's account IDs: ${normalizedUserAccountIds.join(", ")}`);
+          const matchingAccountIds = postAccountIds.filter((id: number) => normalizedUserAccountIds.includes(id));
+          console.log(`Matching account IDs: ${matchingAccountIds.length > 0 ? matchingAccountIds.join(", ") : "None"}`);
 
           return {
             success: true,
@@ -526,6 +586,8 @@ class SocialBuService {
           };
         }
 
+        // Only return all posts if userAccountIds is not provided at all (undefined/null)
+        console.log("No user account IDs provided, returning all posts");
         return result;
       }
 

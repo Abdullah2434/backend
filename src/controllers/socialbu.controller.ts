@@ -413,9 +413,13 @@ export const getScheduledPosts = async (req: Request, res: Response) => {
         userAccountIds.length
       } connected SocialBu accounts: ${userAccountIds.join(", ")}`
     );
+    
+    // Ensure all account IDs are numbers
+    const normalizedAccountIds = userAccountIds.map((id: string | number) => Number(id));
+    console.log(`Normalized account IDs: ${normalizedAccountIds.join(", ")} (types: ${normalizedAccountIds.map((id: number) => typeof id).join(", ")})`);
 
     // Get scheduled posts filtered by user's account IDs
-    const result = await socialBuService.getScheduledPosts(userAccountIds);
+    const result = await socialBuService.getScheduledPosts(normalizedAccountIds);
 
     if (!result.success) {
       return res.status(400).json({
