@@ -972,31 +972,26 @@ export class VideoScheduleService {
       console.log("✅ Captions generated successfully");
 
       // Create video using existing video generation logic (NO CAPTIONS in webhook)
-      const videoData = {
-        hook: trend.description,
-        body: trend.keypoints,
-        conclusion:
-          "Contact us for more information about real estate opportunities.",
-        company_name: userSettings.companyName,
-        social_handles: userSettings.socialHandles,
-        license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
-        email: userSettings.email,
-        title: trend.description,
-        // Store captions for later retrieval (not sent to webhook)
-        _captions: captions,
+      // Helper function to extract avatar_id from both string and object formats
+      // userSettings can have avatars as strings (avatar_id) or objects ({avatar_id, avatarType})
+      const extractAvatarId = (avatarValue: any): string => {
+        if (!avatarValue) return "";
+        if (typeof avatarValue === "string") return avatarValue.trim();
+        if (typeof avatarValue === "object" && avatarValue !== null && avatarValue.avatar_id) {
+          return String(avatarValue.avatar_id).trim();
+        }
+        return String(avatarValue).trim();
       };
 
       // ==================== STEP 1: CREATE VIDEO (PROMPT GENERATION) ====================
       console.log("🎬 Step 1: Creating video (prompt generation)...");
       console.log("📋 API Endpoint: POST /api/video/create");
 
-      // Get gender from avatar settings
+      // Get gender from avatar settings - extract avatar_id first (handles both string and object formats)
+      const titleAvatarIdForLookup = extractAvatarId(userSettings.titleAvatar);
       const DefaultAvatar = require("../models/avatar").default;
       const avatarDoc = await DefaultAvatar.findOne({
-        avatar_id: userSettings.titleAvatar,
+        avatar_id: titleAvatarIdForLookup,
       });
       const gender = avatarDoc ? avatarDoc.gender : undefined;
 
@@ -1075,33 +1070,46 @@ export class VideoScheduleService {
       console.log("🎬 Step 2: Generating video (video creation)...");
       console.log("📋 API Endpoint: POST /api/video/generate-video");
 
-      // Extract avatar IDs from userSettings (handle both string and object formats)
-      // userSettings can have avatars as strings (avatar_id) or objects ({avatar_id, avatarType})
-      const extractAvatarId = (avatarValue: any): string => {
-        if (!avatarValue) return "";
-        if (typeof avatarValue === "string") return avatarValue.trim();
-        if (typeof avatarValue === "object" && avatarValue !== null && avatarValue.avatar_id) {
-          return String(avatarValue.avatar_id).trim();
-        }
-        return String(avatarValue).trim();
-      };
-
+      // Extract avatar IDs and types from userSettings (reuse helper function defined above)
       const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
-      // Use bodyAvatar if available, otherwise fall back to avatar[0] for backward compatibility
       const bodyAvatarId = extractAvatarId(userSettings.bodyAvatar);
       const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
 
+      // Extract avatarType from userSettings (already stored, avoids database lookup)
+      const extractAvatarType = (avatarValue: any): string => {
+        if (!avatarValue) return "video_avatar"; // Default fallback
+        if (typeof avatarValue === "object" && avatarValue !== null && avatarValue.avatarType) {
+          return String(avatarValue.avatarType).trim();
+        }
+        // If it's just a string (backward compatibility), default to video_avatar
+        return "video_avatar";
+      };
+
+      const titleAvatarType = extractAvatarType(userSettings.titleAvatar);
+      const bodyAvatarType = extractAvatarType(userSettings.bodyAvatar);
+      const conclusionAvatarType = extractAvatarType(userSettings.conclusionAvatar);
+      console.log(userSettings)
       // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
+      // Pass structured objects with text, avatar, and avatarType directly (avoids database lookup)
       const videoGenerationData = {
-        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
-        body: enhancedContent.body, // ONLY use enhanced body from Step 1
-        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        hook: {
+          text: enhancedContent.hook, // ONLY use enhanced hook from Step 1
+          avatar: titleAvatarId,
+          avatarType: titleAvatarType,
+        },
+        body: {
+          text: enhancedContent.body, // ONLY use enhanced body from Step 1
+          avatar: bodyAvatarId,
+          avatarType: bodyAvatarType,
+        },
+        conclusion: {
+          text: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+          avatar: conclusionAvatarId,
+          avatarType: conclusionAvatarType,
+        },
         company_name: userSettings.companyName,
         social_handles: userSettings.socialHandles,
         license: userSettings.license,
-        avatar_title: titleAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
-        avatar_body: bodyAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
-        avatar_conclusion: conclusionAvatarId, // Extract avatar_id (string) so generateVideo API can resolve avatarType
         email: userSettings.email,
         title: trend.description,
         voice: voice_id,
