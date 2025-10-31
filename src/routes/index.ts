@@ -17,6 +17,8 @@ import webhookV2Routes from "./v2/webhook";
 import dynamicPostsRoutes from "./v2/dynamicPosts";
 import scheduleRoutes from "./v1/schedule";
 import cronHealthRoutes from "./v1/cronHealth";
+import energyProfileRoutes from "./v1/energyProfile";
+import musicRoutes from "./v1/music";
 
 const router = Router();
 
@@ -41,6 +43,8 @@ router.use("/v2", webhookV2Routes);
 router.use("/v2/dynamic-posts", dynamicPostsRoutes);
 router.use("/schedule", scheduleRoutes);
 router.use("/cron", cronHealthRoutes);
+router.use("/energy-profile", energyProfileRoutes);
+router.use("/music", musicRoutes);
 router.use("/webhook", webhookRoutes);
 
 export default router;

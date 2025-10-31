@@ -9,6 +9,8 @@ import ScheduleEmailService, {
 } from "./scheduleEmail.service";
 import CaptionGenerationService from "./captionGeneration.service";
 import TimezoneService from "../utils/timezone";
+import { UserVideoSettingsService } from "./userVideoSettings.service";
+import { VOICE_ENERGY_PRESETS } from "../constants/voiceEnergy";
 import { notificationService } from "./notification.service";
 
 export interface ScheduleData {
@@ -941,7 +943,33 @@ export class VideoScheduleService {
       // Don't fail the processing if email fails
     }
 
-    // Send socket notification - Video processing started
+    // Get user's energy profile settings
+    let voiceEnergyParams = VOICE_ENERGY_PRESETS.mid; // Default to mid energy
+    let musicTrackInfo = null;
+
+    try {
+      const userVideoSettingsService = new UserVideoSettingsService();
+      const energyProfile = await userVideoSettingsService.getEnergyProfile(
+        schedule.email
+      );
+
+      if (energyProfile) {
+        voiceEnergyParams = energyProfile.voiceParams;
+
+        if (energyProfile.selectedMusicTrack) {
+          musicTrackInfo = {
+            trackUrl: energyProfile.selectedMusicTrack.s3FullTrackUrl,
+            trackName: energyProfile.selectedMusicTrack.name,
+            energyCategory: energyProfile.selectedMusicTrack.energyCategory,
+          };
+        }
+      }
+    } catch (energyError) {
+      console.warn(
+        "Failed to get energy profile for scheduled video, using defaults:",
+        energyError
+      );
+    }
     notificationService.notifyScheduledVideoProgress(
       schedule.userId.toString(),
       "video-creation",
@@ -985,6 +1013,16 @@ export class VideoScheduleService {
         avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
         title: trend.description,
+        // Add energy profile data to API call
+        voiceEnergy: {
+          stability: voiceEnergyParams.stability,
+          similarity_boost: voiceEnergyParams.similarity_boost,
+          style: voiceEnergyParams.style,
+          use_speaker_boost: voiceEnergyParams.use_speaker_boost,
+          speed: voiceEnergyParams.speed,
+          emotion_tags: voiceEnergyParams.emotion_tags,
+        },
+        musicTrack: musicTrackInfo,
         // Store captions for later retrieval (not sent to webhook)
         _captions: captions,
       };
