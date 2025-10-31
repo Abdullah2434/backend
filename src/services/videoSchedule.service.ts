@@ -82,8 +82,7 @@ export class VideoScheduleService {
       const currentChunkSize = Math.min(chunkSize, remainingTrends);
 
       console.log(
-        `📦 Generating chunk ${
-          i + 1
+        `📦 Generating chunk ${i + 1
         }/${totalChunks} (${currentChunkSize} trends)...`
       );
 
@@ -239,8 +238,7 @@ export class VideoScheduleService {
       const currentChunkSize = Math.min(chunkSize, remainingTrends);
 
       console.log(
-        `📦 Generating chunk ${
-          i + 1
+        `📦 Generating chunk ${i + 1
         }/${totalChunks} (${currentChunkSize} trends)...`
       );
 
@@ -258,8 +256,7 @@ export class VideoScheduleService {
         // Accept partial results if we got at least some trends
         if (chunkTrends.length < currentChunkSize) {
           console.warn(
-            `⚠️ Chunk ${i + 1}: Requested ${currentChunkSize} trends but got ${
-              chunkTrends.length
+            `⚠️ Chunk ${i + 1}: Requested ${currentChunkSize} trends but got ${chunkTrends.length
             } trends`
           );
         }
@@ -283,8 +280,7 @@ export class VideoScheduleService {
         } else {
           // Remaining chunks: Use basic captions, queue for background processing
           console.log(
-            `⏳ Using basic captions for chunk ${
-              i + 1
+            `⏳ Using basic captions for chunk ${i + 1
             }, queuing for background processing...`
           );
           enhancedTrends = chunkTrends.map((trend) => ({
@@ -1092,18 +1088,18 @@ export class VideoScheduleService {
       // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
       // Pass structured objects with text, avatar, and avatarType directly (avoids database lookup)
       const videoGenerationData = {
-        hook: {
-          text: enhancedContent.hook, // ONLY use enhanced hook from Step 1
+        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
+        body: enhancedContent.body, // ONLY use enhanced body from Step 1
+        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        avatar_title: {
           avatar: titleAvatarId,
           avatarType: titleAvatarType,
         },
-        body: {
-          text: enhancedContent.body, // ONLY use enhanced body from Step 1
+        avatar_body: {
           avatar: bodyAvatarId,
           avatarType: bodyAvatarType,
         },
-        conclusion: {
-          text: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        avatar_conclusion: {
           avatar: conclusionAvatarId,
           avatarType: conclusionAvatarType,
         },
@@ -1965,8 +1961,7 @@ export class VideoScheduleService {
       const endIndex = Math.min(startIndex + batchSize, totalVideos);
 
       console.log(
-        `📦 Processing batch ${batchIndex + 1}/${totalBatches} (videos ${
-          startIndex + 1
+        `📦 Processing batch ${batchIndex + 1}/${totalBatches} (videos ${startIndex + 1
         }-${endIndex})...`
       );
 
@@ -1991,8 +1986,7 @@ export class VideoScheduleService {
         processedCount = endIndex;
 
         console.log(
-          `✅ Batch ${
-            batchIndex + 1
+          `✅ Batch ${batchIndex + 1
           } completed: ${processedCount}/${totalVideos} videos processed`
         );
 
@@ -2103,8 +2097,7 @@ export class VideoScheduleService {
       });
 
       console.log(
-        `✅ Generated dynamic captions for trend ${trendIndex + 1}: "${
-          trend.description
+        `✅ Generated dynamic captions for trend ${trendIndex + 1}: "${trend.description
         }"`
       );
     } catch (error: any) {
@@ -2187,8 +2180,7 @@ export class VideoScheduleService {
 
       try {
         console.log(
-          `🎯 Processing video ${i + 1}/${pendingTrends.length}: "${
-            pendingTrends[i].description
+          `🎯 Processing video ${i + 1}/${pendingTrends.length}: "${pendingTrends[i].description
           }"`
         );
 
@@ -2248,8 +2240,7 @@ export class VideoScheduleService {
         await schedule.save();
 
         console.log(
-          `✅ Video ${i + 1}/${
-            pendingTrends.length
+          `✅ Video ${i + 1}/${pendingTrends.length
           } captions generated and saved`
         );
 
