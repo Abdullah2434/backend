@@ -19,6 +19,7 @@ export interface IVideo extends Document {
     linkedin_caption?: string;
     twitter_caption?: string;
     tiktok_caption?: string;
+    youtube_caption?: string;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -47,6 +48,7 @@ const videoSchema = new Schema<IVideo>(
       linkedin_caption: { type: String, trim: true },
       twitter_caption: { type: String, trim: true },
       tiktok_caption: { type: String, trim: true },
+      youtube_caption: { type: String, trim: true },
     },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

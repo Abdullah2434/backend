@@ -145,6 +145,7 @@ export class VideoService {
       linkedin_caption?: string;
       twitter_caption?: string;
       tiktok_caption?: string;
+      youtube_caption?: string;
     }
   ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
