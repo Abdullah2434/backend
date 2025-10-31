@@ -1087,7 +1087,8 @@ export class VideoScheduleService {
       };
 
       const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
-      const bodyAvatarId = extractAvatarId(userSettings.avatar[0]);
+      // Use bodyAvatar if available, otherwise fall back to avatar[0] for backward compatibility
+      const bodyAvatarId = extractAvatarId(userSettings.bodyAvatar);
       const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
 
       // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
