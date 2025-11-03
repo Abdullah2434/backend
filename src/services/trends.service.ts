@@ -437,6 +437,9 @@ async function validateRealEstateDescription(
   description: string
 ): Promise<boolean> {
   try {
+    // Note: Content safety check is now done separately in generateFromDescription
+    // This function only checks if content is real estate related
+
     if (!OPENAI_API_KEY) {
       // If no API key, use keyword-based validation as fallback
       return validateWithKeywords(description);
@@ -448,9 +451,16 @@ Description: "${description}"
 
 Return ONLY a JSON object with this exact format:
 {
-  "isRealEstateRelated": true or false,
   "reason": "brief explanation"
 }
+
+CONTENT POLICY:
+Users can search for anything related to real estate, EXCEPT:
+- Racism or discriminatory language (hate speech, racial slurs, discriminatory comments)
+- Sexual or explicit content (pornographic, sexually explicit, nudity-related content)
+- Vulgar or profane language (profanity, offensive language, inappropriate slurs)
+
+If the description contains ANY of the prohibited content above, you MUST mark it as not real estate related (isRealEstateRelated: false) with reason explaining the content violation.
 
 The description is real estate related if it mentions:
 - Properties, homes, houses, apartments, condos, real estate
@@ -459,6 +469,8 @@ The description is real estate related if it mentions:
 - Mortgages, loans, financing, refinancing
 - Property values, market trends, housing market
 - Neighborhoods, locations, real estate transactions
+
+IMPORTANT: If the description contains racism, discriminatory language, sexual/explicit content, or vulgar/profane language, you MUST return isRealEstateRelated: false regardless of whether it mentions real estate topics. Reject inappropriate content completely.
 
 Return ONLY valid JSON, no additional text.`;
 
@@ -502,12 +514,147 @@ Return ONLY valid JSON, no additional text.`;
 
     // Fallback to keyword validation if AI response is invalid
     return validateWithKeywords(description);
-  } catch (error) {
+  } catch (error: any) {
+    // Re-throw content moderation errors
+    if (error.message?.includes("CONTENT_MODERATION_ERROR")) {
+      throw error;
+    }
+    
     console.warn(
       "Error validating description with AI, falling back to keyword validation:",
       error
     );
     return validateWithKeywords(description);
+  }
+}
+
+/**
+ * Content moderation: Check for inappropriate content (racism, nudity, vulgar)
+ * Returns true if content is safe, false if it contains inappropriate content
+ */
+async function checkContentSafety(
+  content: string
+): Promise<{ isSafe: boolean; reason?: string; category?: string }> {
+  try {
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      return { isSafe: true }; // Empty content is safe
+    }
+
+    const normalizedContent = content.toLowerCase().trim();
+
+    // Keyword-based validation for inappropriate content
+    const inappropriatePatterns = {
+      racism: [
+        /\b(n-word|racial slur|hate speech)/gi,
+        // Add more patterns as needed
+      ],
+      nudity: [
+        /\b(naked|nude|nudity|explicit|porn|xxx|sexually explicit)/gi,
+        // Add more patterns as needed
+      ],
+      vulgar: [
+        /\b(f\*\*k|fuck|shit|damn|hell|asshole|bitch|bastard|crap)/gi,
+        // Add more vulgar patterns
+      ],
+    };
+
+    // Check for inappropriate content using keywords
+    for (const [category, patterns] of Object.entries(inappropriatePatterns)) {
+      for (const pattern of patterns) {
+        // Reset regex lastIndex to avoid issues with global regex
+        pattern.lastIndex = 0;
+        if (pattern.test(normalizedContent)) {
+          console.warn(`⚠️ Content moderation flagged ${category}:`, content.substring(0, 100));
+          console.log(`🔒 Blocked content: "${normalizedContent}" matched pattern in ${category}`);
+          return {
+            isSafe: false,
+            reason: `Content contains inappropriate ${category} related content`,
+            category: category,
+          };
+        }
+      }
+    }
+
+    // Use OpenAI Moderation API if available
+    if (OPENAI_API_KEY) {
+      try {
+        const moderationResponse = await axios.post(
+          "https://api.openai.com/v1/moderations",
+          {
+            input: content,
+          },
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+            },
+            timeout: 10000,
+          }
+        );
+
+        const moderationResult = moderationResponse.data?.results?.[0];
+        if (moderationResult?.flagged) {
+          const categories = moderationResult.categories || {};
+          const flaggedCategories = Object.keys(categories).filter(
+            (key) => categories[key] === true
+          );
+
+          // Check for relevant categories
+          const relevantCategories = [
+            "hate",
+            "hate/threatening",
+            "self-harm",
+            "sexual",
+            "sexual/minors",
+            "violence",
+            "violence/graphic",
+          ];
+
+          const foundCategory = flaggedCategories.find((cat) =>
+            relevantCategories.includes(cat)
+          );
+
+          if (foundCategory) {
+            let category = "inappropriate";
+            if (foundCategory.includes("hate")) category = "racism";
+            else if (foundCategory.includes("sexual")) category = "nudity";
+            else if (foundCategory.includes("violence")) category = "vulgar";
+
+            console.warn(`⚠️ OpenAI moderation flagged content:`, {
+              category: foundCategory,
+              score: moderationResult.category_scores?.[foundCategory],
+              content: content.substring(0, 100),
+            });
+
+            return {
+              isSafe: false,
+              reason: `Content contains inappropriate ${category} related content`,
+              category: category,
+            };
+          }
+        }
+
+        // Content passed OpenAI moderation
+        return { isSafe: true };
+      } catch (moderationError: any) {
+        console.warn(
+          "Error calling OpenAI moderation API, using keyword fallback:",
+          moderationError.message
+        );
+        // Fall through to return safe if keyword check passed
+      }
+    }
+
+    // Content passed all checks
+    return { isSafe: true };
+  } catch (error) {
+    console.error("Error validating content safety:", error);
+    // On error, err on the side of caution - reject content
+    return {
+      isSafe: false,
+      reason: "Error validating content safety",
+      category: "unknown",
+    };
   }
 }
 
@@ -601,30 +748,52 @@ export async function generateFromDescription(
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
 
-    // Validate that description is real estate related
+    // First, validate content safety (racism, nudity, vulgar content) - this is REQUIRED
     console.log(
-      `🔍 Validating description: "${description.substring(0, 100)}..."`
+      `🔒 Validating content safety: "${description.substring(0, 100)}..."`
     );
-    const isRealEstateRelated = await validateRealEstateDescription(
-      description
-    );
-
-    if (!isRealEstateRelated) {
-      throw new Error(
-        "VALIDATION_ERROR: Description is not related to real estate topics. Please provide a description related to: (1) Real Estate - properties, homes, houses, apartments, condos, commercial real estate; (2) Property - buying, selling, renting, investing in properties; (3) Housing - residential properties, housing market, homeownership, rental properties; (4) Mortgages/Loans - mortgage loans, refinancing, home financing, loan products; (5) Real Estate Professionals - real estate agents, brokers, loan officers, mortgage brokers, realtors."
-      );
+    const safetyCheck = await checkContentSafety(description);
+    if (!safetyCheck.isSafe) {
+      const errorMessage =
+        safetyCheck.category === "racism"
+          ? "CONTENT_MODERATION_ERROR: Content contains racist or discriminatory language. Please use respectful and inclusive language."
+          : safetyCheck.category === "nudity"
+          ? "CONTENT_MODERATION_ERROR: Content contains inappropriate sexual or nudity-related content. Please keep content professional and appropriate."
+          : "CONTENT_MODERATION_ERROR: Content contains inappropriate vulgar or offensive language. Please use professional and respectful language.";
+      throw new Error(errorMessage);
     }
 
-    console.log(`✅ Description validated as real estate related`);
+    console.log(`✅ Content safety check passed`);
+
+    // Optional: Check if description is real estate related (for better context, but not required)
+    console.log(
+      `🔍 Checking if description is real estate related: "${description.substring(0, 100)}..."`
+    );
+    let isRealEstateRelated = false;
+    try {
+      isRealEstateRelated = await validateRealEstateDescription(description);
+      if (isRealEstateRelated) {
+        console.log(`✅ Description is real estate related`);
+      } else {
+        console.log(`ℹ️ Description is not real estate related, but will still generate content`);
+      }
+    } catch (validationError: any) {
+      // If validation throws a content moderation error, re-throw it
+      if (validationError.message?.includes("CONTENT_MODERATION_ERROR")) {
+        throw validationError;
+      }
+      // Otherwise, continue even if validation fails - we allow non-real-estate content
+      console.log(`ℹ️ Real estate validation failed, but continuing with content generation`);
+    }
 
     const cityInfo = city ? cityData[city] : null;
     const cityContext = cityInfo
       ? ` for ${city} real estate market (${cityInfo.marketTrend}, ${cityInfo.priceRange})`
-      : " for real estate";
+      : isRealEstateRelated ? " for real estate" : "";
 
     const prompt = `Based on this description: "${description}"
 
-Generate keypoints and social media captions${cityContext}.
+Generate keypoints and social media captions${cityContext ? cityContext : ""}.
 
 Return a JSON object with:
 - keypoints: MUST include at least 3 keypoints, separated by commas (minimum 3, maximum 5 keypoints). Format: "keypoint1, keypoint2, keypoint3"
@@ -713,8 +882,21 @@ Return only valid JSON:
   } catch (error) {
     console.error(`Error generating content from description:`, error);
 
-    // Re-throw validation errors (they should be returned as 400 errors)
+    // Re-throw validation errors and content moderation errors (they should be returned as 400 errors)
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Re-throw content moderation errors
+    if (
+      errorMessage.includes("CONTENT_MODERATION_ERROR") ||
+      errorMessage.includes("inappropriate") ||
+      errorMessage.includes("racism") ||
+      errorMessage.includes("nudity") ||
+      errorMessage.includes("vulgar")
+    ) {
+      throw error; // Re-throw content moderation errors
+    }
+    
+    // Re-throw real estate validation errors
     if (
       errorMessage.includes("not related to real estate") ||
       errorMessage.includes("not real estate related")
@@ -722,7 +904,7 @@ Return only valid JSON:
       throw error; // Re-throw validation errors
     }
 
-    // Return fallback content only for AI/processing errors, not validation errors
+    // Return fallback content only for AI/processing errors, not validation/moderation errors
     return {
       description: description,
       keypoints: "Property features, Location benefits, Investment potential",

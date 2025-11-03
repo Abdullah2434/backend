@@ -270,11 +270,16 @@ export class VideoService {
         }
 
         // Check if captions are missing and generate them on-the-fly
+        // Check if ANY caption is missing (not just instagram/facebook) to ensure youtube_caption is included
         if (
           video.status === "ready" &&
           (!video.socialMediaCaptions ||
             !video.socialMediaCaptions.instagram_caption ||
-            !video.socialMediaCaptions.facebook_caption)
+            !video.socialMediaCaptions.facebook_caption ||
+            !video.socialMediaCaptions.linkedin_caption ||
+            !video.socialMediaCaptions.twitter_caption ||
+            !video.socialMediaCaptions.tiktok_caption ||
+            !video.socialMediaCaptions.youtube_caption) // ✅ Also check for youtube_caption
         ) {
           try {
             console.log(
@@ -302,14 +307,46 @@ export class VideoService {
 
             // Update the video object for this response
             (video as any).socialMediaCaptions = captions;
-
-            console.log(`✅ Generated captions for video: ${video.videoId}`);
           } catch (captionError) {
             console.warn(
               `Failed to generate captions for video ${video.videoId}:`,
               captionError
             );
             // Continue without captions
+          }
+        } else if (video.status === "ready" && video.socialMediaCaptions) {
+          // Check if youtube_caption is missing even if other captions exist
+          if (!video.socialMediaCaptions.youtube_caption) {
+            try {
+              // Generate captions using the video title as topic
+              const { CaptionGenerationService } = await import(
+                "../../../services/captionGeneration.service"
+              );
+              const captions = await CaptionGenerationService.generateCaptions(
+                video.title,
+                video.title,
+                {
+                  name: "Real Estate Professional",
+                  position: "Real Estate Professional",
+                  companyName: "Real Estate Company",
+                  city: "Your City",
+                  socialHandles: "@realestate",
+                }
+              );
+
+              // Update the video with generated captions
+              await this.updateVideoCaptions(video.videoId, captions);
+
+              // Update the video object for this response
+              (video as any).socialMediaCaptions = captions;
+
+              console.log(`✅ Regenerated and stored captions for video: ${video.videoId}`);
+            } catch (captionError) {
+              console.warn(
+                `Failed to regenerate captions for video ${video.videoId}:`,
+                captionError
+              );
+            }
           }
         }
 
