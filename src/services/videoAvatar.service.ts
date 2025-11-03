@@ -456,6 +456,9 @@ export class VideoAvatarService {
     console.log(`Starting polling for avatar ${avatarId}:`, url);
 
     return new Promise((resolve, reject) => {
+      // Store timeout handle for cleanup
+      let timeoutHandle: NodeJS.Timeout | null = null;
+
       const pollInterval = setInterval(async () => {
         try {
           console.log(`Polling Heygen API for avatar ${avatarId}...`);
@@ -507,7 +510,7 @@ export class VideoAvatarService {
                 `✅ Avatar ${avatarId} status is ${heygenData.status}, stopping polling`
               );
               console.log(
-                `Final response saved for avatar ${avatarId}:`,
+                `Final response for avatar ${avatarId}:`,
                 heygenData
               );
 
@@ -537,18 +540,45 @@ export class VideoAvatarService {
                 );
               }
 
-              const defaultAvatar = new DefaultAvatar({
-                avatar_id: avatarId,
-                avatar_name: heygenData?.data?.avatar_name,
-                default: true,
-                preview_image_url: heygenData?.data?.preview_image_url,
-                preview_video_url: heygenData?.data?.preview_video_url,
-                userId: userId,
-                status: "training",
-                avatarType: "video_avatar",
-              });
-              await defaultAvatar.save();
+              // Only save DefaultAvatar if status is "completed" and preview_image_url is not empty (video avatars only)
+              if (heygenData.data.status === "completed") {
+                const previewImageUrl = heygenData?.data?.preview_image_url;
+                const hasPreviewImageUrl = previewImageUrl && String(previewImageUrl).trim().length > 0;
+
+                if (!hasPreviewImageUrl) {
+                  console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: preview_image_url is empty`);
+                  clearInterval(pollInterval);
+                  if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
+                  resolve(heygenData); // Resolve without saving
+                  return;
+                }
+
+                // Save DefaultAvatar only if preview_image_url exists
+                const avatarData: any = {
+                  avatar_id: avatarId,
+                  avatar_name: heygenData?.data?.avatar_name,
+                  default: true,
+                  userId: userId,
+                  status: "training",
+                  avatarType: "video_avatar",
+                  preview_image_url: previewImageUrl.trim(),
+                };
+
+                // Only include preview_video_url if it's not empty
+                if (heygenData?.data?.preview_video_url && String(heygenData.data.preview_video_url).trim().length > 0) {
+                  avatarData.preview_video_url = heygenData.data.preview_video_url.trim();
+                }
+
+                const defaultAvatar = new DefaultAvatar(avatarData);
+                await defaultAvatar.save();
+                console.log(`✅ Saved DefaultAvatar for video avatar ${avatarId} with preview_image_url`);
+              } else {
+                // Status is "failed" - don't save
+                console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: status is "failed"`);
+              }
+
               clearInterval(pollInterval);
+              if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
               resolve(heygenData); // Resolve with final response
             } else {
               console.log(
@@ -582,15 +612,19 @@ export class VideoAvatarService {
           }
 
           clearInterval(pollInterval);
+          if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout on error
           reject(error);
         }
       }, 10000); // Poll every 10 seconds
 
       // Stop polling after 5 minutes to prevent infinite polling
-      setTimeout(() => {
-        console.log(`Stopping polling for avatar ${avatarId} after 5 minutes`);
+      timeoutHandle = setTimeout(() => {
+        console.log(`⏰ Stopping polling for avatar ${avatarId} after 5 minutes - timeout occurred`);
 
-        // Emit timeout socket notification
+        // Clear the polling interval first
+        clearInterval(pollInterval);
+
+        // Emit timeout socket notification (stops socket)
         if (userId) {
           notificationService.notifyVideoAvatarProgress(
             userId,
@@ -605,11 +639,14 @@ export class VideoAvatarService {
           );
         }
 
-        clearInterval(pollInterval);
+        // Reject the promise (prevents saving to database)
         reject(
           new Error(`Polling timeout for avatar ${avatarId} after 5 minutes`)
         );
       }, 10 * 60 * 1000); // 5 minutes timeout
+
+      // Clear timeout if polling completes successfully
+      // This is handled by clearing the interval and resolving/rejecting
     });
   }
 
