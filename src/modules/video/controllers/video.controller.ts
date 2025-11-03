@@ -282,6 +282,7 @@ export async function download(req: Request, res: Response) {
           linkedin_caption: captions.linkedin_caption,
           twitter_caption: captions.twitter_caption,
           tiktok_caption: captions.tiktok_caption,
+          youtube_caption: captions.youtube_caption,
         });
         console.log("📑 Stored provided captions on video", result.videoId);
       } else {
@@ -295,6 +296,7 @@ export async function download(req: Request, res: Response) {
               linkedin_caption: pending.captions.linkedin_caption,
               twitter_caption: pending.captions.twitter_caption,
               tiktok_caption: pending.captions.tiktok_caption,
+              youtube_caption: pending.captions.youtube_caption,
             });
             console.log("📑 Stored pending captions on video", result.videoId);
             // best-effort cleanup

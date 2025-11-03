@@ -1,13 +1,19 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface AvatarObject {
+  avatar_id: string;
+  avatarType: string;
+}
+
 export interface IUserVideoSettings extends Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   email: string;
   prompt: string;
-  avatar: string[];
-  titleAvatar: string;
-  conclusionAvatar: string;
+  avatar: string[]; // Array of avatar IDs (strings)
+  titleAvatar: AvatarObject | string; // Can be object with avatar_id and avatarType, or string (for backward compatibility)
+  conclusionAvatar: AvatarObject | string; // Can be object with avatar_id and avatarType, or string (for backward compatibility)
+  bodyAvatar?: AvatarObject | string; // Optional body avatar
   name: string;
   position: string;
   companyName: string;
@@ -49,14 +55,16 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
       },
     ],
     titleAvatar: {
-      type: String,
+      type: Schema.Types.Mixed, // Can be String or Object {avatar_id, avatarType}
       required: true,
-      trim: true,
     },
     conclusionAvatar: {
-      type: String,
+      type: Schema.Types.Mixed, // Can be String or Object {avatar_id, avatarType}
       required: true,
-      trim: true,
+    },
+    bodyAvatar: {
+      type: Schema.Types.Mixed, // Can be String or Object {avatar_id, avatarType}
+      required: false,
     },
     name: {
       type: String,

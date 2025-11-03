@@ -910,20 +910,15 @@ export class VideoScheduleService {
     userSettings: any
   ): Promise<void> {
     const schedule = await VideoSchedule.findById(scheduleId);
-    if (!schedule) {
-      throw new Error("Schedule not found");
-    }
-
+    if (!schedule) throw new Error("Schedule not found");
+  
     const trend = schedule.generatedTrends[trendIndex];
-    if (!trend) {
-      throw new Error("Trend not found");
-    }
-
-    // Update status to processing
+    if (!trend) throw new Error("Trend not found");
+  
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
-
-    // Send processing started email
+  
+    // Send processing email (non-blocking)
     try {
       const processingEmailData: VideoProcessingEmailData = {
         userEmail: schedule.email,
@@ -932,16 +927,13 @@ export class VideoScheduleService {
         videoDescription: trend.description,
         videoKeypoints: trend.keypoints,
         startedAt: new Date(),
-        timezone: schedule.timezone, // Add timezone for email display
+        timezone: schedule.timezone,
       };
-
       await this.emailService.sendVideoProcessingEmail(processingEmailData);
     } catch (emailError) {
       console.error("Error sending video processing email:", emailError);
-      // Don't fail the processing if email fails
     }
-
-    // Send socket notification - Video processing started
+  
     notificationService.notifyScheduledVideoProgress(
       schedule.userId.toString(),
       "video-creation",
@@ -953,9 +945,8 @@ export class VideoScheduleService {
         videoTitle: trend.description,
       }
     );
-
+  
     try {
-      // Generate social media captions using OpenAI
       console.log("🎨 Generating social media captions...");
       const captions =
         await CaptionGenerationService.generateScheduledVideoCaptions(
@@ -969,49 +960,55 @@ export class VideoScheduleService {
             socialHandles: userSettings.socialHandles,
           }
         );
+  
       console.log("✅ Captions generated successfully");
-
-      // Create video using existing video generation logic (NO CAPTIONS in webhook)
-      const videoData = {
-        hook: trend.description,
-        body: trend.keypoints,
-        conclusion:
-          "Contact us for more information about real estate opportunities.",
-        company_name: userSettings.companyName,
-        social_handles: userSettings.socialHandles,
-        license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
-        email: userSettings.email,
-        title: trend.description,
-        // Store captions for later retrieval (not sent to webhook)
-        _captions: captions,
+  
+      // ✅ Helper functions to extract clean IDs and types
+      const extractAvatarId = (avatarValue: any): string => {
+        if (!avatarValue) return "";
+        if (typeof avatarValue === "string") return avatarValue.trim();
+        if (typeof avatarValue === "object" && avatarValue.avatar_id)
+          return String(avatarValue.avatar_id).trim();
+        return "";
       };
-
-      // ==================== STEP 1: CREATE VIDEO (PROMPT GENERATION) ====================
-      console.log("🎬 Step 1: Creating video (prompt generation)...");
-      console.log("📋 API Endpoint: POST /api/video/create");
-
-      // Get gender from avatar settings
+  
+      const extractAvatarType = (avatarValue: any): string => {
+        if (typeof avatarValue === "object" && avatarValue.avatarType)
+          return String(avatarValue.avatarType).trim();
+        return "video_avatar";
+      };
+  
+      // ✅ Normalize avatar fields
+      const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
+      const bodyAvatarId = extractAvatarId(
+        userSettings.bodyAvatar || userSettings.avatar?.[0]
+      );
+      const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
+  
+      const titleAvatarType = extractAvatarType(userSettings.titleAvatar);
+      const bodyAvatarType = extractAvatarType(
+        userSettings.bodyAvatar || userSettings.avatar?.[0]
+      );
+      const conclusionAvatarType = extractAvatarType(userSettings.conclusionAvatar);
+  
+      // ✅ Lookup avatar in DB with clean string ID
       const DefaultAvatar = require("../models/avatar").default;
       const avatarDoc = await DefaultAvatar.findOne({
-        avatar_id: userSettings.titleAvatar,
+        avatar_id: titleAvatarId,
       });
+  
       const gender = avatarDoc ? avatarDoc.gender : undefined;
-
-      // Get voice_id from gender
       let voice_id: string | undefined = undefined;
       if (gender) {
         const DefaultVoice = require("../models/voice").default;
         const voiceDoc = await DefaultVoice.findOne({ gender });
         voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
       }
-
-      // Step 1: Prepare data for video creation API (same format as manual)
+  
+      // ==================== STEP 1: CREATE VIDEO (Prompt Generation) ====================
       const videoCreationData = {
         prompt: userSettings.prompt,
-        avatar: userSettings.avatar,
+        avatar: titleAvatarId,
         name: userSettings.name,
         position: userSettings.position,
         companyName: userSettings.companyName,
@@ -1034,59 +1031,47 @@ export class VideoScheduleService {
         scheduleId: scheduleId,
         trendIndex: trendIndex,
       };
-
-      // Call Step 1: Create Video API endpoint (same as manual)
+  
       console.log("🔄 Step 1: Calling Create Video API...");
-      console.log(
-        "📋 Request Body:",
-        JSON.stringify(videoCreationData, null, 2)
-      );
-
-      let enhancedContent: any = null;
+      let enhancedContent: any;
       try {
         enhancedContent = await this.callCreateVideoAPI(videoCreationData);
-        console.log("✅ Step 1: Create Video API completed successfully");
-        console.log(
-          "📋 Enhanced content received:",
-          JSON.stringify(enhancedContent, null, 2)
-        );
-
-        // Validate that we have the required enhanced content
-        if (
-          !enhancedContent ||
-          !enhancedContent.hook ||
-          !enhancedContent.body ||
-          !enhancedContent.conclusion
-        ) {
-          throw new Error(
-            "Enhanced content is incomplete or missing from first API response"
-          );
-        }
-      } catch (error: any) {
-        console.error("❌ Step 1: Create Video API failed:", error);
-        throw new Error(`Create Video API failed: ${error.message}`);
+        console.log("✅ Step 1: Create Video API successful");
+      } catch (err: any) {
+        console.error("❌ Step 1 failed:", err);
+        throw new Error(`Create Video API failed: ${err.message}`);
       }
-
-      // Wait a moment between API calls
-      console.log("⏳ Waiting 2 seconds before Step 2...");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // ==================== STEP 2: GENERATE VIDEO (VIDEO CREATION) ====================
-      console.log("🎬 Step 2: Generating video (video creation)...");
-      console.log("📋 API Endpoint: POST /api/video/generate-video");
-
-      // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
+  
+      await new Promise((r) => setTimeout(r, 2000));
+      const normalizedEnhancedContent = { // getting error on the live replace hook and other 2 with this
+        hook: {
+          text: enhancedContent.hook,
+          avatar: titleAvatarId,
+          avatarType: titleAvatarType,
+        },
+        body: {
+          text: enhancedContent.body,
+          avatar: bodyAvatarId,
+          avatarType: bodyAvatarType,
+        },
+        conclusion: {
+          text: enhancedContent.conclusion,
+          avatar: conclusionAvatarId,
+          avatarType: conclusionAvatarType,
+        },
+      };
+      // ==================== STEP 2: GENERATE VIDEO ====================
       const videoGenerationData = {
-        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
-        body: enhancedContent.body, // ONLY use enhanced body from Step 1
-        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        hook: enhancedContent.hook, // includes text + avatar + avatarType
+        body: enhancedContent.body,
+        conclusion: enhancedContent.conclusion,
         company_name: userSettings.companyName,
         social_handles: userSettings.socialHandles,
         license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
+        avatar_title:titleAvatarId,
+        avatar_body:bodyAvatarId,
+        avatar_conclusion:conclusionAvatarId,
         title: trend.description,
         voice: voice_id,
         isDefault: avatarDoc?.default,
@@ -1094,34 +1079,22 @@ export class VideoScheduleService {
         isScheduled: true,
         scheduleId: scheduleId,
         trendIndex: trendIndex,
-        // Store captions for later retrieval (not sent to webhook)
         _captions: captions,
       };
-
-      // Call Step 2: Generate Video API endpoint (same as manual)
+  
       console.log("🔄 Step 2: Calling Generate Video API...");
-      console.log(
-        "📋 Request Body:",
-        JSON.stringify(videoGenerationData, null, 2)
-      );
       try {
         await this.callGenerateVideoAPI(videoGenerationData);
         console.log("✅ Step 2: Generate Video API completed successfully");
-      } catch (error: any) {
-        console.error("❌ Step 2: Generate Video API failed:", error);
-        throw new Error(`Generate Video API failed: ${error.message}`);
+      } catch (err: any) {
+        console.error("❌ Step 2: Generate Video API failed:", err);
+        throw new Error(`Generate Video API failed: ${err.message}`);
       }
-
-      // Log processing completion
-      console.log("🎉 Both API calls completed successfully!");
+  
       console.log(
-        `🎬 Scheduled video processing initiated: "${trend.description}" for user ${schedule.userId}`
+        `🎉 Scheduled video "${trend.description}" created successfully`
       );
-      console.log(
-        "📱 Video will be processed and auto-posted to social media when ready"
-      );
-
-      // Send socket notification - Video creation initiated successfully
+  
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
@@ -1138,25 +1111,18 @@ export class VideoScheduleService {
       console.error("Error processing scheduled video:", error);
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
-
-      // Send socket notification - Video creation failed
+  
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
         "error",
         {
           message: `Failed to create video "${trend.description}": ${error.message}`,
-          scheduleId: scheduleId,
-          trendIndex: trendIndex,
+          scheduleId,
+          trendIndex,
           videoTitle: trend.description,
           error: error.message,
         }
-      );
-
-      // Log failure
-      console.error(
-        `❌ Failed to process scheduled video "${trend.description}" for user ${schedule.userId}:`,
-        error.message
       );
     }
   }

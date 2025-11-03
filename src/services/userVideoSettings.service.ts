@@ -3,11 +3,17 @@ import UserVideoSettings, {
 } from "../models/UserVideoSettings";
 import User from "../models/User";
 
+export interface AvatarObject {
+  avatar_id: string;
+  avatarType: string;
+}
+
 export interface UserVideoSettingsData {
   prompt: string;
   avatar: string[];
-  titleAvatar: string;
-  conclusionAvatar: string;
+  titleAvatar: AvatarObject | string;
+  conclusionAvatar: AvatarObject | string;
+  bodyAvatar?: AvatarObject | string;
   name: string;
   position: string;
   companyName: string;
@@ -47,6 +53,7 @@ export class UserVideoSettingsService {
           avatar: data.avatar,
           titleAvatar: data.titleAvatar,
           conclusionAvatar: data.conclusionAvatar,
+          bodyAvatar: data.bodyAvatar,
           name: data.name,
           position: data.position,
           companyName: data.companyName,
@@ -75,6 +82,7 @@ export class UserVideoSettingsService {
         avatar: data.avatar,
         titleAvatar: data.titleAvatar,
         conclusionAvatar: data.conclusionAvatar,
+        bodyAvatar: data.bodyAvatar,
         name: data.name,
         position: data.position,
         companyName: data.companyName,
