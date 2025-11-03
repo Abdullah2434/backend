@@ -74,25 +74,23 @@ export class PostWebhookDynamicGenerationService {
           console.log(`🎯 Generated ${dynamicPosts.length} dynamic posts`);
 
           // Convert dynamic posts to traditional caption format for compatibility
+          const instagramPost = dynamicPosts.find((p: any) => p.platform === "instagram");
+          const facebookPost = dynamicPosts.find((p: any) => p.platform === "facebook");
+          const linkedinPost = dynamicPosts.find((p: any) => p.platform === "linkedin");
+          const twitterPost = dynamicPosts.find((p: any) => p.platform === "twitter");
+          const tiktokPost = dynamicPosts.find((p: any) => p.platform === "tiktok");
+          const youtubePost = dynamicPosts.find((p: any) => p.platform === "youtube");
+          
           captions = {
-            instagram_caption:
-              dynamicPosts.find((p: any) => p.platform === "instagram")
-                ?.content || "",
-            facebook_caption:
-              dynamicPosts.find((p: any) => p.platform === "facebook")?.content ||
-              "",
-            linkedin_caption:
-              dynamicPosts.find((p: any) => p.platform === "linkedin")?.content ||
-              "",
-            twitter_caption:
-              dynamicPosts.find((p: any) => p.platform === "twitter")?.content ||
-              "",
-            tiktok_caption:
-              dynamicPosts.find((p: any) => p.platform === "tiktok")?.content || "",
-            youtube_caption:
-              dynamicPosts.find((p: any) => p.platform === "youtube")?.content ||
-              "",
+            instagram_caption: instagramPost?.content || "",
+            facebook_caption: facebookPost?.content || "",
+            linkedin_caption: linkedinPost?.content || "",
+            twitter_caption: twitterPost?.content || "",
+            tiktok_caption: tiktokPost?.content || "",
+            youtube_caption: youtubePost?.content || "", // ✅ Ensure youtube_caption is included
           };
+          
+          console.log(`✅ Generated captions include youtube_caption:`, !!captions.youtube_caption, captions.youtube_caption ? `Length: ${captions.youtube_caption.length}` : "MISSING");
         } catch (dynamicError) {
           console.warn(
             "Dynamic generation failed, falling back to traditional captions:",
@@ -128,13 +126,15 @@ export class PostWebhookDynamicGenerationService {
       }
 
       // Update the pending captions with generated content
+      console.log(`💾 Storing captions in PendingCaptions - YouTube:`, !!captions.youtube_caption);
+      
       await PendingCaptions.findOneAndUpdate(
         {
           email: email,
           title: title,
         },
         {
-          captions,
+          captions, // ✅ Includes youtube_caption
           dynamicPosts: dynamicPosts.length > 0 ? dynamicPosts : undefined,
           isPending: false, // Mark as completed
         },
@@ -143,8 +143,9 @@ export class PostWebhookDynamicGenerationService {
 
       // Update the video with the generated captions (works even if video is processing)
       try {
+        console.log(`💾 Storing captions on video - YouTube:`, !!captions.youtube_caption);
         await this.videoService.updateVideoCaptions(videoId, captions);
-        console.log(`✅ Captions updated in video record for: ${videoId}`);
+        console.log(`✅ Captions updated in video record for: ${videoId} - YouTube:`, !!captions.youtube_caption);
       } catch (captionUpdateError) {
         console.warn(
           `⚠️ Could not update video captions (video may still be processing): ${captionUpdateError}`
@@ -243,11 +244,16 @@ export class PostWebhookDynamicGenerationService {
       "./captionGeneration.service"
     );
 
-    return await CaptionGenerationService.generateCaptions(
+    console.log(`📝 Generating fallback captions for topic: ${topic}`);
+    const captions = await CaptionGenerationService.generateCaptions(
       topic,
       keyPoints,
       userContext
     );
+    
+    console.log(`✅ Fallback captions generated - YouTube:`, !!captions.youtube_caption, captions.youtube_caption ? `Length: ${captions.youtube_caption.length}` : "MISSING");
+    
+    return captions;
   }
 
   /**
