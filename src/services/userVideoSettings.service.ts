@@ -37,6 +37,8 @@ export interface UserVideoSettingsData {
   selectedMusicTrackId?: string;
   selectedVoiceId?: string;
   preset?: string;
+  selectedVoicePreset?: string;
+  selectedMusicPreset?: string;
   customVoiceMusic?: boolean;
 }
 
@@ -95,6 +97,8 @@ export class UserVideoSettingsService {
           selectedMusicTrackId: data.selectedMusicTrackId,
           selectedVoiceId: data.selectedVoiceId,
           preset: data.preset,
+          selectedVoicePreset: data.selectedVoicePreset,
+          selectedMusicPreset: data.selectedMusicPreset,
           customVoiceMusic: data.customVoiceMusic,
         },
         { new: true, upsert: false }
@@ -129,6 +133,8 @@ export class UserVideoSettingsService {
         selectedMusicTrackId: data.selectedMusicTrackId,
         selectedVoiceId: data.selectedVoiceId,
         preset: data.preset,
+        selectedVoicePreset: data.selectedVoicePreset,
+        selectedMusicPreset: data.selectedMusicPreset,
         customVoiceMusic: data.customVoiceMusic,
       });
 
