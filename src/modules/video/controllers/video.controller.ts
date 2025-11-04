@@ -1273,17 +1273,18 @@ export async function generateVideo(req: Request, res: Response) {
 
     const webhookData = {
       hook: {
-        text: body.hook,
+        audio: body.hook,
         avatar: body.avatar_title,
         avatarType: avatarTypeById[String(body.avatar_title || "").trim()],
       },
       body: {
-        text: body.body,
+        audio: body.body,
+        text: body.text,
         avatar: body.avatar_body,
         avatarType: avatarTypeById[String(body.avatar_body || "").trim()],
       },
       conclusion: {
-        text: body.conclusion,
+        audio: body.conclusion,
         avatar: body.avatar_conclusion,
         avatarType: avatarTypeById[String(body.avatar_conclusion || "").trim()],
       },

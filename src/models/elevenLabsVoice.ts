@@ -26,6 +26,7 @@ export interface IElevenLabsVoice extends Document {
     locale: string;
     preview_url: string;
   };
+  userId?: mongoose.Types.ObjectId; // Link to user who created the voice
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,6 +97,12 @@ const elevenLabsVoiceSchema = new Schema<IElevenLabsVoice>(
       accent: { type: String },
       locale: { type: String },
       preview_url: { type: String },
+    },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+      index: true,
     },
   },
   {

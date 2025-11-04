@@ -1,6 +1,7 @@
 import axios from "axios";
 import OpenAI from "openai";
-import ElevenLabsVoice from "../models/elevenLabsVoice";
+import mongoose from "mongoose";
+import ElevenLabsVoice, { IElevenLabsVoice } from "../models/elevenLabsVoice";
 import { connectMongo } from "../config/mongoose";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/voices?show_all=true";
@@ -273,6 +274,197 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
     );
   } catch (error: any) {
     console.error("❌ Error fetching ElevenLabs voices:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Add custom voice to ElevenLabs and store in database
+ * Flow:
+ * 1. POST /v1/voices/add - Add voice with file and name
+ * 2. PATCH /v1/voices/{voice_id}/edit - Edit voice with description and labels
+ * 3. GET /v1/voices/{voice_id} - Get full voice details
+ * 4. Store in database with userId
+ */
+export async function addCustomVoice(params: {
+  file: Express.Multer.File;
+  name: string;
+  description?: string;
+  language?: string;
+  gender?: string;
+  userId: string;
+}): Promise<IElevenLabsVoice> {
+  try {
+    if (!API_KEY) {
+      throw new Error("ELEVENLABS_API_KEY environment variable is required");
+    }
+
+    const { file, name, description, language = "en", gender, userId } = params;
+
+    // Step 1: Add voice to ElevenLabs
+    console.log(`📤 Step 1: Adding voice to ElevenLabs with name: ${name}`);
+    const FormData = require("form-data");
+    const fs = require("fs");
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("files", fs.createReadStream(file.path), {
+      filename: file.originalname,
+      contentType: file.mimetype || "audio/mpeg",
+    });
+
+    const addResponse = await axios.post(
+      "https://api.elevenlabs.io/v1/voices/add",
+      formData,
+      {
+        headers: {
+          "xi-api-key": API_KEY,
+          ...formData.getHeaders(),
+        },
+      }
+    );
+
+    const voiceId = addResponse.data.voice_id;
+    if (!voiceId) {
+      throw new Error("Failed to get voice_id from ElevenLabs API");
+    }
+
+    console.log(`✅ Step 1 complete: Voice created with ID: ${voiceId}`);
+
+    // Step 2: Edit voice with description and labels
+    console.log(`📤 Step 2: Editing voice ${voiceId} with description and labels`);
+    const editFormData = new FormData();
+    editFormData.append("name", name);
+    if (description) {
+      editFormData.append("description", description);
+    }
+    
+    // Build labels JSON
+    const labels: any = {};
+    if (language) {
+      labels.language = language;
+    }
+    if (gender) {
+      labels.gender = gender;
+    }
+    
+    if (Object.keys(labels).length > 0) {
+      editFormData.append("labels", JSON.stringify(labels));
+    }
+
+    await axios.post(
+      `https://api.elevenlabs.io/v1/voices/${voiceId}/edit`,
+      editFormData,
+      {
+        headers: {
+          "xi-api-key": API_KEY,
+          ...editFormData.getHeaders(),
+        },
+      }
+    );
+
+    console.log(`✅ Step 2 complete: Voice edited with description and labels`);
+
+    // Step 3: Get full voice details
+    console.log(`📤 Step 3: Fetching full voice details for ${voiceId}`);
+    const getResponse = await axios.get(
+      `https://api.elevenlabs.io/v1/voices/${voiceId}`,
+      {
+        headers: {
+          "xi-api-key": API_KEY,
+        },
+      }
+    );
+
+    const voiceData = getResponse.data;
+    console.log(`✅ Step 3 complete: Got voice details`);
+
+    // Step 4: Store in database with userId
+    console.log(`📤 Step 4: Storing voice in database for user ${userId}`);
+    
+    // Extract verified languages from voice data
+    const verified_language_en = voiceData.verified_language_en
+      ? {
+          language: voiceData.verified_language_en.language || "en",
+          model_id: voiceData.verified_language_en.model_id || "eleven_multilingual_v2",
+          accent: voiceData.verified_language_en.accent || "",
+          locale: voiceData.verified_language_en.locale || "",
+          preview_url: voiceData.verified_language_en.preview_url || "",
+        }
+      : undefined;
+
+    const verified_language_es = voiceData.verified_language_es
+      ? {
+          language: voiceData.verified_language_es.language || "es",
+          model_id: voiceData.verified_language_es.model_id || "eleven_multilingual_v2",
+          accent: voiceData.verified_language_es.accent || "",
+          locale: voiceData.verified_language_es.locale || "",
+          preview_url: voiceData.verified_language_es.preview_url || "",
+        }
+      : undefined;
+
+    // Detect energy level using existing function
+    const energyResult = await detectEnergyLevel({
+      name: voiceData.name,
+      category: voiceData.category,
+      description: voiceData.description,
+      gender: voiceData.labels?.gender || gender || "unknown",
+      age: voiceData.labels?.age || "unknown",
+      labels: {
+        descriptive: voiceData.labels?.descriptive,
+        use_case: voiceData.labels?.use_case,
+      },
+    });
+
+    // Create voice record
+    const voiceRecord = {
+      voice_id: voiceId,
+      name: voiceData.name,
+      category: voiceData.category || "custom",
+      gender: voiceData.labels?.gender || gender || "unknown",
+      age: voiceData.labels?.age || "unknown",
+      preview_url: voiceData.preview_url || "",
+      description: voiceData.description || description || undefined,
+      descriptive: voiceData.labels?.descriptive || undefined,
+      use_case: voiceData.labels?.use_case || undefined,
+      energy: energyResult.energy,
+      energy_conclusion: energyResult.conclusion,
+      verified_language_en,
+      verified_language_es,
+      userId: new mongoose.Types.ObjectId(userId),
+    };
+
+    // Save or update voice in database
+    const existingVoice = await ElevenLabsVoice.findOne({ voice_id: voiceId });
+    let savedVoice: IElevenLabsVoice;
+
+    if (existingVoice) {
+      await ElevenLabsVoice.updateOne({ voice_id: voiceId }, { $set: voiceRecord });
+      savedVoice = await ElevenLabsVoice.findOne({ voice_id: voiceId }) as IElevenLabsVoice;
+      console.log(`🔄 Updated existing voice: ${voiceId}`);
+    } else {
+      savedVoice = await ElevenLabsVoice.create(voiceRecord);
+      console.log(`✅ Created new voice: ${voiceId}`);
+    }
+
+    // Clean up temporary file
+    try {
+      fs.unlink(file.path, (err: any) => {
+        if (err) console.error("Error deleting temp file:", err);
+      });
+    } catch (cleanupError) {
+      console.warn("Failed to cleanup temp file:", cleanupError);
+    }
+
+    console.log(`✅ Step 4 complete: Voice stored in database`);
+    return savedVoice;
+  } catch (error: any) {
+    console.error("❌ Error adding custom voice:", error.message);
+    if (error.response) {
+      console.error("ElevenLabs API error:", error.response.data);
+      throw new Error(
+        `ElevenLabs API error: ${error.response.data?.detail?.message || error.message}`
+      );
+    }
     throw error;
   }
 }
