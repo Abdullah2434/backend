@@ -9,9 +9,10 @@ import ScheduleEmailService, {
 } from "./scheduleEmail.service";
 import CaptionGenerationService from "./captionGeneration.service";
 import TimezoneService from "../utils/timezone";
-import { UserVideoSettingsService } from "./userVideoSettings.service";
-import { VOICE_ENERGY_PRESETS } from "../constants/voiceEnergy";
 import { notificationService } from "./notification.service";
+import { generateSpeech } from "./elevenLabsTTS.service";
+import MusicTrack from "../models/MusicTrack";
+import { S3Service } from "./s3";
 
 export interface ScheduleData {
   frequency: "once_week" | "twice_week" | "three_week" | "daily";
@@ -174,11 +175,6 @@ export class VideoScheduleService {
       userSettings,
       numberOfVideos
     );
-
-    console.log(
-      `✅ Video schedule created for user ${userId}: ${numberOfVideos} videos scheduled (processing)`
-    );
-
     return schedule;
   }
 
@@ -226,12 +222,6 @@ export class VideoScheduleService {
       endDate
     );
 
-    // Generate trends for the schedule - ensure we have enough for the full month
-    // Generate trends in chunks of 5 to avoid API limits
-    console.log(
-      `🎬 Generating ${numberOfVideos} unique trends in chunks of 5...`
-    );
-
     const allTrends = [];
     const chunkSize = 5;
     const totalChunks = Math.ceil(numberOfVideos / chunkSize);
@@ -239,13 +229,6 @@ export class VideoScheduleService {
     for (let i = 0; i < totalChunks; i++) {
       const remainingTrends = numberOfVideos - allTrends.length;
       const currentChunkSize = Math.min(chunkSize, remainingTrends);
-
-      console.log(
-        `📦 Generating chunk ${
-          i + 1
-        }/${totalChunks} (${currentChunkSize} trends)...`
-      );
-
       try {
         const chunkTrends = await generateRealEstateTrends(
           currentChunkSize,
@@ -912,20 +895,15 @@ export class VideoScheduleService {
     userSettings: any
   ): Promise<void> {
     const schedule = await VideoSchedule.findById(scheduleId);
-    if (!schedule) {
-      throw new Error("Schedule not found");
-    }
+    if (!schedule) throw new Error("Schedule not found");
 
     const trend = schedule.generatedTrends[trendIndex];
-    if (!trend) {
-      throw new Error("Trend not found");
-    }
+    if (!trend) throw new Error("Trend not found");
 
-    // Update status to processing
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
-    // Send processing started email
+    // Send processing email (non-blocking)
     try {
       const processingEmailData: VideoProcessingEmailData = {
         userEmail: schedule.email,
@@ -934,42 +912,13 @@ export class VideoScheduleService {
         videoDescription: trend.description,
         videoKeypoints: trend.keypoints,
         startedAt: new Date(),
-        timezone: schedule.timezone, // Add timezone for email display
+        timezone: schedule.timezone,
       };
-
       await this.emailService.sendVideoProcessingEmail(processingEmailData);
     } catch (emailError) {
       console.error("Error sending video processing email:", emailError);
-      // Don't fail the processing if email fails
     }
 
-    // Get user's energy profile settings
-    let voiceEnergyParams = VOICE_ENERGY_PRESETS.mid; // Default to mid energy
-    let musicTrackInfo = null;
-
-    try {
-      const userVideoSettingsService = new UserVideoSettingsService();
-      const energyProfile = await userVideoSettingsService.getEnergyProfile(
-        schedule.email
-      );
-
-      if (energyProfile) {
-        voiceEnergyParams = energyProfile.voiceParams;
-
-        if (energyProfile.selectedMusicTrack) {
-          musicTrackInfo = {
-            trackUrl: energyProfile.selectedMusicTrack.s3FullTrackUrl,
-            trackName: energyProfile.selectedMusicTrack.name,
-            energyCategory: energyProfile.selectedMusicTrack.energyCategory,
-          };
-        }
-      }
-    } catch (energyError) {
-      console.warn(
-        "Failed to get energy profile for scheduled video, using defaults:",
-        energyError
-      );
-    }
     notificationService.notifyScheduledVideoProgress(
       schedule.userId.toString(),
       "video-creation",
@@ -983,7 +932,6 @@ export class VideoScheduleService {
     );
 
     try {
-      // Generate social media captions using OpenAI
       console.log("🎨 Generating social media captions...");
       const captions =
         await CaptionGenerationService.generateScheduledVideoCaptions(
@@ -997,48 +945,46 @@ export class VideoScheduleService {
             socialHandles: userSettings.socialHandles,
           }
         );
+
       console.log("✅ Captions generated successfully");
 
-      // Create video using existing video generation logic (NO CAPTIONS in webhook)
-      const videoData = {
-        hook: trend.description,
-        body: trend.keypoints,
-        conclusion:
-          "Contact us for more information about real estate opportunities.",
-        company_name: userSettings.companyName,
-        social_handles: userSettings.socialHandles,
-        license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
-        email: userSettings.email,
-        title: trend.description,
-        // Add energy profile data to API call
-        voiceEnergy: {
-          stability: voiceEnergyParams.stability,
-          similarity_boost: voiceEnergyParams.similarity_boost,
-          style: voiceEnergyParams.style,
-          use_speaker_boost: voiceEnergyParams.use_speaker_boost,
-          speed: voiceEnergyParams.speed,
-          emotion_tags: voiceEnergyParams.emotion_tags,
-        },
-        musicTrack: musicTrackInfo,
-        // Store captions for later retrieval (not sent to webhook)
-        _captions: captions,
+      // ✅ Helper functions to extract clean IDs and types
+      const extractAvatarId = (avatarValue: any): string => {
+        if (!avatarValue) return "";
+        if (typeof avatarValue === "string") return avatarValue.trim();
+        if (typeof avatarValue === "object" && avatarValue.avatar_id)
+          return String(avatarValue.avatar_id).trim();
+        return "";
       };
 
-      // ==================== STEP 1: CREATE VIDEO (PROMPT GENERATION) ====================
-      console.log("🎬 Step 1: Creating video (prompt generation)...");
-      console.log("📋 API Endpoint: POST /api/video/create");
+      const extractAvatarType = (avatarValue: any): string => {
+        if (typeof avatarValue === "object" && avatarValue.avatarType)
+          return String(avatarValue.avatarType).trim();
+        return "video_avatar";
+      };
 
-      // Get gender from avatar settings
+      // ✅ Normalize avatar fields
+      const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
+      const bodyAvatarId = extractAvatarId(
+        userSettings.bodyAvatar || userSettings.avatar?.[0]
+      );
+      const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
+
+      const titleAvatarType = extractAvatarType(userSettings.titleAvatar);
+      const bodyAvatarType = extractAvatarType(
+        userSettings.bodyAvatar || userSettings.avatar?.[0]
+      );
+      const conclusionAvatarType = extractAvatarType(
+        userSettings.conclusionAvatar
+      );
+
+      // ✅ Lookup avatar in DB with clean string ID
       const DefaultAvatar = require("../models/avatar").default;
       const avatarDoc = await DefaultAvatar.findOne({
-        avatar_id: userSettings.titleAvatar,
+        avatar_id: titleAvatarId,
       });
-      const gender = avatarDoc ? avatarDoc.gender : undefined;
 
-      // Get voice_id from gender
+      const gender = avatarDoc ? avatarDoc.gender : undefined;
       let voice_id: string | undefined = undefined;
       if (gender) {
         const DefaultVoice = require("../models/voice").default;
@@ -1046,10 +992,10 @@ export class VideoScheduleService {
         voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
       }
 
-      // Step 1: Prepare data for video creation API (same format as manual)
+      // ==================== STEP 1: CREATE VIDEO (Prompt Generation) ====================
       const videoCreationData = {
         prompt: userSettings.prompt,
-        avatar: userSettings.avatar,
+        avatar: titleAvatarId,
         name: userSettings.name,
         position: userSettings.position,
         companyName: userSettings.companyName,
@@ -1073,58 +1019,175 @@ export class VideoScheduleService {
         trendIndex: trendIndex,
       };
 
-      // Call Step 1: Create Video API endpoint (same as manual)
       console.log("🔄 Step 1: Calling Create Video API...");
-      console.log(
-        "📋 Request Body:",
-        JSON.stringify(videoCreationData, null, 2)
-      );
-
-      let enhancedContent: any = null;
+      let enhancedContent: any;
       try {
         enhancedContent = await this.callCreateVideoAPI(videoCreationData);
-        console.log("✅ Step 1: Create Video API completed successfully");
-        console.log(
-          "📋 Enhanced content received:",
-          JSON.stringify(enhancedContent, null, 2)
-        );
-
-        // Validate that we have the required enhanced content
-        if (
-          !enhancedContent ||
-          !enhancedContent.hook ||
-          !enhancedContent.body ||
-          !enhancedContent.conclusion
-        ) {
-          throw new Error(
-            "Enhanced content is incomplete or missing from first API response"
-          );
-        }
-      } catch (error: any) {
-        console.error("❌ Step 1: Create Video API failed:", error);
-        throw new Error(`Create Video API failed: ${error.message}`);
+        console.log("✅ Step 1: Create Video API successful");
+      } catch (err: any) {
+        console.error("❌ Step 1 failed:", err);
+        throw new Error(`Create Video API failed: ${err.message}`);
       }
 
-      // Wait a moment between API calls
-      console.log("⏳ Waiting 2 seconds before Step 2...");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
 
-      // ==================== STEP 2: GENERATE VIDEO (VIDEO CREATION) ====================
-      console.log("🎬 Step 2: Generating video (video creation)...");
-      console.log("📋 API Endpoint: POST /api/video/generate-video");
+      // ==================== STEP 1.5: CALL ELEVENLABS TTS AND SECOND WEBHOOK ====================
+      try {
+        // Get voice_id from user settings
+        const selectedVoiceId = userSettings.selectedVoiceId;
+        if (!selectedVoiceId) {
+          console.warn(
+            "⚠️ No selectedVoiceId found in user settings, skipping ElevenLabs TTS"
+          );
+        } else {
+          console.log(`🎤 Generating speech with voice_id: ${selectedVoiceId}`);
 
-      // Step 2: Prepare data for video generation API using ONLY enhanced content from Step 1
+          // Call ElevenLabs TTS API
+          const ttsResult = await generateSpeech({
+            voice_id: selectedVoiceId,
+            hook: enhancedContent.hook,
+            body: enhancedContent.body,
+            conclusion: enhancedContent.conclusion,
+            output_format: "mp3_44100_128",
+          });
+
+          console.log("✅ ElevenLabs TTS completed:", {
+            hook_url: ttsResult.hook_url,
+            body_url: ttsResult.body_url,
+            conclusion_url: ttsResult.conclusion_url,
+          });
+
+          // Get music track URL from user settings
+          let musicTrackUrl: string | undefined = undefined;
+          if (userSettings.selectedMusicTrackId) {
+            try {
+              const s3Service = new S3Service({
+                region: process.env.AWS_REGION || "us-east-1",
+                bucketName: process.env.AWS_S3_BUCKET || "",
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+              });
+
+              // Get track by ObjectId
+              const musicTrack = await MusicTrack.findById(
+                userSettings.selectedMusicTrackId
+              );
+              if (musicTrack && musicTrack.s3FullTrackUrl) {
+                // Extract S3 key from URL
+                const extractS3Key = (url: string): string => {
+                  try {
+                    if (
+                      url.startsWith("http://") ||
+                      url.startsWith("https://")
+                    ) {
+                      const urlObj = new URL(url);
+                      let path = urlObj.pathname;
+                      if (path.startsWith("/")) {
+                        path = path.substring(1);
+                      }
+                      const bucketEnv = process.env.AWS_S3_BUCKET || "";
+                      const bucketName = bucketEnv.split("/")[0];
+                      if (bucketName && path.startsWith(bucketName + "/")) {
+                        return path.substring(bucketName.length + 1);
+                      }
+                      return path;
+                    }
+                    return url;
+                  } catch {
+                    return url;
+                  }
+                };
+
+                const s3Key = extractS3Key(musicTrack.s3FullTrackUrl);
+                // Ensure key ends with .mp3
+                const finalKey = s3Key.endsWith(".mp3")
+                  ? s3Key
+                  : s3Key + ".mp3";
+
+                // Generate signed URL (valid for 7 days)
+                musicTrackUrl = await s3Service.getMusicTrackUrl(
+                  finalKey,
+                  604800
+                );
+
+                // Ensure URL ends with .mp3
+                if (!musicTrackUrl.split("?")[0].endsWith(".mp3")) {
+                  const urlParts = musicTrackUrl.split("?");
+                  musicTrackUrl =
+                    urlParts[0] +
+                    ".mp3" +
+                    (urlParts[1] ? "?" + urlParts[1] : "");
+                }
+
+                console.log("✅ Music track URL generated:", musicTrackUrl);
+              }
+            } catch (musicError: any) {
+              console.warn(
+                "⚠️ Failed to get music track URL:",
+                musicError.message
+              );
+            }
+          }
+
+          // Call second webhook with audio URLs and music URL
+          const secondWebhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL_2;
+          if (secondWebhookUrl) {
+            const secondWebhookPayload = {
+              hook_url: ttsResult.hook_url,
+              body_url: ttsResult.body_url,
+              conclusion_url: ttsResult.conclusion_url,
+              ...(musicTrackUrl ? { trackUrl: musicTrackUrl } : {}),
+              email: userSettings.email,
+              title: trend.description,
+              timestamp: new Date().toISOString(),
+              scheduleId: scheduleId,
+              trendIndex: trendIndex,
+            };
+
+            await this.callSecondWebhook(
+              secondWebhookUrl,
+              secondWebhookPayload
+            );
+            console.log("✅ Second webhook called successfully");
+          } else {
+            console.log("⚠️ Second webhook URL not configured, skipping");
+          }
+        }
+      } catch (ttsError: any) {
+        console.error("❌ ElevenLabs TTS or second webhook failed:", ttsError);
+        // Don't fail the entire process, just log the error
+      }
+
+      const normalizedEnhancedContent = {
+        // getting error on the live replace hook and other 2 with this
+        hook: {
+          text: enhancedContent.hook,
+          avatar: titleAvatarId,
+          avatarType: titleAvatarType,
+        },
+        body: {
+          text: enhancedContent.body,
+          avatar: bodyAvatarId,
+          avatarType: bodyAvatarType,
+        },
+        conclusion: {
+          text: enhancedContent.conclusion,
+          avatar: conclusionAvatarId,
+          avatarType: conclusionAvatarType,
+        },
+      };
+      // ==================== STEP 2: GENERATE VIDEO ====================
       const videoGenerationData = {
-        hook: enhancedContent.hook, // ONLY use enhanced hook from Step 1
-        body: enhancedContent.body, // ONLY use enhanced body from Step 1
-        conclusion: enhancedContent.conclusion, // ONLY use enhanced conclusion from Step 1
+        hook: enhancedContent.hook, // includes text + avatar + avatarType
+        body: enhancedContent.body,
+        conclusion: enhancedContent.conclusion,
         company_name: userSettings.companyName,
         social_handles: userSettings.socialHandles,
         license: userSettings.license,
-        avatar_title: userSettings.titleAvatar,
-        avatar_body: userSettings.avatar[0] || userSettings.avatar[0],
-        avatar_conclusion: userSettings.conclusionAvatar,
         email: userSettings.email,
+        avatar_title: titleAvatarId,
+        avatar_body: bodyAvatarId,
+        avatar_conclusion: conclusionAvatarId,
         title: trend.description,
         voice: voice_id,
         isDefault: avatarDoc?.default,
@@ -1132,34 +1195,22 @@ export class VideoScheduleService {
         isScheduled: true,
         scheduleId: scheduleId,
         trendIndex: trendIndex,
-        // Store captions for later retrieval (not sent to webhook)
         _captions: captions,
       };
 
-      // Call Step 2: Generate Video API endpoint (same as manual)
       console.log("🔄 Step 2: Calling Generate Video API...");
-      console.log(
-        "📋 Request Body:",
-        JSON.stringify(videoGenerationData, null, 2)
-      );
       try {
         await this.callGenerateVideoAPI(videoGenerationData);
         console.log("✅ Step 2: Generate Video API completed successfully");
-      } catch (error: any) {
-        console.error("❌ Step 2: Generate Video API failed:", error);
-        throw new Error(`Generate Video API failed: ${error.message}`);
+      } catch (err: any) {
+        console.error("❌ Step 2: Generate Video API failed:", err);
+        throw new Error(`Generate Video API failed: ${err.message}`);
       }
 
-      // Log processing completion
-      console.log("🎉 Both API calls completed successfully!");
       console.log(
-        `🎬 Scheduled video processing initiated: "${trend.description}" for user ${schedule.userId}`
-      );
-      console.log(
-        "📱 Video will be processed and auto-posted to social media when ready"
+        `🎉 Scheduled video "${trend.description}" created successfully`
       );
 
-      // Send socket notification - Video creation initiated successfully
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
@@ -1177,24 +1228,17 @@ export class VideoScheduleService {
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
 
-      // Send socket notification - Video creation failed
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
         "error",
         {
           message: `Failed to create video "${trend.description}": ${error.message}`,
-          scheduleId: scheduleId,
-          trendIndex: trendIndex,
+          scheduleId,
+          trendIndex,
           videoTitle: trend.description,
           error: error.message,
         }
-      );
-
-      // Log failure
-      console.error(
-        `❌ Failed to process scheduled video "${trend.description}" for user ${schedule.userId}:`,
-        error.message
       );
     }
   }
@@ -1381,6 +1425,62 @@ export class VideoScheduleService {
         console.error("❌ Step 2: Generate Video API request failed:", error);
         console.error(`📋 Error details: ${error.message}`);
         console.error(`📋 Error code: ${error.code}`);
+        reject(error);
+      });
+
+      request.write(postData);
+      request.end();
+    });
+  }
+
+  /**
+   * Call second webhook with audio URLs and music URL
+   */
+  private async callSecondWebhook(
+    webhookUrl: string,
+    payload: any
+  ): Promise<void> {
+    const https = require("https");
+    const http = require("http");
+    const url = require("url");
+    const parsedUrl = url.parse(webhookUrl);
+    const postData = JSON.stringify(payload);
+
+    const options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.path,
+      port: parsedUrl.port || (parsedUrl.protocol === "https:" ? 443 : 80),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(postData),
+      },
+    };
+
+    return new Promise<void>((resolve, reject) => {
+      const request = (parsedUrl.protocol === "https:" ? https : http).request(
+        options,
+        (res: any) => {
+          res.on("data", () => {}); // ignore data
+          res.on("end", () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              console.log(
+                "✅ Second webhook request sent successfully, status:",
+                res.statusCode
+              );
+              resolve();
+            } else {
+              console.error(
+                `❌ Second webhook failed with status ${res.statusCode}`
+              );
+              reject(new Error(`Second webhook failed: ${res.statusCode}`));
+            }
+          });
+        }
+      );
+
+      request.on("error", (error: any) => {
+        console.error("❌ Second webhook request failed:", error);
         reject(error);
       });
 

@@ -19,6 +19,7 @@ import scheduleRoutes from "./v1/schedule";
 import cronHealthRoutes from "./v1/cronHealth";
 import energyProfileRoutes from "./v1/energyProfile";
 import musicRoutes from "./v1/music";
+import elevenLabsRoutes from "./v1/elevenLabs";
 
 const router = Router();
 
@@ -45,6 +46,7 @@ router.use("/schedule", scheduleRoutes);
 router.use("/cron", cronHealthRoutes);
 router.use("/energy-profile", energyProfileRoutes);
 router.use("/music", musicRoutes);
+router.use("/elevenlabs", elevenLabsRoutes);
 router.use("/webhook", webhookRoutes);
 
 export default router;

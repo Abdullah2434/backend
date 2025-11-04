@@ -11,11 +11,17 @@ import {
   VOICE_ENERGY_PRESETS,
 } from "../constants/voiceEnergy";
 
+export interface AvatarObject {
+  avatar_id: string;
+  avatarType: string;
+}
+
 export interface UserVideoSettingsData {
   prompt: string;
   avatar: string[];
-  titleAvatar: string;
-  conclusionAvatar: string;
+  titleAvatar: AvatarObject | string;
+  conclusionAvatar: AvatarObject | string;
+  bodyAvatar?: AvatarObject | string;
   name: string;
   position: string;
   companyName: string;
@@ -29,6 +35,7 @@ export interface UserVideoSettingsData {
   voiceEnergy?: VoiceEnergyLevel;
   musicEnergy?: MusicEnergyLevel;
   selectedMusicTrackId?: string;
+  selectedVoiceId?: string;
   customVoiceMusic?: boolean;
 }
 
@@ -71,6 +78,7 @@ export class UserVideoSettingsService {
           avatar: data.avatar,
           titleAvatar: data.titleAvatar,
           conclusionAvatar: data.conclusionAvatar,
+          bodyAvatar: data.bodyAvatar,
           name: data.name,
           position: data.position,
           companyName: data.companyName,
@@ -84,6 +92,7 @@ export class UserVideoSettingsService {
           voiceEnergy: data.voiceEnergy,
           musicEnergy: data.musicEnergy,
           selectedMusicTrackId: data.selectedMusicTrackId,
+          selectedVoiceId: data.selectedVoiceId,
           customVoiceMusic: data.customVoiceMusic,
         },
         { new: true, upsert: false }
@@ -103,6 +112,7 @@ export class UserVideoSettingsService {
         avatar: data.avatar,
         titleAvatar: data.titleAvatar,
         conclusionAvatar: data.conclusionAvatar,
+        bodyAvatar: data.bodyAvatar,
         name: data.name,
         position: data.position,
         companyName: data.companyName,
@@ -115,6 +125,7 @@ export class UserVideoSettingsService {
         voiceEnergy: data.voiceEnergy,
         musicEnergy: data.musicEnergy,
         selectedMusicTrackId: data.selectedMusicTrackId,
+        selectedVoiceId: data.selectedVoiceId,
         customVoiceMusic: data.customVoiceMusic,
       });
 

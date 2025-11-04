@@ -154,18 +154,44 @@ export const generateContentFromDescription = async (
   } catch (error) {
     console.error(`Error generating content from description:`, error);
 
-    // Check if it's a validation error (description not real estate related)
+    // Check error type
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+    const isContentModerationError =
+      errorMessage.includes("CONTENT_MODERATION_ERROR") ||
+      errorMessage.includes("inappropriate") ||
+      errorMessage.includes("racism") ||
+      errorMessage.includes("nudity") ||
+      errorMessage.includes("vulgar");
     const isValidationError =
       errorMessage.includes("VALIDATION_ERROR") ||
       errorMessage.includes("not related to real estate") ||
       errorMessage.includes("not real estate related");
 
+    // Handle content moderation errors
+    if (isContentModerationError) {
+      return res.status(400).json({
+        success: false,
+        message: "Content contains inappropriate material",
+        error: errorMessage,
+        details: {
+          restriction: "Content must be free of racism, nudity, and vulgar language",
+          requirement: "Please use professional and respectful language appropriate for a real estate platform",
+          categories: {
+            "Racism": "Content must not contain racist, discriminatory, or hate speech",
+            "Nudity": "Content must not contain sexual or explicit content",
+            "Vulgar": "Content must not contain profanity or offensive language",
+          },
+          message: "Please revise your content to remove any inappropriate material and try again.",
+        },
+      });
+    }
+
+    // Handle validation errors (description not real estate related)
     if (isValidationError) {
       return res.status(400).json({
         success: false,
-        message: `Description must be related to real estate topics. Required categories: (1) Real Estate - properties, homes, houses, apartments, condos, commercial real estate; (2) Property - buying, selling, renting, investing, property management; (3) Housing - residential properties, housing market, homeownership, rental properties; (4) Mortgages/Loans - mortgage loans, refinancing, home financing, loan products; (5) Real Estate Professionals - agents, brokers, loan officers, mortgage brokers, realtors. Hint: Examples include "Luxury homes in Beverly Hills", "First-time homebuyer programs", "VA loan benefits", "Real estate investment opportunities".`,
+        message: `Description must be related to real estate topics.`,
         error: errorMessage,
         details: {
           requirement:
