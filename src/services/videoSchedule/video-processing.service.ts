@@ -9,6 +9,7 @@ import { generateSpeech } from "../elevenLabsTTS.service";
 import MusicTrack from "../../models/MusicTrack";
 import { S3Service } from "../s3";
 import { VideoScheduleAPICalls } from "./api-calls.service";
+import { text } from "stream/consumers";
 
 export class VideoScheduleProcessing {
   private emailService = new ScheduleEmailService();
@@ -321,7 +322,7 @@ export class VideoScheduleProcessing {
           const secondWebhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL_2;
           if (secondWebhookUrl) {
             const secondWebhookPayload = {
-              // Structured format: hook/body/conclusion as objects with text URL, avatar, avatarType
+              // Structured format: hook/body/conclusion as objects with text URL, audio URL, avatar, avatarType
               hook: {
                 audio: ttsResult.hook_url, // URL from ElevenLabs TTS
                 avatar: titleAvatarId,
@@ -332,9 +333,10 @@ export class VideoScheduleProcessing {
                 avatar: bodyAvatarId,
                 text: enhancedContent.body, // URL from ElevenLabs TTS
                 avatarType: bodyAvatarType,
+                text: enhancedContent.body,
               },
               conclusion: {
-                text: ttsResult.conclusion_url, // URL from ElevenLabs TTS
+                audio: ttsResult.conclusion_url, 
                 avatar: conclusionAvatarId,
                 avatarType: conclusionAvatarType,
               },
@@ -370,9 +372,6 @@ export class VideoScheduleProcessing {
         // Don't fail the entire process, just log the error
       }
 
-      // ==================== STEP 2: GENERATE VIDEO ====================
-      // Create normalized structure with text + avatar + avatarType
-      // This matches what the Generate Video API expects
       // Generate Video API accepts flat format and converts internally
       // So we send: hook (text), body (text), conclusion (text) + separate avatar fields
       const videoGenerationData = {

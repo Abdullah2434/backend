@@ -50,6 +50,7 @@ const AUTH_ROUTES = {
     "/video-schedule/schedule/stats",
     "/video-schedule/schedule/:scheduleId",
     "/api/v2/video_avatar",
+    "/elevenlabs/voices/add",
   ],
 
   // Video routes (auth required)
