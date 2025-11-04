@@ -333,7 +333,6 @@ export class VideoScheduleProcessing {
                 avatar: bodyAvatarId,
                 text: enhancedContent.body, // URL from ElevenLabs TTS
                 avatarType: bodyAvatarType,
-                text: enhancedContent.body,
               },
               conclusion: {
                 audio: ttsResult.conclusion_url, 
