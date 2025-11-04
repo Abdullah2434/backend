@@ -8,11 +8,13 @@ import DefaultAvatar from "../../../models/avatar";
 import DefaultVoice from "../../../models/voice";
 import WorkflowHistory from "../../../models/WorkflowHistory";
 import { photoAvatarQueue } from "../../../queues/photoAvatarQueue";
-import { notificationService } from "../../../services/notification.service";
+import { UserVideoSettingsService } from "../../../services/userVideoSettings.service";
+import { VOICE_ENERGY_PRESETS } from "../../../constants/voiceEnergy";
 import multer from "multer";
 import https from "https";
 import url from "url";
 import User from "../../../models/User";
+import { notificationService } from "../../../services/notification.service";
 import mongoose from "mongoose";
 import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
@@ -1103,7 +1105,44 @@ export async function generateVideo(req: Request, res: Response) {
         .status(500)
         .json({ success: false, message: "Subscription check failed" });
     }
-    // Get gender from DefaultAvatar
+    // Get energy profile settings - either from request body or user settings
+    let voiceEnergyParams: (typeof VOICE_ENERGY_PRESETS)[keyof typeof VOICE_ENERGY_PRESETS] =
+      VOICE_ENERGY_PRESETS.mid; // Default to mid energy
+    let energyLevel = "mid"; // Default energy level
+
+    // Check if energy level is passed in request body (frontend override)
+    if (body.energyLevel && ["high", "mid", "low"].includes(body.energyLevel)) {
+      energyLevel = body.energyLevel;
+      voiceEnergyParams =
+        VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
+      console.log(`🎯 Using energy level from request: ${energyLevel}`);
+    } else if (
+      body.customVoiceEnergy &&
+      ["high", "mid", "low"].includes(body.customVoiceEnergy)
+    ) {
+      energyLevel = body.customVoiceEnergy;
+      voiceEnergyParams =
+        VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
+      console.log(`🎯 Using custom voice energy: ${energyLevel}`);
+    } else {
+      // Fallback: Get from user's saved settings
+      try {
+        const userVideoSettingsService = new UserVideoSettingsService();
+        const energyProfile = await userVideoSettingsService.getEnergyProfile(
+          body.email
+        );
+
+        if (energyProfile) {
+          voiceEnergyParams = energyProfile.voiceParams;
+          energyLevel = energyProfile.voiceEnergy;
+        }
+      } catch (energyError) {
+        console.warn(
+          "Failed to get energy profile from user settings, using defaults:",
+          energyError
+        );
+      }
+    }
     const avatarDoc = await DefaultAvatar.findOne({
       avatar_id: body.avatar_title,
     });
@@ -1244,6 +1283,21 @@ export async function generateVideo(req: Request, res: Response) {
       voice_id: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
+      // New voice energy parameters
+      voiceEnergy: {
+        stability: voiceEnergyParams.stability,
+        similarity_boost: voiceEnergyParams.similarity_boost,
+        style: voiceEnergyParams.style,
+        use_speaker_boost: voiceEnergyParams.use_speaker_boost,
+        speed: voiceEnergyParams.speed,
+        emotion_tags: voiceEnergyParams.emotion_tags,
+      },
+      // Energy level for reference
+      energyLevel: energyLevel,
+      // Music URL from frontend (string .mp3) - passed directly to N8N
+      ...(body.music && typeof body.music === "string"
+        ? { music: body.music }
+        : {}),
       // Optional schedule context for auto runs (forward to N8N)
       ...(body.scheduleId ? { scheduleId: body.scheduleId } : {}),
       ...(body.trendIndex !== undefined

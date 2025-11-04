@@ -23,6 +23,14 @@ export interface IUserVideoSettings extends Document {
   city: string;
   preferredTone: string;
   callToAction: string;
+  voiceEnergy?: "high" | "mid" | "low";
+  musicEnergy?: "high" | "mid" | "low";
+  selectedMusicTrackId?: mongoose.Types.ObjectId;
+  selectedVoiceId?: string;
+  preset?: string;
+  selectedVoicePreset?: string;
+  selectedMusicPreset?: string;
+  customVoiceMusic?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -110,6 +118,40 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
       type: String,
       required: true,
       trim: true,
+    },
+    voiceEnergy: {
+      type: String,
+      enum: ["high", "mid", "low"],
+      default: "mid",
+    },
+    musicEnergy: {
+      type: String,
+      enum: ["high", "mid", "low"],
+      default: "mid",
+    },
+    selectedMusicTrackId: {
+      type: Schema.Types.ObjectId,
+      ref: "MusicTrack",
+    },
+    selectedVoiceId: {
+      type: String,
+      trim: true,
+    },
+    preset: {
+      type: String,
+      trim: true,
+    },
+    selectedVoicePreset: {
+      type: String,
+      trim: true,
+    },
+    selectedMusicPreset: {
+      type: String,
+      trim: true,
+    },
+    customVoiceMusic: {
+      type: Boolean,
+      default: false,
     },
   },
   {

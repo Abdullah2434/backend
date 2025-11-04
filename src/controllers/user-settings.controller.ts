@@ -44,6 +44,11 @@ export async function getUserVideoSettings(req: Request, res: Response) {
         preferredTone: userSettings.preferredTone,
         callToAction: userSettings.callToAction,
         email: userSettings.email,
+        selectedVoiceId: userSettings.selectedVoiceId,
+        selectedMusicTrackId: userSettings.selectedMusicTrackId,
+        preset: userSettings.preset,
+        selectedVoicePreset: userSettings.selectedVoicePreset,
+        selectedMusicPreset: userSettings.selectedMusicPreset,
         updatedAt: userSettings.updatedAt,
       },
     });
@@ -77,6 +82,11 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       preferredTone,
       callToAction,
       email,
+      selectedVoiceId,
+      selectedMusicTrackId,
+      preset,
+      selectedVoicePreset,
+      selectedMusicPreset,
     } = req.body;
 
     // Helper function to parse avatar object (can be string or object)
@@ -224,6 +234,11 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       preferredTone,
       callToAction,
       email,
+      selectedVoiceId,
+      selectedMusicTrackId,
+      preset,
+      selectedVoicePreset,
+      selectedMusicPreset,
     });
 
     return res.status(200).json({
@@ -245,6 +260,11 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
         preferredTone: savedSettings.preferredTone,
         callToAction: savedSettings.callToAction,
         email: savedSettings.email,
+        selectedVoiceId: savedSettings.selectedVoiceId,
+        selectedMusicTrackId: savedSettings.selectedMusicTrackId,
+        preset: savedSettings.preset,
+        selectedVoicePreset: savedSettings.selectedVoicePreset,
+        selectedMusicPreset: savedSettings.selectedMusicPreset,
         updatedAt: savedSettings.updatedAt,
       },
     });
