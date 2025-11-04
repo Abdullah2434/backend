@@ -211,7 +211,8 @@ export class WebhookService {
         console.log(
           `🔄 Triggering dynamic generation for video: ${videoId} (video may still be processing)`
         );
-
+        //new commit
+        
         // Trigger dynamic generation immediately when second webhook arrives
         // This happens even if video is still in "processing" status
         await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
