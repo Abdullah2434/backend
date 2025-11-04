@@ -120,8 +120,8 @@ export class VideoAvatarService {
           // Extract S3 key from URL and generate view URL
           const s3Key = this.extractS3KeyFromUrl(trainingFootageUrl!);
           if (s3Key) {
-            trainingFootageSignedUrl =
-              await this.s3Service.createVideoAvatarViewUrl(s3Key, 86400);
+            const result = await this.s3Service.createVideoViewUrl(s3Key, undefined, 86400);
+            trainingFootageSignedUrl = result.viewUrl;
           }
         } else {
           trainingFootageSignedUrl = trainingFootageUrl;
@@ -139,8 +139,8 @@ export class VideoAvatarService {
           // Extract S3 key from URL and generate view URL
           const s3Key = this.extractS3KeyFromUrl(consentStatementUrl!);
           if (s3Key) {
-            consentStatementSignedUrl =
-              await this.s3Service.createVideoAvatarViewUrl(s3Key, 86400);
+            const result = await this.s3Service.createVideoViewUrl(s3Key, undefined, 86400);
+            consentStatementSignedUrl = result.viewUrl;
           }
         } else {
           consentStatementSignedUrl = consentStatementUrl;
@@ -306,12 +306,13 @@ export class VideoAvatarService {
       );
 
       // Generate view URL for external access (valid for 24 hours)
-      const viewUrl = await this.s3Service.createVideoAvatarViewUrl(
+      const result = await this.s3Service.createVideoViewUrl(
         s3Key,
+        undefined,
         86400
       );
 
-      return { s3Key, signedUrl: viewUrl };
+      return { s3Key, signedUrl: result.viewUrl };
     } catch (error: any) {
       console.error(`Error uploading ${fileType} to S3:`, error);
       throw new Error(`Failed to upload ${fileType} to S3: ${error.message}`);

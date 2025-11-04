@@ -61,7 +61,7 @@ export async function gallery(req: Request, res: Response) {
         tiktok_caption: captions.tiktok_caption || null,
         youtube_caption: captions.youtube_caption || null, // ✅ Ensure youtube_caption is always included
       };
-      
+
       return {
         id: video._id.toString(),
         videoId: video.videoId,
@@ -73,7 +73,9 @@ export async function gallery(req: Request, res: Response) {
         metadata: video.metadata,
         downloadUrl: video.downloadUrl || null,
         videoUrl: video.videoUrl || null,
-        socialMediaCaptions: video.socialMediaCaptions ? socialMediaCaptions : null,
+        socialMediaCaptions: video.socialMediaCaptions
+          ? socialMediaCaptions
+          : null,
       };
     });
 
@@ -313,7 +315,7 @@ export async function download(req: Request, res: Response) {
               hasTikTok: !!pending.captions.tiktok_caption,
               hasYouTube: !!pending.captions.youtube_caption, // ✅ Check youtube_caption
             });
-            
+
             await videoService.updateVideoCaptions(result.videoId, {
               instagram_caption: pending.captions.instagram_caption,
               facebook_caption: pending.captions.facebook_caption,
@@ -322,8 +324,13 @@ export async function download(req: Request, res: Response) {
               tiktok_caption: pending.captions.tiktok_caption,
               youtube_caption: pending.captions.youtube_caption, // ✅ Ensure youtube_caption is stored
             });
-            
-            console.log("📑 Stored pending captions on video", result.videoId, "- YouTube caption:", !!pending.captions.youtube_caption);
+
+            console.log(
+              "📑 Stored pending captions on video",
+              result.videoId,
+              "- YouTube caption:",
+              !!pending.captions.youtube_caption
+            );
             // best-effort cleanup
             try {
               await PendingCaptions.deleteOne({ _id: (pending as any)._id });
@@ -927,9 +934,12 @@ export async function createVideo(req: Request, res: Response) {
               socialHandles: body.socialHandles,
             }
           );
-          
-          console.log("✅ Generated fallback captions include youtube_caption:", !!captions.youtube_caption);
-          
+
+          console.log(
+            "✅ Generated fallback captions include youtube_caption:",
+            !!captions.youtube_caption
+          );
+
           await PendingCaptions.findOneAndUpdate(
             {
               email: body.email,
@@ -943,8 +953,11 @@ export async function createVideo(req: Request, res: Response) {
             },
             { upsert: true, new: true }
           );
-          
-          console.log("📑 Stored fallback captions in PendingCaptions - YouTube:", !!captions.youtube_caption);
+
+          console.log(
+            "📑 Stored fallback captions in PendingCaptions - YouTube:",
+            !!captions.youtube_caption
+          );
         }
       }
     } catch (capGenErr) {
@@ -1106,99 +1119,24 @@ export async function generateVideo(req: Request, res: Response) {
         .json({ success: false, message: "Subscription check failed" });
     }
     // Get energy profile settings - either from request body or user settings
-    let voiceEnergyParams = VOICE_ENERGY_PRESETS.mid; // Default to mid energy
-    let musicTrackInfo = null;
+    let voiceEnergyParams: (typeof VOICE_ENERGY_PRESETS)[keyof typeof VOICE_ENERGY_PRESETS] =
+      VOICE_ENERGY_PRESETS.mid; // Default to mid energy
     let energyLevel = "mid"; // Default energy level
 
-    // Check if specific music track ID is passed (user selected after previewing)
-    if (body.selectedMusicTrackId) {
-      try {
-        const { MusicService } = await import(
-          "../../../services/music.service"
-        );
-        const { S3Service } = await import("../../../services/s3");
-
-        const s3Service = new S3Service({
-          region: process.env.AWS_REGION || "us-east-1",
-          bucketName: process.env.AWS_S3_BUCKET || "",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-        });
-        const musicService = new MusicService(s3Service);
-
-        const selectedTrack = await musicService.getMusicTrackById(
-          body.selectedMusicTrackId
-        );
-        if (selectedTrack) {
-          musicTrackInfo = {
-            trackUrl: selectedTrack.s3FullTrackUrl,
-            trackName: selectedTrack.name,
-            energyCategory: selectedTrack.energyCategory,
-          };
-
-          // Use custom voice energy if provided, otherwise match music energy
-          if (
-            body.customVoiceEnergy &&
-            ["high", "mid", "low"].includes(body.customVoiceEnergy)
-          ) {
-            energyLevel = body.customVoiceEnergy;
-            voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
-            console.log(
-              `🎯 Custom voice energy: ${energyLevel} with music: ${selectedTrack.name}`
-            );
-          } else {
-            energyLevel = selectedTrack.energyCategory;
-            voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
-            console.log(
-              `🎵 User selected specific music track: ${selectedTrack.name} (${energyLevel} energy)`
-            );
-          }
-        }
-      } catch (musicError) {
-        console.warn("Failed to get selected music track:", musicError);
-      }
-    }
     // Check if energy level is passed in request body (frontend override)
-    else if (
-      body.energyLevel &&
-      ["high", "mid", "low"].includes(body.energyLevel)
-    ) {
+    if (body.energyLevel && ["high", "mid", "low"].includes(body.energyLevel)) {
       energyLevel = body.energyLevel;
-      voiceEnergyParams = VOICE_ENERGY_PRESETS[energyLevel];
-
+      voiceEnergyParams =
+        VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
       console.log(`🎯 Using energy level from request: ${energyLevel}`);
-
-      // Get random music track for this energy level
-      try {
-        const { MusicService } = await import(
-          "../../../services/music.service"
-        );
-        const { S3Service } = await import("../../../services/s3");
-
-        const s3Service = new S3Service({
-          region: process.env.AWS_REGION || "us-east-1",
-          bucketName: process.env.AWS_S3_BUCKET || "",
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-        });
-        const musicService = new MusicService(s3Service);
-
-        const randomTrack = await musicService.getRandomTrackByEnergy(
-          energyLevel
-        );
-        if (randomTrack) {
-          musicTrackInfo = {
-            trackUrl: randomTrack.s3FullTrackUrl,
-            trackName: randomTrack.name,
-            energyCategory: randomTrack.energyCategory,
-          };
-          console.log(
-            `🎵 Selected random music track: ${randomTrack.name} (${energyLevel} energy)`
-          );
-        }
-      } catch (musicError) {
-        console.warn("Failed to get random music track:", musicError);
-      }
+    } else if (
+      body.customVoiceEnergy &&
+      ["high", "mid", "low"].includes(body.customVoiceEnergy)
+    ) {
+      energyLevel = body.customVoiceEnergy;
+      voiceEnergyParams =
+        VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
+      console.log(`🎯 Using custom voice energy: ${energyLevel}`);
     } else {
       // Fallback: Get from user's saved settings
       try {
@@ -1210,17 +1148,6 @@ export async function generateVideo(req: Request, res: Response) {
         if (energyProfile) {
           voiceEnergyParams = energyProfile.voiceParams;
           energyLevel = energyProfile.voiceEnergy;
-
-          if (energyProfile.selectedMusicTrack) {
-            musicTrackInfo = {
-              trackUrl: energyProfile.selectedMusicTrack.s3FullTrackUrl,
-              trackName: energyProfile.selectedMusicTrack.name,
-              energyCategory: energyProfile.selectedMusicTrack.energyCategory,
-            };
-            console.log(
-              `🎵 Using saved music track: ${energyProfile.selectedMusicTrack.name}`
-            );
-          }
         }
       } catch (energyError) {
         console.warn(
@@ -1380,8 +1307,10 @@ export async function generateVideo(req: Request, res: Response) {
       },
       // Energy level for reference
       energyLevel: energyLevel,
-      // New music track information
-      musicTrack: musicTrackInfo,
+      // Music URL from frontend (string .mp3) - passed directly to N8N
+      ...(body.music && typeof body.music === "string"
+        ? { music: body.music }
+        : {}),
       // Optional schedule context for auto runs (forward to N8N)
       ...(body.scheduleId ? { scheduleId: body.scheduleId } : {}),
       ...(body.trendIndex !== undefined

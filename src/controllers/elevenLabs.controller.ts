@@ -52,15 +52,13 @@ export async function textToSpeech(req: Request, res: Response) {
       output_format: output_format || "mp3_44100_128",
     });
 
-    // Return three S3 URLs
+    // Return three MP3 URLs directly
     return res.status(200).json({
       success: true,
       data: {
         hook_url: result.hook_url,
         body_url: result.body_url,
         conclusion_url: result.conclusion_url,
-        model_id: result.model_id,
-        contentType: result.contentType,
       },
     });
   } catch (error: any) {

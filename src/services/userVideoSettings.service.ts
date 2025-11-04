@@ -36,6 +36,7 @@ export interface UserVideoSettingsData {
   musicEnergy?: MusicEnergyLevel;
   selectedMusicTrackId?: string;
   selectedVoiceId?: string;
+  preset?: string;
   customVoiceMusic?: boolean;
 }
 
@@ -93,6 +94,7 @@ export class UserVideoSettingsService {
           musicEnergy: data.musicEnergy,
           selectedMusicTrackId: data.selectedMusicTrackId,
           selectedVoiceId: data.selectedVoiceId,
+          preset: data.preset,
           customVoiceMusic: data.customVoiceMusic,
         },
         { new: true, upsert: false }
@@ -126,6 +128,7 @@ export class UserVideoSettingsService {
         musicEnergy: data.musicEnergy,
         selectedMusicTrackId: data.selectedMusicTrackId,
         selectedVoiceId: data.selectedVoiceId,
+        preset: data.preset,
         customVoiceMusic: data.customVoiceMusic,
       });
 

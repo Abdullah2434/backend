@@ -83,14 +83,14 @@ export class S3Service {
   }
   async createVideoViewUrl(
     s3Key: string,
-    secretKey: string,
+    secretKey?: string,
     expiresIn = 3600
   ): Promise<{ viewUrl: string; expiresIn: number }> {
     // 1️⃣ Validate secretKey in object metadata (same as your download method)
     const head = new HeadObjectCommand({ Bucket: this.bucketName, Key: s3Key });
     const info = await this.client.send(head);
 
-    if (info.Metadata?.secretkey && info.Metadata?.secretkey !== secretKey) {
+    if (secretKey && info.Metadata?.secretkey && info.Metadata?.secretkey !== secretKey) {
       throw new Error("Invalid secret key for video access");
     }
 
@@ -189,7 +189,11 @@ export class S3Service {
    */
   async getMusicTrackUrl(s3Key: string, expiresIn = 3600): Promise<string> {
     const cmd = new GetObjectCommand({ Bucket: this.bucketName, Key: s3Key });
-    return await getSignedUrl(this.client, cmd, { expiresIn });
+    const signedUrl = await getSignedUrl(this.client, cmd, { expiresIn });
+    
+    // Return clean URL without query parameters (just the .mp3 URL)
+    const cleanUrl = signedUrl.split('?')[0];
+    return cleanUrl;
   }
 
   /**

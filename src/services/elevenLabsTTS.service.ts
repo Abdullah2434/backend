@@ -89,8 +89,11 @@ async function generateSpeechPart(
 
   const signedUrl = await getSignedUrl(s3Client, getCommand, { expiresIn });
 
+  // Extract base URL without query parameters (just the .mp3 URL)
+  const baseUrl = signedUrl.split('?')[0];
+
   return {
-    url: signedUrl,
+    url: baseUrl, // Return clean MP3 URL without query parameters
     model_id,
     contentType: "audio/mpeg",
   };

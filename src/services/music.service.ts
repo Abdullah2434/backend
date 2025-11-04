@@ -70,33 +70,39 @@ export class MusicService {
   }
 
   /**
-   * Get all music tracks by energy category
+   * Get all music tracks by energy category with clean MP3 URLs
    */
   async getMusicTracksByEnergy(
     energyCategory: "high" | "mid" | "low"
   ): Promise<IMusicTrack[]> {
-    return await MusicTrack.find({ energyCategory }).sort({ createdAt: -1 });
+    const tracks = await MusicTrack.find({ energyCategory }).sort({ createdAt: -1 });
+    // Generate clean URLs for all tracks
+    return Promise.all(tracks.map(track => this.generateCleanUrlsForTrack(track)));
   }
 
   /**
-   * Get all music tracks (with optional energy filter)
+   * Get all music tracks (with optional energy filter) with clean MP3 URLs
    */
   async getAllMusicTracks(
     energyCategory?: "high" | "mid" | "low"
   ): Promise<IMusicTrack[]> {
     const filter = energyCategory ? { energyCategory } : {};
-    return await MusicTrack.find(filter).sort({ createdAt: -1 });
+    const tracks = await MusicTrack.find(filter).sort({ createdAt: -1 });
+    // Generate clean URLs for all tracks
+    return Promise.all(tracks.map(track => this.generateCleanUrlsForTrack(track)));
   }
 
   /**
-   * Get music track by ID
+   * Get music track by ID with clean URLs
    */
   async getMusicTrackById(trackId: string): Promise<IMusicTrack | null> {
-    return await MusicTrack.findOne({ trackId });
+    const track = await MusicTrack.findOne({ trackId });
+    if (!track) return null;
+    return await this.generateCleanUrlsForTrack(track);
   }
 
   /**
-   * Get random music track by energy category
+   * Get random music track by energy category with clean URLs
    */
   async getRandomTrackByEnergy(
     energyCategory: "high" | "mid" | "low"
@@ -105,7 +111,8 @@ export class MusicService {
     if (tracks.length === 0) return null;
 
     const randomIndex = Math.floor(Math.random() * tracks.length);
-    return tracks[randomIndex];
+    const track = tracks[randomIndex];
+    return await this.generateCleanUrlsForTrack(track);
   }
 
   /**
@@ -138,17 +145,15 @@ export class MusicService {
   }
 
   /**
-   * Get music track with fresh signed URLs
+   * Generate clean MP3 URLs for a track (without query parameters)
    */
-  async getMusicTrackWithUrls(trackId: string): Promise<IMusicTrack | null> {
-    const track = await MusicTrack.findOne({ trackId });
-    if (!track) return null;
-
+  private async generateCleanUrlsForTrack(track: IMusicTrack): Promise<IMusicTrack> {
     try {
-      // Generate fresh signed URLs
+      // Extract S3 keys from stored URLs (which may have query parameters)
       const fullTrackS3Key = this.extractS3KeyFromUrl(track.s3FullTrackUrl);
       const previewS3Key = this.extractS3KeyFromUrl(track.s3PreviewUrl);
 
+      // Generate clean URLs (without query parameters)
       if (fullTrackS3Key) {
         track.s3FullTrackUrl = await this.s3Service.getMusicTrackUrl(
           fullTrackS3Key
@@ -162,9 +167,20 @@ export class MusicService {
 
       return track;
     } catch (error: any) {
-      console.error("Error generating URLs for music track:", error);
-      return track; // Return track without fresh URLs
+      console.error("Error generating clean URLs for track:", error);
+      // Return track with original URLs if generation fails
+      return track;
     }
+  }
+
+  /**
+   * Get music track with fresh clean URLs (without query parameters)
+   */
+  async getMusicTrackWithUrls(trackId: string): Promise<IMusicTrack | null> {
+    const track = await MusicTrack.findOne({ trackId });
+    if (!track) return null;
+
+    return await this.generateCleanUrlsForTrack(track);
   }
 
   /**
