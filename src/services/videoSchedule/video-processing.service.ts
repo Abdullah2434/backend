@@ -323,13 +323,14 @@ export class VideoScheduleProcessing {
             const secondWebhookPayload = {
               // Structured format: hook/body/conclusion as objects with text URL, avatar, avatarType
               hook: {
-                text: ttsResult.hook_url, // URL from ElevenLabs TTS
+                audio: ttsResult.hook_url, // URL from ElevenLabs TTS
                 avatar: titleAvatarId,
                 avatarType: titleAvatarType,
               },
               body: {
-                text: ttsResult.body_url, // URL from ElevenLabs TTS
+                audio: ttsResult.body_url, // URL from ElevenLabs TTS
                 avatar: bodyAvatarId,
+                text: enhancedContent.body, // URL from ElevenLabs TTS
                 avatarType: bodyAvatarType,
               },
               conclusion: {
@@ -372,24 +373,6 @@ export class VideoScheduleProcessing {
       // ==================== STEP 2: GENERATE VIDEO ====================
       // Create normalized structure with text + avatar + avatarType
       // This matches what the Generate Video API expects
-      const normalizedEnhancedContent = {
-        hook: {
-          text: enhancedContent.hook,
-          avatar: titleAvatarId,
-          avatarType: titleAvatarType,
-        },
-        body: {
-          text: enhancedContent.body,
-          avatar: bodyAvatarId,
-          avatarType: bodyAvatarType,
-        },
-        conclusion: {
-          text: enhancedContent.conclusion,
-          avatar: conclusionAvatarId,
-          avatarType: conclusionAvatarType,
-        },
-      };
-
       // Generate Video API accepts flat format and converts internally
       // So we send: hook (text), body (text), conclusion (text) + separate avatar fields
       const videoGenerationData = {

@@ -20,6 +20,7 @@ import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
 import PendingCaptions from "../../../models/PendingCaptions";
 import CaptionGenerationService from "../../../services/captionGeneration.service";
+import { text } from "stream/consumers";
 
 const authService = new AuthService();
 const videoService = new VideoService();
@@ -1260,17 +1261,18 @@ export async function generateVideo(req: Request, res: Response) {
 
     const webhookData = {
       hook: {
-        text: body.hook,
+        audio: body.hook,
         avatar: body.avatar_title,
         avatarType: avatarTypeById[String(body.avatar_title || "").trim()],
       },
       body: {
-        text: body.body,
+        audio: body.body,
         avatar: body.avatar_body,
+        text: body.text,
         avatarType: avatarTypeById[String(body.avatar_body || "").trim()],
       },
       conclusion: {
-        text: body.conclusion,
+        audio: body.conclusion,
         avatar: body.avatar_conclusion,
         avatarType: avatarTypeById[String(body.avatar_conclusion || "").trim()],
       },
