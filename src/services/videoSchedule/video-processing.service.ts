@@ -324,13 +324,14 @@ export class VideoScheduleProcessing {
             const secondWebhookPayload = {
               // Structured format: hook/body/conclusion as objects with text URL, audio URL, avatar, avatarType
               hook: {
-                audio: ttsResult.hook_url, 
+                audio: ttsResult.hook_url, // URL from ElevenLabs TTS
                 avatar: titleAvatarId,
                 avatarType: titleAvatarType,
               },
               body: {
-                audio: ttsResult.body_url, 
+                audio: ttsResult.body_url, // URL from ElevenLabs TTS
                 avatar: bodyAvatarId,
+                text: enhancedContent.body, // URL from ElevenLabs TTS
                 avatarType: bodyAvatarType,
                 text: enhancedContent.body,
               },

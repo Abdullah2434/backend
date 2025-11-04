@@ -20,6 +20,7 @@ import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
 import PendingCaptions from "../../../models/PendingCaptions";
 import CaptionGenerationService from "../../../services/captionGeneration.service";
+import { text } from "stream/consumers";
 
 const authService = new AuthService();
 const videoService = new VideoService();
@@ -61,7 +62,7 @@ export async function gallery(req: Request, res: Response) {
         tiktok_caption: captions.tiktok_caption || null,
         youtube_caption: captions.youtube_caption || null, // ✅ Ensure youtube_caption is always included
       };
-
+      
       return {
         id: video._id.toString(),
         videoId: video.videoId,
@@ -73,9 +74,7 @@ export async function gallery(req: Request, res: Response) {
         metadata: video.metadata,
         downloadUrl: video.downloadUrl || null,
         videoUrl: video.videoUrl || null,
-        socialMediaCaptions: video.socialMediaCaptions
-          ? socialMediaCaptions
-          : null,
+        socialMediaCaptions: video.socialMediaCaptions ? socialMediaCaptions : null,
       };
     });
 
@@ -315,7 +314,7 @@ export async function download(req: Request, res: Response) {
               hasTikTok: !!pending.captions.tiktok_caption,
               hasYouTube: !!pending.captions.youtube_caption, // ✅ Check youtube_caption
             });
-
+            
             await videoService.updateVideoCaptions(result.videoId, {
               instagram_caption: pending.captions.instagram_caption,
               facebook_caption: pending.captions.facebook_caption,
@@ -324,13 +323,8 @@ export async function download(req: Request, res: Response) {
               tiktok_caption: pending.captions.tiktok_caption,
               youtube_caption: pending.captions.youtube_caption, // ✅ Ensure youtube_caption is stored
             });
-
-            console.log(
-              "📑 Stored pending captions on video",
-              result.videoId,
-              "- YouTube caption:",
-              !!pending.captions.youtube_caption
-            );
+            
+            console.log("📑 Stored pending captions on video", result.videoId, "- YouTube caption:", !!pending.captions.youtube_caption);
             // best-effort cleanup
             try {
               await PendingCaptions.deleteOne({ _id: (pending as any)._id });
@@ -934,12 +928,9 @@ export async function createVideo(req: Request, res: Response) {
               socialHandles: body.socialHandles,
             }
           );
-
-          console.log(
-            "✅ Generated fallback captions include youtube_caption:",
-            !!captions.youtube_caption
-          );
-
+          
+          console.log("✅ Generated fallback captions include youtube_caption:", !!captions.youtube_caption);
+          
           await PendingCaptions.findOneAndUpdate(
             {
               email: body.email,
@@ -953,11 +944,8 @@ export async function createVideo(req: Request, res: Response) {
             },
             { upsert: true, new: true }
           );
-
-          console.log(
-            "📑 Stored fallback captions in PendingCaptions - YouTube:",
-            !!captions.youtube_caption
-          );
+          
+          console.log("📑 Stored fallback captions in PendingCaptions - YouTube:", !!captions.youtube_caption);
         }
       }
     } catch (capGenErr) {
@@ -1279,8 +1267,8 @@ export async function generateVideo(req: Request, res: Response) {
       },
       body: {
         audio: body.body,
-        text: body.text,
         avatar: body.avatar_body,
+        text: body.text,
         avatarType: avatarTypeById[String(body.avatar_body || "").trim()],
       },
       conclusion: {

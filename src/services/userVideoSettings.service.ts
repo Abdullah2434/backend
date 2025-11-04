@@ -16,6 +16,11 @@ export interface AvatarObject {
   avatarType: string;
 }
 
+export interface AvatarObject {
+  avatar_id: string;
+  avatarType: string;
+}
+
 export interface UserVideoSettingsData {
   prompt: string;
   avatar: string[];

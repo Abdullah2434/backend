@@ -508,7 +508,7 @@ export class VideoAvatarService {
               heygenData.data.status === "failed"
             ) {
               console.log(
-                `✅ Avatar ${avatarId} status is ${heygenData.status}, stopping polling`
+                `✅ Avatar ${avatarId} status is ${heygenData.data?.status}, stopping polling`
               );
               console.log(
                 `Final response for avatar ${avatarId}:`,
@@ -573,14 +573,23 @@ export class VideoAvatarService {
                 const defaultAvatar = new DefaultAvatar(avatarData);
                 await defaultAvatar.save();
                 console.log(`✅ Saved DefaultAvatar for video avatar ${avatarId} with preview_image_url`);
+                
+                // Successfully completed - clear intervals and resolve
+                clearInterval(pollInterval);
+                if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
+                resolve(heygenData); // Resolve with final response
               } else {
-                // Status is "failed" - don't save
+                // Status is "failed" - stop socket and throw error (don't save)
                 console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: status is "failed"`);
+                
+                clearInterval(pollInterval);
+                if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
+                
+                // Reject the promise (stops socket and throws error)
+                reject(
+                  new Error(`Avatar creation failed for ${avatarId}. Status: ${heygenData.data?.status || "failed"}`)
+                );
               }
-
-              clearInterval(pollInterval);
-              if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
-              resolve(heygenData); // Resolve with final response
             } else {
               console.log(
                 `⏳ Avatar ${avatarId} status is ${heygenData.status}, continuing polling...`
