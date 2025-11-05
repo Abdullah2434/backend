@@ -725,6 +725,17 @@ export async function createPhotoAvatar(
         .status(400)
         .json({ success: false, message: "Missing required fields" });
     }
+
+    // Check for active subscription
+    const subscriptionService = new SubscriptionService();
+    const subscription = await subscriptionService.getActiveSubscription(userId);
+    if (!subscription) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to create photo avatars",
+      });
+    }
+
     // Use uploaded file path
     const tempImagePath = req.file.path;
     // Add job to BullMQ queue
@@ -812,14 +823,12 @@ export async function createVideo(req: Request, res: Response) {
             email,
             "Your monthly video limit has been reached",
             `
-            <h2>Plan Limit Reached</h2>
-            <p>You have reached your monthly video limit (${
-              videoLimit.limit
-            }).</p>
-            <p>Please upgrade your plan to continue creating videos.</p>
+            <h2>Video Limit Reached</h2>
+            <p>You have reached your monthly video limit (30 videos per month).</p>
+            <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
             <p><a href="${
               process.env.FRONTEND_URL || "https://www.edgeairealty.com"
-            }/pricing" target="_blank">Upgrade Plan</a></p>
+            }" target="_blank">Visit Dashboard</a></p>
             `
           );
         } catch (mailErr) {
@@ -827,7 +836,7 @@ export async function createVideo(req: Request, res: Response) {
         }
         return res.status(429).json({
           success: false,
-          message: `Video limit reached. Your plan allows ${videoLimit.limit} videos per month. Please upgrade your subscription to create more videos.`,
+          message: `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`,
         });
       }
     } catch (subErr) {
@@ -1082,14 +1091,12 @@ export async function generateVideo(req: Request, res: Response) {
             email,
             "Your monthly video limit has been reached",
             `
-            <h2>Plan Limit Reached</h2>
-            <p>You have reached your monthly video limit (${
-              videoLimit.limit
-            }).</p>
-            <p>Please upgrade your plan to continue creating videos.</p>
+            <h2>Video Limit Reached</h2>
+            <p>You have reached your monthly video limit (30 videos per month).</p>
+            <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
             <p><a href="${
               process.env.FRONTEND_URL || "https://www.edgeairealty.com"
-            }/pricing" target="_blank">Upgrade Plan</a></p>
+            }" target="_blank">Visit Dashboard</a></p>
             `
           );
         } catch (mailErr) {
@@ -1097,7 +1104,7 @@ export async function generateVideo(req: Request, res: Response) {
         }
         return res.status(429).json({
           success: false,
-          message: `Video limit reached. Your plan allows ${videoLimit.limit} videos per month. Please upgrade your subscription to create more videos.`,
+          message: `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`,
         });
       }
     } catch (subErr) {

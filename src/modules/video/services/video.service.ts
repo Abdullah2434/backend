@@ -32,7 +32,7 @@ export class VideoService {
     );
     if (!videoLimit.canCreate) {
       throw new Error(
-        `Video limit reached. Your plan allows ${videoLimit.limit} videos per month. Please upgrade your subscription to create more videos.`
+        `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`
       );
     }
 

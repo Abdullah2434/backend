@@ -26,40 +26,20 @@ export class SubscriptionService {
       apiVersion: "2023-10-16",
     });
 
-    // Define subscription plans
+    // Define subscription plans - Single monthly plan
     this.plans = [
       {
-        id: "basic",
-        name: "Basic Plan",
-        price: 9900, // $99.00 in cents
-        videoLimit: 1,
-        stripePriceId: process.env.STRIPE_BASIC_PRICE_ID || "price_basic",
-        features: ["1 video per month", "Basic support", "Standard processing"],
-      },
-      {
-        id: "growth",
-        name: "Growth Plan",
-        price: 19900, // $199.00 in cents
-        videoLimit: 4,
-        stripePriceId: process.env.STRIPE_GROWTH_PRICE_ID || "price_growth",
+        id: "monthly",
+        name: "Monthly Plan",
+        price: parseInt(process.env.STRIPE_MONTHLY_PRICE || "99700", 10), // $997.00 in cents, configurable via env
+        videoLimit: 30,
+        stripePriceId: process.env.STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_PRICE_ID || "price_monthly",
         features: [
-          "4 videos per month",
-          "Priority support",
-          "Faster processing",
-        ],
-      },
-      {
-        id: "professional",
-        name: "Professional Plan",
-        price: 39900, // $399.00 in cents
-        videoLimit: 12,
-        stripePriceId:
-          process.env.STRIPE_PROFESSIONAL_PRICE_ID || "price_professional",
-        features: [
-          "12 videos per month",
-          "Premium support",
-          "Fastest processing",
-          "Priority queue",
+          "30 videos per month",
+          "Unlimited photo avatars",
+          "Unlimited video avatars",
+          "Unlimited custom voices",
+          "Monthly renewal",
         ],
       },
     ];

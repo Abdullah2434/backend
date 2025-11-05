@@ -5,6 +5,7 @@ import path from "path";
 import VideoAvatarService from "../services/videoAvatar.service";
 import { getS3 } from "../services/s3";
 import { notificationService } from "../services/notification.service";
+import { SubscriptionService } from "../services/subscription.service";
 import {
   CreateVideoAvatarWithFilesRequest,
   VideoAvatarStatusResponse,
@@ -78,6 +79,25 @@ export async function createVideoAvatar(req: Request, res: Response) {
       return res
         .status(400)
         .json({ success: false, message: "avatar_name is required" });
+    }
+
+    // Check for active subscription
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. User ID not found in request.",
+      });
+    }
+
+    const subscriptionService = new SubscriptionService();
+    const subscription = await subscriptionService.getActiveSubscription(
+      userId.toString()
+    );
+    if (!subscription) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to create video avatars",
+      });
     }
 
     if (!trainingFootageFile && !training_footage_url) {

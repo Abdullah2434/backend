@@ -10,6 +10,7 @@ import MusicTrack from "../../models/MusicTrack";
 import { S3Service } from "../s3";
 import { VideoScheduleAPICalls } from "./api-calls.service";
 import { text } from "stream/consumers";
+import { SubscriptionService } from "../subscription.service";
 
 export class VideoScheduleProcessing {
   private emailService = new ScheduleEmailService();
@@ -47,6 +48,51 @@ export class VideoScheduleProcessing {
 
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
+
+    // Check subscription status and limit before processing
+    try {
+      const subscriptionService = new SubscriptionService();
+      
+      // First check if user has active subscription
+      const subscription = await subscriptionService.getActiveSubscription(
+        schedule.userId.toString()
+      );
+      
+      if (!subscription) {
+        // Update trend status to failed
+        schedule.generatedTrends[trendIndex].status = "failed";
+        schedule.generatedTrends[trendIndex].error = 
+          "Active subscription required. Your subscription has expired or is not active.";
+        await schedule.save();
+        
+        throw new Error(
+          "Active subscription required. Your subscription has expired or is not active."
+        );
+      }
+      
+      // Then check video limit
+      const videoLimit = await subscriptionService.canCreateVideo(
+        schedule.userId.toString()
+      );
+      if (!videoLimit.canCreate) {
+        // Update trend status to failed
+        schedule.generatedTrends[trendIndex].status = "failed";
+        schedule.generatedTrends[trendIndex].error = 
+          "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.";
+        await schedule.save();
+        
+        throw new Error(
+          "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly."
+        );
+      }
+    } catch (subErr: any) {
+      // If it's a subscription error, rethrow it (don't call APIs)
+      if (subErr.message.includes("subscription") || subErr.message.includes("Video limit reached")) {
+        throw subErr;
+      }
+      // For other errors, log and continue (might be a temporary issue)
+      console.error("Subscription check failed for scheduled video:", subErr);
+    }
 
     // Send processing email (non-blocking)
     try {

@@ -26,7 +26,7 @@ const subscriptionSchema = new Schema<ISubscription>(
     planId: {
       type: String,
       required: true,
-      enum: ["basic", "growth", "professional"],
+      enum: ["monthly"], // Single monthly plan
     },
     stripeSubscriptionId: {
       type: String,

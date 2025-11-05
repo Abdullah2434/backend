@@ -5,6 +5,7 @@ import AuthService from "../modules/auth/services/auth.service";
 import { generateSpeech } from "../services/elevenLabsTTS.service";
 import ElevenLabsVoice from "../models/elevenLabsVoice";
 import { fetchAndSyncElevenLabsVoices, addCustomVoice } from "../services/elevenLabsVoice.service";
+import { SubscriptionService } from "../services/subscription.service";
 
 const authService = new AuthService();
 
@@ -292,6 +293,18 @@ export async function addCustomVoiceEndpoint(req: AuthenticatedRequest & { file?
       return res.status(401).json({
         success: false,
         message: "Authentication required. User ID not found in request.",
+      });
+    }
+
+    // Check for active subscription
+    const subscriptionService = new SubscriptionService();
+    const subscription = await subscriptionService.getActiveSubscription(
+      userId.toString()
+    );
+    if (!subscription) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to create custom voices",
       });
     }
 

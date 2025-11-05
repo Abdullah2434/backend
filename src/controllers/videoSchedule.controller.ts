@@ -5,6 +5,7 @@ import VideoScheduleService, {
 import UserVideoSettings from "../models/UserVideoSettings";
 import { AuthService } from "../modules/auth/services/auth.service";
 import TimezoneService from "../utils/timezone";
+import { SubscriptionService } from "../services/subscription.service";
 
 const videoScheduleService = new VideoScheduleService();
 const authService = new AuthService();
@@ -132,6 +133,18 @@ export async function createSchedule(req: Request, res: Response) {
         success: false,
         message:
           "Invalid frequency. Must be one of: once_week, twice_week, three_week, daily",
+      });
+    }
+
+    // Check for active subscription before allowing schedule creation
+    const subscriptionService = new SubscriptionService();
+    const subscription = await subscriptionService.getActiveSubscription(
+      payload.userId
+    );
+    if (!subscription) {
+      return res.status(403).json({
+        success: false,
+        message: "Active subscription required to create video schedules",
       });
     }
 

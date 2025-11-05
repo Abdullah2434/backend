@@ -7,6 +7,19 @@ import { ApiResponse } from "../types";
 const subscriptionService = new SubscriptionService();
 
 /**
+ * Handle GET requests to webhook endpoint (for verification/testing)
+ */
+export async function handleStripeWebhookGet(req: Request, res: Response) {
+  return res.json({
+    success: true,
+    message: "Stripe webhook endpoint is active",
+    endpoint: "/api/webhook/stripe",
+    method: "POST",
+    note: "This endpoint accepts POST requests from Stripe webhooks",
+  });
+}
+
+/**
  * Handle Stripe webhook events
  */
 export async function handleStripeWebhook(req: Request, res: Response) {
