@@ -59,25 +59,46 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 
     // Get raw body - use rawBody if available (from verify callback), otherwise use req.body
     // The raw body MUST be the exact bytes Stripe sent, not parsed/stringified
-    const rawBody = (req as any).rawBody || req.body;
+    let rawBody: Buffer;
 
-    if (!Buffer.isBuffer(rawBody)) {
-      console.error("❌ Expected Buffer body, got:", typeof rawBody);
-      console.error("❌ Body value:", rawBody);
+    if ((req as any).rawBody && Buffer.isBuffer((req as any).rawBody)) {
+      rawBody = (req as any).rawBody;
+      console.log("✅ Using rawBody from verify callback");
+    } else if (Buffer.isBuffer(req.body)) {
+      rawBody = req.body;
+      console.log("✅ Using req.body as Buffer");
+    } else {
+      console.error("❌ Expected Buffer body, got:", typeof req.body);
+      console.error("❌ Body type:", req.body?.constructor?.name);
+      console.error("❌ Body is Buffer:", Buffer.isBuffer(req.body));
+      console.error("❌ Raw body available:", !!(req as any).rawBody);
       return res.status(400).json({
         success: false,
         message:
-          "Invalid request body format - raw Buffer required for signature verification",
+          "Invalid request body format - raw Buffer required for signature verification. Body may have been parsed/stringified.",
       });
     }
 
     console.log("🔍 Raw body length:", rawBody.length);
     console.log(
-      "🔍 Body preview (first 200 chars):",
-      rawBody.toString("utf8").substring(0, 200) + "..."
+      "🔍 Body preview (first 300 chars):",
+      rawBody.toString("utf8").substring(0, 300) + "..."
+    );
+    console.log(
+      "🔍 Body preview (last 100 chars):",
+      "..." + rawBody.toString("utf8").slice(-100)
+    );
+
+    // Log signature header for debugging
+    console.log("🔍 Stripe signature header:", sig);
+    console.log(
+      "🔍 Webhook secret (first 10 chars):",
+      webhookSecret.substring(0, 10) + "..."
     );
 
     // Verify signature with raw body - this requires the EXACT bytes Stripe sent
+    // Do NOT stringify or modify the buffer in any way
+    // The signature is computed over the exact bytes, so any modification will fail
     event = stripe.webhooks.constructEvent(
       rawBody,
       sig as string,

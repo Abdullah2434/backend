@@ -72,15 +72,19 @@ if (process.env.NODE_ENV !== "production") {
 // Configure body parsing with webhook-specific handling
 // CRITICAL: Stripe webhooks must use raw body for signature verification
 // This must come BEFORE any other body parsing middleware
+// Stripe sends webhooks with Content-Type: application/json
 app.use(
   "/api/webhook/stripe",
-  raw({ 
+  raw({
     type: "application/json",
     verify: (req: any, res, buf) => {
       // Store raw body for Stripe signature verification
-      // This preserves the EXACT bytes Stripe sent, including whitespace
+      // The verify callback receives the raw Buffer BEFORE it's set to req.body
+      // This preserves the EXACT bytes Stripe sent, including whitespace/newlines
       (req as any).rawBody = buf;
-    }
+      // Also ensure req.body is the Buffer (not stringified)
+      req.body = buf;
+    },
   })
 );
 
