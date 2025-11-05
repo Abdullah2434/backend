@@ -4,6 +4,7 @@ import VideoSchedule from "../models/VideoSchedule";
 import UserVideoSettings from "../models/UserVideoSettings";
 import TimezoneService from "../utils/timezone";
 import CronMonitoringService from "../services/cronMonitoring.service";
+import { startSubscriptionSync } from "./syncSubscriptions";
 
 const videoScheduleService = new VideoScheduleService();
 const cronMonitor = CronMonitoringService.getInstance();

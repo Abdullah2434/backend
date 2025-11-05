@@ -42,7 +42,7 @@ export async function getCurrentSubscription(req: Request, res: Response) {
   try {
     // Try to get authentication, but don't require it
     const token = (req.headers.authorization || "").replace("Bearer ", "");
-    
+
     if (!token) {
       // No token provided - return no subscription (guest user)
       return res.json({
@@ -225,6 +225,10 @@ export async function createPaymentIntent(req: Request, res: Response) {
     const payload = requireAuth(req);
     const { planId } = req.body;
 
+    console.log(
+      `📝 Creating payment intent for user ${payload.userId}, plan ${planId}`
+    );
+
     if (!planId) {
       return res.status(400).json({
         success: false,
@@ -252,6 +256,22 @@ export async function createPaymentIntent(req: Request, res: Response) {
       });
     }
 
+    // Check for existing incomplete payment intents for this user and plan
+    const existingSubs =
+      await subscriptionService.hasExistingSubscriptionForPlan(
+        payload.userId,
+        planId
+      );
+
+    if (existingSubs.hasPending || existingSubs.hasIncomplete) {
+      console.log(
+        `⚠️ User ${payload.userId} already has pending/incomplete subscription for plan ${planId}`
+      );
+      console.log(
+        `⚠️ Cleaning up incomplete subscriptions before creating new one`
+      );
+    }
+
     // Create payment intent (service handles all validation and cleanup automatically)
     const result = await subscriptionService.createPaymentIntent({
       userId: payload.userId,
@@ -259,6 +279,10 @@ export async function createPaymentIntent(req: Request, res: Response) {
       customerEmail: user.email,
       customerName: `${user.firstName} ${user.lastName}`,
     });
+
+    console.log(
+      `✅ Payment intent created: ${result.paymentIntent.id}, subscription: ${result.subscription.stripeSubscriptionId}`
+    );
 
     return res.json({
       success: true,
@@ -272,6 +296,8 @@ export async function createPaymentIntent(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
+    console.error(`❌ Error creating payment intent:`, e.message);
+    console.error(`❌ Stack:`, e.stack);
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
@@ -317,12 +343,13 @@ export async function confirmPaymentIntent(req: Request, res: Response) {
 }
 
 /**
- * Get payment intent status
+ * Get payment intent status and auto-sync if payment succeeded
  */
 export async function getPaymentIntentStatus(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
     const { id } = req.params;
+    const { autoSync } = req.query; // Optional: autoSync=true to automatically sync on success
 
     if (!id) {
       return res.status(400).json({
@@ -334,10 +361,41 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
     // Get payment intent status from Stripe
     const paymentIntent = await subscriptionService.getPaymentIntentStatus(id);
 
+    // If payment succeeded and autoSync is enabled, automatically sync subscription
+    if (paymentIntent.status === "succeeded" && autoSync === "true") {
+      console.log(
+        `🔄 Payment succeeded, auto-syncing subscription for payment intent ${id}`
+      );
+      try {
+        const subscription =
+          await subscriptionService.syncSubscriptionFromStripe(
+            id, // payment intent ID
+            payload.userId
+          );
+
+        return res.json({
+          success: true,
+          message:
+            "Payment intent status retrieved and subscription synced successfully",
+          data: {
+            paymentIntent,
+            subscription, // Auto-synced subscription
+            autoSynced: true,
+          },
+        });
+      } catch (syncError: any) {
+        console.error(`⚠️ Auto-sync failed:`, syncError.message);
+        // Still return payment intent status even if sync fails
+      }
+    }
+
     return res.json({
       success: true,
       message: "Payment intent status retrieved successfully",
-      data: { paymentIntent },
+      data: {
+        paymentIntent,
+        autoSynced: false,
+      },
     });
   } catch (e: any) {
     const status = e.message.includes("Access token") ? 401 : 500;
@@ -487,31 +545,134 @@ export async function getBillingSummary(req: Request, res: Response) {
 }
 
 /**
- * Sync subscription status from Stripe (for webhook failures)
+ * Sync subscription from Stripe (manual sync after payment)
+ * This creates or updates the subscription record in the database
+ * Accepts either stripeSubscriptionId or paymentIntentId
  */
 export async function syncSubscriptionFromStripe(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { stripeSubscriptionId } = req.body;
+    const { stripeSubscriptionId, paymentIntentId } = req.body;
 
-    if (!stripeSubscriptionId) {
+    if (!stripeSubscriptionId && !paymentIntentId) {
       return res.status(400).json({
         success: false,
-        message: "Stripe subscription ID is required",
+        message: "Either stripeSubscriptionId or paymentIntentId is required",
       });
     }
 
-    await subscriptionService.syncSubscriptionFromStripe(stripeSubscriptionId);
+    // Use payment intent ID if provided, otherwise use subscription ID
+    const identifier = paymentIntentId || stripeSubscriptionId;
+
+    console.log(
+      `📞 Manual sync requested for ${
+        paymentIntentId ? "payment intent" : "subscription"
+      } ${identifier} by user ${payload.userId}`
+    );
+
+    // Sync subscription (creates if doesn't exist, updates if exists)
+    // The service will automatically detect if it's a payment intent ID or subscription ID
+    const subscription = await subscriptionService.syncSubscriptionFromStripe(
+      identifier,
+      payload.userId
+    );
 
     return res.json({
       success: true,
-      message: "Subscription status synced successfully from Stripe",
+      message: "Subscription synced successfully from Stripe",
+      data: {
+        subscription,
+      },
     });
   } catch (e: any) {
+    console.error(`❌ Error in syncSubscriptionFromStripe:`, e.message);
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
+    });
+  }
+}
+
+/**
+ * Auto-sync subscription when payment succeeds
+ * This endpoint automatically syncs subscription when called with a succeeded payment intent
+ */
+export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+    const { paymentIntentId } = req.body;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment intent ID is required",
+      });
+    }
+
+    console.log(
+      `🔄 Auto-sync requested for payment intent ${paymentIntentId} by user ${payload.userId}`
+    );
+
+    // Check payment intent status first
+    const paymentIntent = await subscriptionService.getPaymentIntentStatus(
+      paymentIntentId
+    );
+
+    console.log(
+      `📊 Payment intent status: ${paymentIntent.status}, metadata:`,
+      paymentIntent.metadata
+    );
+
+    if (paymentIntent.status !== "succeeded") {
+      return res.status(400).json({
+        success: false,
+        message: `Payment intent status is ${paymentIntent.status}, not succeeded. Cannot sync subscription.`,
+        data: {
+          paymentIntent: {
+            id: paymentIntent.id,
+            status: paymentIntent.status,
+            metadata: paymentIntent.metadata,
+          },
+        },
+      });
+    }
+
+    console.log(
+      `✅ Payment intent succeeded, attempting to sync subscription...`
+    );
+
+    // Automatically sync subscription
+    const subscription = await subscriptionService.syncSubscriptionFromStripe(
+      paymentIntentId,
+      payload.userId
+    );
+
+    console.log(
+      `✅ Subscription automatically synced: ${subscription.stripeSubscriptionId}`
+    );
+
+    return res.json({
+      success: true,
+      message: "Payment succeeded and subscription synced successfully",
+      data: {
+        paymentIntent: {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+        },
+        subscription,
+      },
+    });
+  } catch (e: any) {
+    console.error(`❌ Error in autoSyncOnPaymentSuccess:`, e);
+    console.error(`Error message:`, e.message);
+    console.error(`Error stack:`, e.stack);
+
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res.status(status).json({
+      success: false,
+      message: e.message || "Internal server error",
+      error: process.env.NODE_ENV === "development" ? e.stack : undefined,
     });
   }
 }
@@ -530,14 +691,19 @@ export async function debugWebhook(req: Request, res: Response) {
       });
     }
 
-    const stripe = new (await import("stripe")).default(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2023-10-16",
-    });
+    const stripe = new (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY!,
+      {
+        apiVersion: "2023-10-16",
+      }
+    );
 
     let debugInfo: any = {};
 
     if (paymentIntentId) {
-      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntentId
+      );
       debugInfo.paymentIntent = {
         id: paymentIntent.id,
         status: paymentIntent.status,

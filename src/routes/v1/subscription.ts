@@ -15,6 +15,7 @@ import {
   getBillingHistory,
   getBillingSummary,
   syncSubscriptionFromStripe,
+  autoSyncOnPaymentSuccess,
   debugWebhook,
 } from "../../controllers/subscription.controller";
 
@@ -44,8 +45,15 @@ router.get("/plan-change-options", getPlanChangeOptions);
 router.get("/billing-history", getBillingHistory);
 router.get("/billing-summary", getBillingSummary);
 
-// Sync subscription from Stripe (requires auth)
+// Sync subscription from Stripe (PRIMARY METHOD - requires auth)
+// This creates or updates the subscription record after successful payment
+// Call this endpoint from the frontend after successful Stripe checkout
 router.post("/sync-from-stripe", syncSubscriptionFromStripe);
+
+// Auto-sync subscription when payment succeeds (AUTOMATIC - requires auth)
+// This endpoint automatically syncs subscription when payment intent succeeds
+// Call this after payment confirmation on frontend
+router.post("/auto-sync-on-success", autoSyncOnPaymentSuccess);
 
 // Debug endpoint (requires auth)
 router.post("/debug-webhook", debugWebhook);

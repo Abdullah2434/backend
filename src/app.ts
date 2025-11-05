@@ -26,6 +26,7 @@ import {
 } from "./cron/fetchDefaultAvatars";
 import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
+import { startSubscriptionSync } from "./cron/syncSubscriptions";
 import "./queues/photoAvatarWorker";
 import { connectMongo } from "./config/mongoose";
 import { notificationService } from "./services/notification.service";
@@ -68,25 +69,6 @@ app.use(helmet({ contentSecurityPolicy: false }));
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
-
-// Configure body parsing with webhook-specific handling
-// CRITICAL: Stripe webhooks must use raw body for signature verification
-// This must come BEFORE any other body parsing middleware
-// Stripe sends webhooks with Content-Type: application/json
-app.use(
-  "/api/webhook/stripe",
-  raw({
-    type: "application/json",
-    verify: (req: any, res, buf) => {
-      // Store raw body for Stripe signature verification
-      // The verify callback receives the raw Buffer BEFORE it's set to req.body
-      // This preserves the EXACT bytes Stripe sent, including whitespace/newlines
-      (req as any).rawBody = buf;
-      // Also ensure req.body is the Buffer (not stringified)
-      req.body = buf;
-    },
-  })
-);
 
 // Handle workflow error webhook with JSON parsing
 app.use("/api/webhook/workflow-error", json({ limit: "10mb" }));
@@ -232,6 +214,10 @@ cron.schedule("*/2 * * * *", async () => {
 
 // Start scheduled video processing cron jobs
 startAllCronJobs();
+
+// Start subscription sync cron job (syncs subscriptions from Stripe hourly)
+// This handles recurring payments automatically processed by Stripe
+startSubscriptionSync();
 
 // cron.schedule('0 23 * * 6', async () => {
 //   console.log('Updating trend topics...');
