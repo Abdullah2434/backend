@@ -70,8 +70,19 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Configure body parsing with webhook-specific handling
-// First, handle webhooks with raw body parsing
-app.use("/api/webhook/stripe", raw({ type: "application/json" }));
+// CRITICAL: Stripe webhooks must use raw body for signature verification
+// This must come BEFORE any other body parsing middleware
+app.use(
+  "/api/webhook/stripe",
+  raw({ 
+    type: "application/json",
+    verify: (req: any, res, buf) => {
+      // Store raw body for Stripe signature verification
+      // This preserves the EXACT bytes Stripe sent, including whitespace
+      (req as any).rawBody = buf;
+    }
+  })
+);
 
 // Handle workflow error webhook with JSON parsing
 app.use("/api/webhook/workflow-error", json({ limit: "10mb" }));

@@ -35,13 +35,19 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     });
   }
 
-  console.log("🔐 Using webhook secret:", webhookSecret.substring(0, 10) + "...");
+  console.log(
+    "🔐 Using webhook secret:",
+    webhookSecret.substring(0, 10) + "..."
+  );
   console.log("🔍 Webhook signature:", sig);
   console.log("🔍 Request body type:", typeof req.body);
   console.log("🔍 Request body constructor:", req.body?.constructor?.name);
   console.log("🔍 Request body is Buffer:", Buffer.isBuffer(req.body));
   console.log("🔍 Request body length:", req.body?.length || 0);
-  console.log("🔍 Raw body content:", req.body);
+  console.log("🔍 Raw body available:", !!(req as any).rawBody);
+  if ((req as any).rawBody) {
+    console.log("🔍 Raw body length:", (req as any).rawBody.length);
+  }
 
   let event: Stripe.Event | undefined;
 
@@ -51,20 +57,27 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       apiVersion: "2023-10-16",
     });
 
-    // Get raw body - should be a Buffer from Express raw middleware
-    const rawBody = req.body;
-    
+    // Get raw body - use rawBody if available (from verify callback), otherwise use req.body
+    // The raw body MUST be the exact bytes Stripe sent, not parsed/stringified
+    const rawBody = (req as any).rawBody || req.body;
+
     if (!Buffer.isBuffer(rawBody)) {
       console.error("❌ Expected Buffer body, got:", typeof rawBody);
+      console.error("❌ Body value:", rawBody);
       return res.status(400).json({
         success: false,
-        message: "Invalid request body format",
+        message:
+          "Invalid request body format - raw Buffer required for signature verification",
       });
     }
 
     console.log("🔍 Raw body length:", rawBody.length);
-    console.log("🔍 Body preview:", rawBody.toString('utf8').substring(0, 200) + "...");
-    
+    console.log(
+      "🔍 Body preview (first 200 chars):",
+      rawBody.toString("utf8").substring(0, 200) + "..."
+    );
+
+    // Verify signature with raw body - this requires the EXACT bytes Stripe sent
     event = stripe.webhooks.constructEvent(
       rawBody,
       sig as string,
@@ -158,7 +171,9 @@ export async function handleStripeWebhook(req: Request, res: Response) {
 /**
  * Handle checkout session completion - this is where we create subscription records
  */
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session
+) {
   console.log("🎉 Checkout session completed:", session.id);
   console.log("📊 Session details:", {
     id: session.id,
@@ -183,26 +198,38 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
   if (session.subscription) {
     const subscriptionId = session.subscription as string;
-    console.log("🔗 Processing subscription from checkout session:", subscriptionId);
+    console.log(
+      "🔗 Processing subscription from checkout session:",
+      subscriptionId
+    );
 
     try {
       // Get the latest subscription data from Stripe
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
         apiVersion: "2023-10-16",
       });
-      
-      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        subscriptionId
+      );
+      console.log(
+        `📊 Stripe subscription status: ${stripeSubscription.status}`
+      );
 
       // Create or update subscription record in database
       await subscriptionService.createOrUpdateSubscriptionFromWebhook(
         stripeSubscription,
         session.metadata || {}
       );
-      
-      console.log(`✅ Successfully created/updated subscription ${subscriptionId} from checkout session`);
+
+      console.log(
+        `✅ Successfully created/updated subscription ${subscriptionId} from checkout session`
+      );
     } catch (error) {
-      console.error(`❌ Failed to process checkout session for subscription ${subscriptionId}:`, error);
+      console.error(
+        `❌ Failed to process checkout session for subscription ${subscriptionId}:`,
+        error
+      );
     }
   } else {
     console.log("⚠️ Checkout session has no associated subscription");
@@ -224,16 +251,21 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
 
   // Only update existing subscription status, don't create new ones here
   // New subscriptions should be created via checkout.session.completed or invoice.payment_succeeded
-  const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscription.id);
-  
+  const existingSubscription =
+    await subscriptionService.getSubscriptionByStripeId(subscription.id);
+
   if (existingSubscription) {
-    console.log(`📝 Updating existing subscription ${subscription.id} status to ${subscription.status}`);
+    console.log(
+      `📝 Updating existing subscription ${subscription.id} status to ${subscription.status}`
+    );
     await subscriptionService.updateSubscriptionStatus(
       subscription.id,
       subscription.status
     );
   } else {
-    console.log(`⚠️ Subscription ${subscription.id} created event received but no local record found. This should be handled by checkout.session.completed or invoice.payment_succeeded.`);
+    console.log(
+      `⚠️ Subscription ${subscription.id} created event received but no local record found. This should be handled by checkout.session.completed or invoice.payment_succeeded.`
+    );
   }
 }
 
@@ -293,36 +325,54 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
         { status: "succeeded" },
         { new: true }
       );
-      console.log("💰 Billing record updated:", billingUpdate ? "Success" : "Not found");
+      console.log(
+        "💰 Billing record updated:",
+        billingUpdate ? "Success" : "Not found"
+      );
 
       // Get the latest subscription data from Stripe to ensure we have the correct status
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
         apiVersion: "2023-10-16",
       });
-      
-      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        subscriptionId
+      );
+      console.log(
+        `📊 Stripe subscription status: ${stripeSubscription.status}`
+      );
 
       // Check if subscription record exists in database
-      const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
-      
+      const existingSubscription =
+        await subscriptionService.getSubscriptionByStripeId(subscriptionId);
+
       if (existingSubscription) {
         // Update existing subscription status
         await subscriptionService.updateSubscriptionStatus(
           subscriptionId,
           stripeSubscription.status
         );
-        console.log(`✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status}`);
+        console.log(
+          `✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status}`
+        );
       } else {
         // Create new subscription record from webhook
         await subscriptionService.createOrUpdateSubscriptionFromWebhook(
           stripeSubscription,
-          { userId: stripeSubscription.metadata?.userId, planId: stripeSubscription.metadata?.planId }
+          {
+            userId: stripeSubscription.metadata?.userId,
+            planId: stripeSubscription.metadata?.planId,
+          }
         );
-        console.log(`✅ Successfully created new subscription ${subscriptionId} from invoice payment webhook`);
+        console.log(
+          `✅ Successfully created new subscription ${subscriptionId} from invoice payment webhook`
+        );
       }
     } catch (error) {
-      console.error(`❌ Failed to process invoice payment for subscription ${subscriptionId}:`, error);
+      console.error(
+        `❌ Failed to process invoice payment for subscription ${subscriptionId}:`,
+        error
+      );
     }
   } else {
     console.log("⚠️ Invoice has no associated subscription");
@@ -346,7 +396,10 @@ async function handlePaymentIntentSucceeded(
 
   // Debug: Check if metadata has required fields
   if (!paymentIntent.metadata?.subscriptionId) {
-    console.log("⚠️ Payment intent has no subscriptionId in metadata:", paymentIntent.metadata);
+    console.log(
+      "⚠️ Payment intent has no subscriptionId in metadata:",
+      paymentIntent.metadata
+    );
   }
 
   // If this payment intent is associated with a subscription, sync the subscription status
@@ -362,41 +415,52 @@ async function handlePaymentIntentSucceeded(
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
         apiVersion: "2023-10-16",
       });
-      
-      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-      console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        subscriptionId
+      );
+      console.log(
+        `📊 Stripe subscription status: ${stripeSubscription.status}`
+      );
 
       // Check if subscription record exists in database
-      const existingSubscription = await subscriptionService.getSubscriptionByStripeId(subscriptionId);
-      
+      const existingSubscription =
+        await subscriptionService.getSubscriptionByStripeId(subscriptionId);
+
       if (existingSubscription) {
         // Update existing subscription status
         await subscriptionService.updateSubscriptionStatus(
           subscriptionId,
           stripeSubscription.status
         );
-        console.log(`✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`);
+        console.log(
+          `✅ Successfully updated existing subscription ${subscriptionId} status to ${stripeSubscription.status} from payment intent`
+        );
       } else {
         // Create new subscription record from webhook
         await subscriptionService.createOrUpdateSubscriptionFromWebhook(
           stripeSubscription,
-          { userId: paymentIntent.metadata?.userId, planId: paymentIntent.metadata?.planId }
+          {
+            userId: paymentIntent.metadata?.userId,
+            planId: paymentIntent.metadata?.planId,
+          }
         );
-        console.log(`✅ Successfully created new subscription ${subscriptionId} from payment intent webhook`);
+        console.log(
+          `✅ Successfully created new subscription ${subscriptionId} from payment intent webhook`
+        );
       }
     } catch (error) {
-      console.error(
-        `❌ Failed to sync subscription ${subscriptionId}:`,
-        error
-      );
+      console.error(`❌ Failed to sync subscription ${subscriptionId}:`, error);
     }
   } else {
     // FALLBACK: Try to find subscription by customer ID and recent incomplete subscriptions
-    console.log("⚠️ Payment intent has no subscriptionId in metadata, trying fallback method");
+    console.log(
+      "⚠️ Payment intent has no subscriptionId in metadata, trying fallback method"
+    );
     console.log("🔍 Payment intent details:", {
       paymentIntentId: paymentIntent.id,
       customer: paymentIntent.customer,
-      metadata: paymentIntent.metadata
+      metadata: paymentIntent.metadata,
     });
 
     if (paymentIntent.customer) {
@@ -405,7 +469,9 @@ async function handlePaymentIntentSucceeded(
           paymentIntent.customer as string,
           paymentIntent.id
         );
-        console.log("✅ Successfully synced subscription using customer fallback method");
+        console.log(
+          "✅ Successfully synced subscription using customer fallback method"
+        );
       } catch (error) {
         console.error("❌ Fallback subscription sync failed:", error);
       }
