@@ -52,24 +52,24 @@ export class VideoScheduleProcessing {
     // Check subscription status and limit before processing
     try {
       const subscriptionService = new SubscriptionService();
-      
+
       // First check if user has active subscription
       const subscription = await subscriptionService.getActiveSubscription(
         schedule.userId.toString()
       );
-      
+
       if (!subscription) {
         // Update trend status to failed
         schedule.generatedTrends[trendIndex].status = "failed";
-        schedule.generatedTrends[trendIndex].error = 
+        schedule.generatedTrends[trendIndex].error =
           "Active subscription required. Your subscription has expired or is not active.";
         await schedule.save();
-        
+
         throw new Error(
           "Active subscription required. Your subscription has expired or is not active."
         );
       }
-      
+
       // Then check video limit
       const videoLimit = await subscriptionService.canCreateVideo(
         schedule.userId.toString()
@@ -77,17 +77,20 @@ export class VideoScheduleProcessing {
       if (!videoLimit.canCreate) {
         // Update trend status to failed
         schedule.generatedTrends[trendIndex].status = "failed";
-        schedule.generatedTrends[trendIndex].error = 
+        schedule.generatedTrends[trendIndex].error =
           "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.";
         await schedule.save();
-        
+
         throw new Error(
           "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly."
         );
       }
     } catch (subErr: any) {
       // If it's a subscription error, rethrow it (don't call APIs)
-      if (subErr.message.includes("subscription") || subErr.message.includes("Video limit reached")) {
+      if (
+        subErr.message.includes("subscription") ||
+        subErr.message.includes("Video limit reached")
+      ) {
         throw subErr;
       }
       // For other errors, log and continue (might be a temporary issue)
@@ -224,7 +227,9 @@ export class VideoScheduleProcessing {
 
       await new Promise((r) => setTimeout(r, 2000));
 
-      // ==================== STEP 1.5: CALL ELEVENLABS TTS AND SECOND WEBHOOK ====================
+      // ==================== STEP 1.5: CALL ELEVENLABS TTS ====================
+      let ttsResult: any = null;
+      let musicUrl: string | undefined = undefined;
       try {
         // Get voice_id from user settings
         const selectedVoiceId = userSettings.selectedVoiceId;
@@ -236,7 +241,7 @@ export class VideoScheduleProcessing {
           console.log(`🎤 Generating speech with voice_id: ${selectedVoiceId}`);
 
           // Call ElevenLabs TTS API
-          const ttsResult = await generateSpeech({
+          ttsResult = await generateSpeech({
             voice_id: selectedVoiceId,
             hook: enhancedContent.hook,
             body: enhancedContent.body,
@@ -250,9 +255,8 @@ export class VideoScheduleProcessing {
             conclusion_url: ttsResult.conclusion_url,
           });
 
-          // Get music URL for second webhook from selectedMusicTrackId
+          // Get music URL from selectedMusicTrackId
           // Auto: Find track by ID → Extract S3 key from s3FullTrackUrl → Convert to clean MP3 URL
-          let musicUrl: string | undefined = undefined;
 
           if (userSettings.selectedMusicTrackId) {
             try {
@@ -362,64 +366,49 @@ export class VideoScheduleProcessing {
               "ℹ️ No selectedMusicTrackId in user settings, skipping music"
             );
           }
-
-          // Call second webhook with structured format
-          // hook/body/conclusion are objects with audio URL, avatar, and avatarType
-          const secondWebhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL;
-          if (secondWebhookUrl) {
-            const secondWebhookPayload = {
-              // Structured format: hook/body/conclusion as objects with text URL, audio URL, avatar, avatarType
-              hook: {
-                audio: ttsResult.hook_url, // URL from ElevenLabs TTS
-                avatar: titleAvatarId,
-                avatarType: titleAvatarType,
-              },
-              body: {
-                audio: ttsResult.body_url, // URL from ElevenLabs TTS
-                avatar: bodyAvatarId,
-                text: enhancedContent.body, // URL from ElevenLabs TTS
-                avatarType: bodyAvatarType,
-              },
-              conclusion: {
-                audio: ttsResult.conclusion_url, 
-                avatar: conclusionAvatarId,
-                avatarType: conclusionAvatarType,
-              },
-              company_name: userSettings.companyName,
-              social_handles: userSettings.socialHandles,
-              license: userSettings.license,
-              email: userSettings.email,
-              title: trend.description,
-              voice: voice_id,
-              isDefault: avatarDoc?.default,
-              timestamp: new Date().toISOString(),
-              isScheduled: true,
-              scheduleId: scheduleId,
-              trendIndex: trendIndex,
-              _captions: captions,
-              // Include music URL (string) if available
-              ...(musicUrl ? { music: musicUrl } : {}),
-            };
-
-            await VideoScheduleAPICalls.callSecondWebhook(
-              secondWebhookUrl,
-              secondWebhookPayload
-            );
-            console.log(
-              "✅ Second webhook called successfully with videoGenerationData structure"
-            );
-          } else {
-            console.log("⚠️ Second webhook URL not configured, skipping");
-          }
         }
       } catch (ttsError: any) {
-        console.error("❌ ElevenLabs TTS or second webhook failed:", ttsError);
+        console.error("❌ ElevenLabs TTS failed:", ttsError);
         // Don't fail the entire process, just log the error
       }
 
       // Generate Video API accepts flat format and converts internally
-      // So we send: hook (text), body (text), conclusion (text) + separate avatar fields
-  
+      // Use TTS audio URLs if available, otherwise fall back to text
+      const videoGenerationData = {
+        hook: ttsResult?.hook_url, // Audio URL from TTS or text string from API
+        body: ttsResult?.body_url,  // Audio URL from TTS or text string from API
+        conclusion: ttsResult?.conclusion_url, // Audio URL from TTS or text string from API
+        text: enhancedContent.body,
+        company_name: userSettings.companyName,
+        social_handles: userSettings.socialHandles,
+        license: userSettings.license,
+        email: userSettings.email,
+        avatar_title: titleAvatarId,
+        avatar_body: bodyAvatarId,
+        avatar_conclusion: conclusionAvatarId,
+        title: trend.description,
+        voice: voice_id,
+        isDefault: avatarDoc?.default,
+        timestamp: new Date().toISOString(),
+        isScheduled: true,
+        scheduleId: scheduleId,
+        trendIndex: trendIndex,
+        _captions: captions,
+        ...(musicUrl ? { music: musicUrl } : {}),
+      };
+
+      console.log("🔄 Step 2: Calling Generate Video API...");
+      try {
+        await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
+        console.log("✅ Step 2: Generate Video API completed successfully");
+      } catch (err: any) {
+        console.error("❌ Step 2: Generate Video API failed:", err);
+        throw new Error(`Generate Video API failed: ${err.message}`);
+      }
+
+      console.log(
+        `🎉 Scheduled video "${trend.description}" created successfully`
+      );
 
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
