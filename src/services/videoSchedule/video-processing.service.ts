@@ -365,7 +365,7 @@ export class VideoScheduleProcessing {
 
           // Call second webhook with structured format
           // hook/body/conclusion are objects with audio URL, avatar, and avatarType
-          const secondWebhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL_2;
+          const secondWebhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL;
           if (secondWebhookUrl) {
             const secondWebhookPayload = {
               // Structured format: hook/body/conclusion as objects with text URL, audio URL, avatar, avatarType
@@ -419,39 +419,7 @@ export class VideoScheduleProcessing {
 
       // Generate Video API accepts flat format and converts internally
       // So we send: hook (text), body (text), conclusion (text) + separate avatar fields
-      const videoGenerationData = {
-        hook: enhancedContent.hook, // Text string from API
-        body: enhancedContent.body, // Text string from API
-        conclusion: enhancedContent.conclusion, // Text string from API
-        company_name: userSettings.companyName,
-        social_handles: userSettings.socialHandles,
-        license: userSettings.license,
-        email: userSettings.email,
-        avatar_title: titleAvatarId,
-        avatar_body: bodyAvatarId,
-        avatar_conclusion: conclusionAvatarId,
-        title: trend.description,
-        voice: voice_id,
-        isDefault: avatarDoc?.default,
-        timestamp: new Date().toISOString(),
-        isScheduled: true,
-        scheduleId: scheduleId,
-        trendIndex: trendIndex,
-        _captions: captions,
-      };
-
-      console.log("🔄 Step 2: Calling Generate Video API...");
-      try {
-        await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
-        console.log("✅ Step 2: Generate Video API completed successfully");
-      } catch (err: any) {
-        console.error("❌ Step 2: Generate Video API failed:", err);
-        throw new Error(`Generate Video API failed: ${err.message}`);
-      }
-
-      console.log(
-        `🎉 Scheduled video "${trend.description}" created successfully`
-      );
+  
 
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
