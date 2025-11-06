@@ -9,6 +9,7 @@ import { SubscriptionService } from "../services/subscription.service";
 import {
   CreateVideoAvatarWithFilesRequest,
   VideoAvatarStatusResponse,
+  AuthenticatedRequest,
 } from "../types";
 
 const videoAvatarService = new VideoAvatarService();
@@ -47,7 +48,10 @@ const upload = multer({
  * Submit Video Avatar Creation Request (with file uploads)
  * POST /v2/video_avatar
  */
-export async function createVideoAvatar(req: Request, res: Response) {
+export async function createVideoAvatar(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   let trainingFootageFile: Express.Multer.File | undefined;
   let consentStatementFile: Express.Multer.File | undefined;
 
@@ -63,8 +67,15 @@ export async function createVideoAvatar(req: Request, res: Response) {
     } = req.body;
 
     // Get userId for socket notifications
-    const userId = (req as any).user?._id;
+    const userId = req.user?._id;
     const authToken = req.headers.authorization?.replace("Bearer ", "");
+
+    console.log("🔐 Video Avatar Controller - User check:", {
+      hasUser: !!req.user,
+      userId: userId,
+      userObject: req.user,
+      path: req.path,
+    });
 
     trainingFootageFile =
       (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined;
@@ -155,7 +166,7 @@ export async function createVideoAvatar(req: Request, res: Response) {
         "progress",
         {
           avatar_name,
-          message: "Validating files and preparing avatar creation..."
+          message: "Validating files and preparing avatar creation...",
         }
       );
     }
@@ -203,9 +214,13 @@ export async function createVideoAvatar(req: Request, res: Response) {
 
     // Emit final socket notification based on result
     if (userId) {
-      const finalStatus = result.status === 'completed' ? 'completed' : 
-                         result.status === 'failed' ? 'error' : 'progress';
-      
+      const finalStatus =
+        result.status === "completed"
+          ? "completed"
+          : result.status === "failed"
+          ? "error"
+          : "progress";
+
       notificationService.notifyVideoAvatarProgress(
         userId,
         result.avatar_id,
@@ -220,7 +235,7 @@ export async function createVideoAvatar(req: Request, res: Response) {
           preview_image_url: result.preview_image_url,
           preview_video_url: result.preview_video_url,
           default_voice_id: result.default_voice_id,
-          error: result.error
+          error: result.error,
         }
       );
     }
@@ -230,7 +245,7 @@ export async function createVideoAvatar(req: Request, res: Response) {
     console.error("Error creating video avatar:", error);
 
     // Emit error socket notification
-    const userId = (req as any).user?._id;
+    const userId = req.user?._id;
     if (userId) {
       notificationService.notifyVideoAvatarProgress(
         userId,
@@ -240,7 +255,7 @@ export async function createVideoAvatar(req: Request, res: Response) {
         {
           avatar_name: req.body.avatar_name,
           error: error.message || "Internal server error",
-          message: "Failed to create video avatar"
+          message: "Failed to create video avatar",
         }
       );
     }
