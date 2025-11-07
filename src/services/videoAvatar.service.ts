@@ -457,9 +457,6 @@ export class VideoAvatarService {
     console.log(`Starting polling for avatar ${avatarId}:`, url);
 
     return new Promise((resolve, reject) => {
-      // Store timeout handle for cleanup
-      let timeoutHandle: NodeJS.Timeout | null = null;
-
       const pollInterval = setInterval(async () => {
         try {
           console.log(`Polling Heygen API for avatar ${avatarId}...`);
@@ -549,7 +546,6 @@ export class VideoAvatarService {
                 if (!hasPreviewImageUrl) {
                   console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: preview_image_url is empty`);
                   clearInterval(pollInterval);
-                  if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
                   resolve(heygenData); // Resolve without saving
                   return;
                 }
@@ -576,14 +572,12 @@ export class VideoAvatarService {
                 
                 // Successfully completed - clear intervals and resolve
                 clearInterval(pollInterval);
-                if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
                 resolve(heygenData); // Resolve with final response
               } else {
                 // Status is "failed" - stop socket and throw error (don't save)
                 console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: status is "failed"`);
                 
                 clearInterval(pollInterval);
-                if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout
                 
                 // Reject the promise (stops socket and throws error)
                 reject(
@@ -622,41 +616,9 @@ export class VideoAvatarService {
           }
 
           clearInterval(pollInterval);
-          if (timeoutHandle) clearTimeout(timeoutHandle); // Clear timeout on error
           reject(error);
         }
       }, 10000); // Poll every 10 seconds
-
-      // Stop polling after 5 minutes to prevent infinite polling
-      timeoutHandle = setTimeout(() => {
-        console.log(`⏰ Stopping polling for avatar ${avatarId} after 5 minutes - timeout occurred`);
-
-        // Clear the polling interval first
-        clearInterval(pollInterval);
-
-        // Emit timeout socket notification (stops socket)
-        if (userId) {
-          notificationService.notifyVideoAvatarProgress(
-            userId,
-            avatarId,
-            "timeout",
-            "error",
-            {
-              avatar_id: avatarId,
-              error: "Avatar creation timed out after 5 minutes",
-              message: "Avatar creation timed out. Please try again.",
-            }
-          );
-        }
-
-        // Reject the promise (prevents saving to database)
-        reject(
-          new Error(`Polling timeout for avatar ${avatarId} after 5 minutes`)
-        );
-      }, 10 * 60 * 1000); // 5 minutes timeout
-
-      // Clear timeout if polling completes successfully
-      // This is handled by clearing the interval and resolving/rejecting
     });
   }
 
