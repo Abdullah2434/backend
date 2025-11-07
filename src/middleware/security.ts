@@ -34,8 +34,8 @@ export function sanitizeInput(
       break
       
     case 'name':
-      // Name: Allow letters, spaces, hyphens, apostrophes
-      sanitized = sanitized.replace(/[^a-zA-Z\s'-]/g, '')
+      // Name: Allow letters, numbers, spaces, hyphens, apostrophes
+      sanitized = sanitized.replace(/[^a-zA-Z0-9\s'-]/g, '')
       break
       
     case 'company':
