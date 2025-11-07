@@ -190,25 +190,19 @@ export class VideoService {
   }
 
   /**
-   * Delete a video (from database and S3)
+   * Delete a video (from database only, not from S3)
    */
   async deleteVideo(videoId: string): Promise<boolean> {
-    const video = await Video.findOne({ videoId }).select("+secretKey");
+    const video = await Video.findOne({ videoId });
 
     if (!video) {
       return false;
     }
 
-    // Delete from S3
-    try {
-      await this.s3Service.deleteVideo(video.s3Key, video.secretKey);
-    } catch (s3Error) {
-      console.error("Error deleting video from S3:", s3Error);
-      // Continue with database deletion even if S3 fails
-    }
-
-    // Delete from database
+    // Delete from database only (not from S3)
     await Video.deleteOne({ videoId });
+
+    console.log(`✅ Video ${videoId} deleted from database (S3 file preserved)`);
 
     return true;
   }

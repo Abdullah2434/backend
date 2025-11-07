@@ -7,6 +7,7 @@ export {
   download,
   updateStatus,
   deleteVideo,
+  deleteVideoById,
   downloadProxy,
   getAvatars,
   getVoices,

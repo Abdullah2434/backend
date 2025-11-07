@@ -611,6 +611,71 @@ export async function deleteVideo(req: Request, res: Response) {
   }
 }
 
+/**
+ * Delete a video by ID (RESTful DELETE endpoint)
+ * DELETE /api/video/:videoId
+ */
+export async function deleteVideoById(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+    const { videoId } = req.params;
+
+    if (!videoId) {
+      return res.status(400).json({
+        success: false,
+        message: "Video ID is required",
+      });
+    }
+
+    console.log(`🗑️ Attempting to delete video: ${videoId} for user: ${payload.userId}`);
+
+    // Get video to verify ownership
+    const video = await videoService.getVideo(videoId);
+    if (!video) {
+      return res.status(404).json({
+        success: false,
+        message: "Video not found",
+      });
+    }
+
+    // Verify video belongs to user
+    if (video.userId && video.userId.toString() !== payload.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized to delete this video",
+      });
+    }
+
+    // Delete video from S3 and database
+    const deleted = await videoService.deleteVideo(videoId);
+
+    if (!deleted) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete video",
+      });
+    }
+
+    console.log(`✅ Successfully deleted video: ${videoId}`);
+
+    return res.json({
+      success: true,
+      message: "Video deleted successfully",
+      data: {
+        videoId: videoId,
+        deletedAt: new Date().toISOString(),
+      },
+    });
+  } catch (e: any) {
+    console.error(`❌ Error deleting video:`, e);
+    const status = e.message.includes("Access token") || e.message.includes("token") ? 401 : 500;
+    return res.status(status).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}
+
 export async function downloadProxy(req: Request, res: Response) {
   try {
     const videoUrl = String(req.query.url || "");
