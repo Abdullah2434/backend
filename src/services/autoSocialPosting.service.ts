@@ -377,23 +377,40 @@ export class AutoSocialPostingService {
    * Uses same logic as manual posting for consistency
    */
   private getPlatformCaption(accountType: string, trend: any): string | null {
-    switch (accountType) {
-      case "instagram.api":
-        return trend.instagram_caption || null;
-      case "facebook.profile":
-        return trend.facebook_caption || null;
-      case "linkedin.profile":
-        return trend.linkedin_caption || null;
-      case "twitter.profile":
-        return trend.twitter_caption || null;
-      case "tiktok.profile":
-        return trend.tiktok_caption || null;
-      case "google.youtube":
-        return trend.youtube_caption || null;
-      default:
-        console.warn(`Unknown platform type: ${accountType}`);
-        return null;
+    // Normalize account type for comparison
+    const normalizedType = accountType?.toLowerCase().trim();
+
+    // Instagram
+    if (normalizedType === "instagram.api") {
+      return trend.instagram_caption || null;
     }
+    if (
+      normalizedType === "facebook.profile" ||
+      normalizedType === "facebook.page" ||
+      normalizedType?.startsWith("facebook.")
+    ) {
+      return trend.facebook_caption || null;
+    }
+
+    // LinkedIn
+    if (normalizedType === "linkedin.profile") {
+      return trend.linkedin_caption || null;
+    }
+
+    // Twitter
+    if (normalizedType === "twitter.profile") {
+      return trend.twitter_caption || null;
+    }
+    if (normalizedType === "tiktok.profile") {
+      return trend.tiktok_caption || null;
+    }
+    if (normalizedType === "google.youtube") {
+      return trend.youtube_caption || null;
+    }
+
+    // Unknown platform type
+    console.warn(`Unknown platform type: ${accountType}`);
+    return null;
   }
 
   /**
