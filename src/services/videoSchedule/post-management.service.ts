@@ -1,4 +1,5 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
+import { generateFromDescription } from "../trends.service";
 
 export class VideoSchedulePostManagement {
   /**
@@ -85,6 +86,8 @@ export class VideoSchedulePostManagement {
 
   /**
    * Update individual post in a schedule by post ID
+   * Automatically fetches new key points from OpenAI if topic (description) changes
+   * Captions are only updated if explicitly provided in updateData
    */
   async updateSchedulePostById(
     scheduleId: string,
@@ -137,16 +140,63 @@ export class VideoSchedulePostManagement {
       throw new Error("Can only edit pending posts");
     }
 
+    // Store original values to detect changes
+    const originalDescription = post.description;
+    const originalKeypoints = post.keypoints;
+    let newKeypoints = updateData.keypoints;
+
+    // IMPORTANT: Only fetch new keypoints from OpenAI if description (topic) changes
+    // If description doesn't change, keep existing keypoints (no OpenAI call)
+    // If keypoints are explicitly provided, use those instead of fetching
+    if (
+      updateData.description !== undefined &&
+      updateData.description.trim() !== originalDescription.trim() &&
+      updateData.keypoints === undefined
+    ) {
+      // Description changed and keypoints not provided → fetch new keypoints from OpenAI
+      console.log(
+        `🔄 Topic changed from "${originalDescription}" to "${updateData.description}". Fetching new key points from OpenAI...`
+      );
+      try {
+        const trendData = await generateFromDescription(updateData.description);
+        newKeypoints = trendData.keypoints;
+        console.log(
+          `✅ Generated new key points from OpenAI based on new topic`
+        );
+        console.log(`📝 New key points: ${newKeypoints}`);
+      } catch (error: any) {
+        console.error(
+          `❌ Failed to generate key points from OpenAI:`,
+          error.message
+        );
+        // If generation fails, keep existing keypoints
+        newKeypoints = originalKeypoints;
+        console.log(`⚠️ Keeping existing key points due to OpenAI error`);
+      }
+    } else if (
+      updateData.description === undefined ||
+      updateData.description.trim() === originalDescription.trim()
+    ) {
+      // Description not changed → keep existing keypoints (no OpenAI call)
+      if (updateData.keypoints === undefined) {
+        newKeypoints = originalKeypoints; // Keep existing
+      }
+    }
+
     // Update the post fields
     if (updateData.description !== undefined) {
       post.description = updateData.description;
     }
-    if (updateData.keypoints !== undefined) {
+    // Update keypoints: use new ones from OpenAI if topic changed, or use provided ones, or keep existing
+    if (newKeypoints !== undefined) {
+      post.keypoints = newKeypoints;
+    } else if (updateData.keypoints !== undefined) {
       post.keypoints = updateData.keypoints;
     }
     if (updateData.scheduledFor !== undefined) {
       post.scheduledFor = updateData.scheduledFor;
     }
+    // Captions are only updated if explicitly provided - no automatic regeneration
     if (updateData.instagram_caption !== undefined) {
       post.instagram_caption = updateData.instagram_caption;
     }
@@ -166,12 +216,29 @@ export class VideoSchedulePostManagement {
       post.youtube_caption = updateData.youtube_caption;
     }
 
-    // Save the updated schedule
+    // Save the updated schedule to database
     await schedule.save();
 
     console.log(
       `✅ Updated post ${postId} in schedule ${scheduleId} for user ${userId}`
     );
+
+    // Log what was updated
+    if (
+      updateData.description !== undefined &&
+      updateData.description.trim() !== originalDescription.trim()
+    ) {
+      console.log(
+        `📝 Topic updated: "${originalDescription}" → "${updateData.description}"`
+      );
+    }
+    if (newKeypoints && newKeypoints !== originalKeypoints) {
+      console.log(
+        `📝 Key points automatically updated in database from OpenAI`
+      );
+      console.log(`   Old: ${originalKeypoints}`);
+      console.log(`   New: ${newKeypoints}`);
+    }
 
     return schedule;
   }
