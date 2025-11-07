@@ -6,7 +6,8 @@ const router = Router()
 // PROTECTED ROUTES (authentication required)
 router.get('/gallery', ctrl.gallery)
 router.post('/delete', ctrl.deleteVideo) // Legacy endpoint (kept for backward compatibility)
-router.delete('/:videoId', ctrl.deleteVideoById) // RESTful DELETE endpoint
+router.delete('/delete/:videoId', ctrl.deleteVideoById) // DELETE /api/video/delete/:videoId
+router.delete('/:videoId', ctrl.deleteVideoById) // RESTful DELETE endpoint /api/video/:videoId
 router.get('/download-proxy', ctrl.downloadProxy)
 router.get('/avatars', ctrl.getAvatars)
 router.get('/voices', ctrl.getVoices)
