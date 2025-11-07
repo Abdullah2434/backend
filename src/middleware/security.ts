@@ -85,6 +85,18 @@ export function sanitizeRequestBody(body: any, endpoint: string): any {
 
   for (const [key, value] of Object.entries(body)) {
     if (typeof value === 'string') {
+      // Skip length limits for TTS fields (hook, body, conclusion) - they can be very long
+      const isTTSField = ['hook', 'body', 'conclusion'].includes(key.toLowerCase())
+      
+      if (isTTSField) {
+        // For TTS fields, only remove HTML tags and dangerous characters, but don't limit length
+        let cleaned = value.trim()
+        cleaned = stripHtmlTags(cleaned)
+        cleaned = cleaned.replace(/[<>\"'&]/g, '')
+        sanitized[key] = cleaned
+        continue
+      }
+      
       // Determine sanitization type based on field name
       let sanitizationType: Parameters<typeof sanitizeInput>[1] = 'text'
       

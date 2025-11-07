@@ -4,7 +4,10 @@ import { AuthenticatedRequest } from "../types";
 import AuthService from "../modules/auth/services/auth.service";
 import { generateSpeech } from "../services/elevenLabsTTS.service";
 import ElevenLabsVoice from "../models/elevenLabsVoice";
-import { fetchAndSyncElevenLabsVoices, addCustomVoice } from "../services/elevenLabsVoice.service";
+import {
+  fetchAndSyncElevenLabsVoices,
+  addCustomVoice,
+} from "../services/elevenLabsVoice.service";
 import { SubscriptionService } from "../services/subscription.service";
 
 const authService = new AuthService();
@@ -14,7 +17,8 @@ const authService = new AuthService();
  */
 export async function textToSpeech(req: Request, res: Response) {
   try {
-    const { voice_id, hook, body, conclusion, output_format } = req.body;
+    const { voice_id, hook, body, conclusion, output_format, model_id } =
+      req.body;
 
     // Validate required fields
     if (!voice_id) {
@@ -49,6 +53,36 @@ export async function textToSpeech(req: Request, res: Response) {
       });
     }
 
+    // Validate model_id if provided
+    const validModels = [
+      "eleven_multilingual_v1",
+      "eleven_multilingual_v2",
+      "eleven_turbo_v2",
+      "eleven_turbo_v2_5",
+      "eleven_flash_v2",
+      "eleven_flash_v2_5",
+      "eleven_english_v1",
+      "eleven_english_v2",
+    ];
+
+    if (model_id && !validModels.includes(model_id)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid model_id. Valid models: ${validModels.join(", ")}`,
+        valid_models: validModels,
+        model_limits: {
+          eleven_multilingual_v1: "10,000 characters",
+          eleven_multilingual_v2: "10,000 characters",
+          eleven_turbo_v2: "30,000 characters",
+          eleven_turbo_v2_5: "40,000 characters",
+          eleven_flash_v2: "30,000 characters",
+          eleven_flash_v2_5: "40,000 characters",
+          eleven_english_v1: "10,000 characters",
+          eleven_english_v2: "10,000 characters",
+        },
+      });
+    }
+
     // Generate speech for hook, body, and conclusion in parallel
     const result = await generateSpeech({
       voice_id,
@@ -56,6 +90,7 @@ export async function textToSpeech(req: Request, res: Response) {
       body: body.trim(),
       conclusion: conclusion.trim(),
       output_format: output_format || "mp3_44100_128",
+      model_id: model_id || undefined, // Pass model_id if provided
     });
 
     // Return three MP3 URLs directly
@@ -65,6 +100,7 @@ export async function textToSpeech(req: Request, res: Response) {
         hook_url: result.hook_url,
         body_url: result.body_url,
         conclusion_url: result.conclusion_url,
+        model_id: result.model_id, // Include the model that was used
       },
     });
   } catch (error: any) {
@@ -88,12 +124,12 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
     // Get userId from request (optional authentication)
     // Try to extract user from token if provided
     let userId: string | undefined = req.user?._id;
-    
+
     if (!userId) {
       // If not set by middleware, try to extract from token manually
       const authHeader = req.headers.authorization;
       const accessToken = authHeader?.replace("Bearer ", "");
-      
+
       if (accessToken) {
         try {
           const user = await authService.getCurrentUser(accessToken);
@@ -102,7 +138,9 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
           }
         } catch (error) {
           // Invalid token - continue without userId (will only return default voices)
-          console.log("Optional auth: Invalid token, returning default voices only");
+          console.log(
+            "Optional auth: Invalid token, returning default voices only"
+          );
         }
       }
     }
@@ -193,7 +231,10 @@ export async function getVoiceById(req: Request, res: Response) {
     }
 
     // Get userId from request (if authenticated)
-    const userId = (req as any).user?._id || (req as any).user?.userId || (req as any).user?.id;
+    const userId =
+      (req as any).user?._id ||
+      (req as any).user?.userId ||
+      (req as any).user?.id;
 
     const voice = await ElevenLabsVoice.findOne({ voice_id }).select(
       "voice_id preview_url name energy description userId"
@@ -213,14 +254,15 @@ export async function getVoiceById(req: Request, res: Response) {
       if (!userId) {
         return res.status(403).json({
           success: false,
-          message: "Access denied. This is a custom voice and requires authentication.",
+          message:
+            "Access denied. This is a custom voice and requires authentication.",
         });
       }
 
       // Check if userId matches
       const voiceUserId = voice.userId.toString();
       const requestUserId = String(userId);
-      
+
       if (voiceUserId !== requestUserId) {
         return res.status(403).json({
           success: false,
@@ -281,14 +323,17 @@ export async function syncVoices(req: Request, res: Response) {
  * 3. GET /v1/voices/{voice_id} - Get full voice details
  * 4. Store in database with userId
  */
-export async function addCustomVoiceEndpoint(req: AuthenticatedRequest & { file?: Express.Multer.File }, res: Response) {
+export async function addCustomVoiceEndpoint(
+  req: AuthenticatedRequest & { file?: Express.Multer.File },
+  res: Response
+) {
   try {
     const file = req.file;
     const { name, description, language, gender } = req.body;
-    
+
     // Get userId from request (from auth token - req.user._id)
     const userId = req.user?._id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,

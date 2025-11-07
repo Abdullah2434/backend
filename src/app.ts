@@ -135,15 +135,17 @@ app.use((req, res, next) => {
   }
 });
 
-// Input sanitization (skip webhooks and file uploads to preserve raw data)
+// Input sanitization (skip webhooks, file uploads, and text-to-speech to preserve raw data)
 app.use((req, res, next) => {
   if (
     req.path &&
     (req.path.startsWith("/api/webhook") ||
       req.path === "/api/video/photo-avatar" ||
-      req.path === "/api/video/generate-video")
+      req.path === "/api/video/generate-video" ||
+      req.path === "/api/elevenlabs/text-to-speech" ||
+      req.path.startsWith("/api/elevenlabs/text-to-speech"))
   ) {
-    next(); // Skip sanitization for webhooks and file uploads
+    next(); // Skip sanitization for webhooks, file uploads, and TTS endpoints
   } else {
     sanitizeInputs()(req, res, next);
   }
