@@ -241,12 +241,16 @@ export class VideoScheduleProcessing {
           console.log(`🎤 Generating speech with voice_id: ${selectedVoiceId}`);
 
           // Call ElevenLabs TTS API
+          // Extract userId from schedule (schedule.userId) or userSettings
+          const userId = schedule.userId?.toString() || userSettings.userId?.toString();
+          
           ttsResult = await generateSpeech({
             voice_id: selectedVoiceId,
             hook: enhancedContent.hook,
             body: enhancedContent.body,
             conclusion: enhancedContent.conclusion,
             output_format: "mp3_44100_128",
+            userId: userId, // Pass userId for cloned voice voice_settings
           });
 
           console.log("✅ ElevenLabs TTS completed:", {

@@ -83,6 +83,26 @@ export async function textToSpeech(req: Request, res: Response) {
       });
     }
 
+    // Extract userId from JWT token if authenticated (optional)
+    let userId: string | undefined = undefined;
+    const authHeader = req.headers.authorization;
+    const accessToken = authHeader?.replace("Bearer ", "");
+
+    if (accessToken) {
+      try {
+        const user = await authService.getCurrentUser(accessToken);
+        if (user) {
+          userId = user._id.toString();
+          console.log(`✅ Authenticated user: ${userId}`);
+        }
+      } catch (error) {
+        // Invalid token - continue without userId (voice_settings won't be applied)
+        console.log(
+          "ℹ️ Optional auth: Invalid token, continuing without userId"
+        );
+      }
+    }
+
     // Generate speech for hook, body, and conclusion in parallel
     const result = await generateSpeech({
       voice_id,
@@ -91,6 +111,7 @@ export async function textToSpeech(req: Request, res: Response) {
       conclusion: conclusion.trim(),
       output_format: output_format || "mp3_44100_128",
       model_id: model_id || undefined, // Pass model_id if provided
+      userId: userId, // Pass userId if authenticated
     });
 
     // Return three MP3 URLs directly

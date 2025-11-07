@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "crypto";
 import ElevenLabsVoice from "../models/elevenLabsVoice";
+import UserVideoSettings from "../models/UserVideoSettings";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import { Readable } from "stream";
@@ -54,6 +55,7 @@ interface TextToSpeechOptions {
   voice_id: string;
   output_format?: string;
   model_id?: string; // Optional: Override model (e.g., "eleven_turbo_v2_5" for 40k chars, "eleven_flash_v2_5" for 40k chars)
+  userId?: string; // Optional: User ID to fetch preset from UserVideoSettings for cloned voices
 }
 
 interface SpeechResult {
@@ -68,6 +70,53 @@ interface SpeechResult {
  */
 function getCharacterLimit(model_id: string): number {
   return MODEL_CHARACTER_LIMITS[model_id] || DEFAULT_CHARACTER_LIMIT;
+}
+
+/**
+ * Get voice settings based on preset value (case-insensitive)
+ * Returns voice_settings object for ElevenLabs API or undefined if preset doesn't match
+ */
+function getVoiceSettings(preset: string): {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+  speed: number;
+} | undefined {
+  if (!preset) {
+    return undefined;
+  }
+
+  const presetLower = preset.toLowerCase().trim();
+
+  switch (presetLower) {
+    case "low":
+      return {
+        stability: 0.3,
+        similarity_boost: 0.75,
+        style: 0.6,
+        use_speaker_boost: true,
+        speed: 1.15,
+      };
+    case "medium":
+      return {
+        stability: 0.5,
+        similarity_boost: 0.75,
+        style: 0.4,
+        use_speaker_boost: true,
+        speed: 1.0,
+      };
+    case "high":
+      return {
+        stability: 0.7,
+        similarity_boost: 0.75,
+        style: 0.2,
+        use_speaker_boost: true,
+        speed: 0.9,
+      };
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -129,7 +178,14 @@ async function generateSpeechChunk(
   voice_id: string,
   text: string,
   model_id: string,
-  output_format: string
+  output_format: string,
+  voice_settings?: {
+    stability: number;
+    similarity_boost: number;
+    style: number;
+    use_speaker_boost: boolean;
+    speed: number;
+  }
 ): Promise<Buffer> {
   const ttsUrl = `${ELEVENLABS_TTS_URL}/${voice_id}?output_format=${output_format}`;
   
@@ -137,10 +193,17 @@ async function generateSpeechChunk(
   const preview = text.length > 200 ? text.substring(0, 200) + "..." : text;
   console.log(`📤 Sending to ElevenLabs: ${text.length} chars - "${preview}"`);
   
+  // Build request body with optional voice_settings
+  const requestBody: any = { text, model_id };
+  if (voice_settings) {
+    requestBody.voice_settings = voice_settings;
+    console.log(`🎚️ Applying voice settings:`, voice_settings);
+  }
+  
   try {
     const response = await axios.post(
       ttsUrl,
-      { text, model_id },
+      requestBody,
       {
         headers: {
           "xi-api-key": API_KEY,
@@ -235,7 +298,14 @@ async function generateSpeechPart(
   text: string,
   model_id: string,
   output_format: string,
-  partName: string
+  partName: string,
+  voice_settings?: {
+    stability: number;
+    similarity_boost: number;
+    style: number;
+    use_speaker_boost: boolean;
+    speed: number;
+  }
 ): Promise<SpeechResult> {
   const characterLimit = getCharacterLimit(model_id);
   const textLength = text.length;
@@ -254,7 +324,7 @@ async function generateSpeechPart(
     const audioChunks: Buffer[] = [];
     for (let i = 0; i < chunks.length; i++) {
       console.log(`🎤 Generating chunk ${i + 1}/${chunks.length} for ${partName} (${chunks[i].length} chars)`);
-      const audioBuffer = await generateSpeechChunk(voice_id, chunks[i], model_id, output_format);
+      const audioBuffer = await generateSpeechChunk(voice_id, chunks[i], model_id, output_format, voice_settings);
       audioChunks.push(audioBuffer);
     }
 
@@ -303,7 +373,7 @@ async function generateSpeechPart(
   }
 
   // Text is within limit, process normally
-  const audioBuffer = await generateSpeechChunk(voice_id, text, model_id, output_format);
+  const audioBuffer = await generateSpeechChunk(voice_id, text, model_id, output_format, voice_settings);
   const timestamp = Date.now();
   const hash = crypto.createHash("md5").update(`${text}_${partName}`).digest("hex").substring(0, 8);
   const s3Key = `voices/${voice_id}/${partName}/${timestamp}_${hash}.mp3`;
@@ -391,6 +461,45 @@ export async function generateSpeech(options: TextToSpeechOptions) {
       throw new Error(`Voice with ID ${options.voice_id} not found in database`);
     }
 
+    // Check if voice is cloned and get voice_settings if applicable
+    let voice_settings: {
+      stability: number;
+      similarity_boost: number;
+      style: number;
+      use_speaker_boost: boolean;
+      speed: number;
+    } | undefined = undefined;
+
+    if (voice.category === "cloned" && options.userId) {
+      console.log(`🔍 Voice is cloned (category: ${voice.category}), fetching user preset for userId: ${options.userId}`);
+      try {
+        const userSettings = await UserVideoSettings.findOne({
+          userId: options.userId,
+        });
+
+        if (userSettings && userSettings.preset) {
+          console.log(`📋 Found preset: ${userSettings.preset}`);
+          voice_settings = getVoiceSettings(userSettings.preset);
+          if (voice_settings) {
+            console.log(`✅ Applying voice settings for preset: ${userSettings.preset}`);
+          } else {
+            console.log(`⚠️ Preset "${userSettings.preset}" doesn't match Low/Medium/High, using default settings`);
+          }
+        } else {
+          console.log(`ℹ️ No preset found in UserVideoSettings for userId: ${options.userId}`);
+        }
+      } catch (error: any) {
+        console.error(`❌ Error fetching UserVideoSettings:`, error.message);
+        // Continue without voice_settings if fetch fails
+      }
+    } else {
+      if (voice.category !== "cloned") {
+        console.log(`ℹ️ Voice category is "${voice.category}", not cloned. Skipping voice_settings.`);
+      } else if (!options.userId) {
+        console.log(`ℹ️ Voice is cloned but no userId provided. Skipping voice_settings.`);
+      }
+    }
+
     // Calculate text lengths for optimal model selection
     const textLengths = {
       hook: options.hook.length,
@@ -414,9 +523,9 @@ export async function generateSpeech(options: TextToSpeechOptions) {
 
     // Generate speech for all three parts in parallel
     const [hookResult, bodyResult, conclusionResult] = await Promise.all([
-      generateSpeechPart(options.voice_id, options.hook, model_id, output_format, "hook"),
-      generateSpeechPart(options.voice_id, options.body, model_id, output_format, "body"),
-      generateSpeechPart(options.voice_id, options.conclusion, model_id, output_format, "conclusion"),
+      generateSpeechPart(options.voice_id, options.hook, model_id, output_format, "hook", voice_settings),
+      generateSpeechPart(options.voice_id, options.body, model_id, output_format, "body", voice_settings),
+      generateSpeechPart(options.voice_id, options.conclusion, model_id, output_format, "conclusion", voice_settings),
     ]);
 
     return {
