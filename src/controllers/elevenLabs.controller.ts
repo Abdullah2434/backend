@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../types";
 import AuthService from "../modules/auth/services/auth.service";
 import { generateSpeech } from "../services/elevenLabsTTS.service";
 import ElevenLabsVoice from "../models/elevenLabsVoice";
+import UserVideoSettings from "../models/UserVideoSettings";
 import {
   fetchAndSyncElevenLabsVoices,
   addCustomVoice,
@@ -11,6 +12,47 @@ import {
 import { SubscriptionService } from "../services/subscription.service";
 
 const authService = new AuthService();
+
+/**
+ * Get voice settings based on preset (case insensitive)
+ */
+function getVoiceSettingsByPreset(preset: string): {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+  speed: number;
+} | null {
+  const presetLower = preset?.toLowerCase().trim();
+  
+  if (presetLower === "low") {
+    return {
+      stability: 0.3,
+      similarity_boost: 0.75,
+      style: 0.6,
+      use_speaker_boost: true,
+      speed: 1.15,
+    };
+  } else if (presetLower === "medium" || presetLower === "mid") {
+    return {
+      stability: 0.5,
+      similarity_boost: 0.75,
+      style: 0.4,
+      use_speaker_boost: true,
+      speed: 1.0,
+    };
+  } else if (presetLower === "high") {
+    return {
+      stability: 0.7,
+      similarity_boost: 0.75,
+      style: 0.2,
+      use_speaker_boost: true,
+      speed: 0.9,
+    };
+  }
+  
+  return null;
+}
 
 /**
  * Generate text-to-speech audio using ElevenLabs API
@@ -83,6 +125,71 @@ export async function textToSpeech(req: Request, res: Response) {
       });
     }
 
+    // Fetch voice from database to check category
+    const voice = await ElevenLabsVoice.findOne({ voice_id });
+    if (!voice) {
+      return res.status(404).json({
+        success: false,
+        message: "Voice not found in database",
+      });
+    }
+
+    // Check if voice category is "cloned" (case insensitive)
+    let voice_settings = null;
+    const voiceCategory = voice.category?.toLowerCase().trim();
+    
+    if (voiceCategory === "cloned") {
+      // Get user from auth token
+      const authHeader = req.headers.authorization;
+      const accessToken = authHeader?.replace("Bearer ", "");
+      
+      if (!accessToken) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required for cloned voices",
+        });
+      }
+
+      try {
+        const user = await authService.getCurrentUser(accessToken);
+        if (!user) {
+          return res.status(401).json({
+            success: false,
+            message: "Invalid authentication token",
+          });
+        }
+
+        // Get user video settings
+        const userVideoSettings = await UserVideoSettings.findOne({
+          userId: user._id,
+        });
+
+        if (userVideoSettings) {
+          // Get preset from preset field only (case insensitive)
+          const preset = userVideoSettings.preset;
+          
+          if (preset) {
+            voice_settings = getVoiceSettingsByPreset(preset);
+            if (voice_settings) {
+              console.log(`🎯 Using voice settings for preset: ${preset}`, voice_settings);
+            } else {
+              console.log(`⚠️ Invalid preset value: ${preset}. Valid values: low, medium, high`);
+            }
+          } else {
+            console.log(`⚠️ No preset found in user video settings for user ${user._id}`);
+          }
+        } else {
+          console.log(`⚠️ No user video settings found for user ${user._id}`);
+        }
+      } catch (error: any) {
+        console.error("Error getting user or video settings:", error);
+        return res.status(401).json({
+          success: false,
+          message: "Failed to authenticate user",
+        });
+      }
+    }
+
     // Generate speech for hook, body, and conclusion in parallel
     const result = await generateSpeech({
       voice_id,
@@ -91,6 +198,7 @@ export async function textToSpeech(req: Request, res: Response) {
       conclusion: conclusion.trim(),
       output_format: output_format || "mp3_44100_128",
       model_id: model_id || undefined, // Pass model_id if provided
+      voice_settings: voice_settings || undefined, // Pass voice_settings if available
     });
 
     // Return three MP3 URLs directly

@@ -282,8 +282,8 @@ export async function sendWelcomeEmail(email: string, firstName: string) {
         💡 Getting Started Guide:
       </h3>
       <ol style="color: #4b5563; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <li><strong>Upload a Photo:</strong> Create your custom AI avatar by uploading a clear, well-lit photo</li>
-        <li><strong>Choose Your Plan:</strong> Select from Basic, Growth, or Professional plans based on your video needs</li>
+        <li><strong>Upload a Photo or Video:</strong> Create your custom AI avatar by uploading a clear, well-lit photo or a video</li>
+        <li><strong>Monthly Plan:</strong> Enjoy creating and downloading up to 30 videos each month</li>
         <li><strong>Create Your First Video:</strong> Use our intuitive interface to generate your first AI video</li>
         <li><strong>Download & Share:</strong> Export your videos in high quality and share them with the world</li>
       </ol>

@@ -11,6 +11,48 @@ import { S3Service } from "../s3";
 import { VideoScheduleAPICalls } from "./api-calls.service";
 import { text } from "stream/consumers";
 import { SubscriptionService } from "../subscription.service";
+import ElevenLabsVoice from "../../models/elevenLabsVoice";
+
+/**
+ * Get voice settings based on preset (case insensitive)
+ */
+function getVoiceSettingsByPreset(preset: string): {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+  speed: number;
+} | null {
+  const presetLower = preset?.toLowerCase().trim();
+  
+  if (presetLower === "low") {
+    return {
+      stability: 0.3,
+      similarity_boost: 0.75,
+      style: 0.6,
+      use_speaker_boost: true,
+      speed: 1.15,
+    };
+  } else if (presetLower === "medium" || presetLower === "mid") {
+    return {
+      stability: 0.5,
+      similarity_boost: 0.75,
+      style: 0.4,
+      use_speaker_boost: true,
+      speed: 1.0,
+    };
+  } else if (presetLower === "high") {
+    return {
+      stability: 0.7,
+      similarity_boost: 0.75,
+      style: 0.2,
+      use_speaker_boost: true,
+      speed: 0.9,
+    };
+  }
+  
+  return null;
+}
 
 export class VideoScheduleProcessing {
   private emailService = new ScheduleEmailService();
@@ -240,6 +282,34 @@ export class VideoScheduleProcessing {
         } else {
           console.log(`🎤 Generating speech with voice_id: ${selectedVoiceId}`);
 
+          // Check if voice category is "cloned" and get preset from userSettings
+          let voice_settings = null;
+          try {
+            const voice = await ElevenLabsVoice.findOne({ voice_id: selectedVoiceId });
+            if (voice) {
+              const voiceCategory = voice.category?.toLowerCase().trim();
+              
+              if (voiceCategory === "cloned") {
+                // Get preset directly from userSettings (already know which user)
+                const preset = userSettings.preset;
+                
+                if (preset) {
+                  voice_settings = getVoiceSettingsByPreset(preset);
+                  if (voice_settings) {
+                    console.log(`🎯 Using voice settings for preset: ${preset}`, voice_settings);
+                  } else {
+                    console.log(`⚠️ Invalid preset value: ${preset}. Valid values: low, medium, high`);
+                  }
+                } else {
+                  console.log(`⚠️ No preset found in user settings for auto posting`);
+                }
+              }
+            }
+          } catch (voiceError: any) {
+            console.error("Error checking voice category:", voiceError);
+            // Continue without voice_settings if there's an error
+          }
+
           // Call ElevenLabs TTS API
           ttsResult = await generateSpeech({
             voice_id: selectedVoiceId,
@@ -247,6 +317,7 @@ export class VideoScheduleProcessing {
             body: enhancedContent.body,
             conclusion: enhancedContent.conclusion,
             output_format: "mp3_44100_128",
+            voice_settings: voice_settings || undefined, // Pass voice_settings if available
           });
 
           console.log("✅ ElevenLabs TTS completed:", {

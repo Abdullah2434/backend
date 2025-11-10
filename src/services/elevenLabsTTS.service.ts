@@ -47,6 +47,14 @@ function getVoiceS3Client() {
   });
 }
 
+interface VoiceSettings {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+  speed: number;
+}
+
 interface TextToSpeechOptions {
   hook: string;
   body: string;
@@ -54,6 +62,7 @@ interface TextToSpeechOptions {
   voice_id: string;
   output_format?: string;
   model_id?: string; // Optional: Override model (e.g., "eleven_turbo_v2_5" for 40k chars, "eleven_flash_v2_5" for 40k chars)
+  voice_settings?: VoiceSettings; // Optional: Voice settings for cloned voices
 }
 
 interface SpeechResult {
@@ -129,7 +138,8 @@ async function generateSpeechChunk(
   voice_id: string,
   text: string,
   model_id: string,
-  output_format: string
+  output_format: string,
+  voice_settings?: VoiceSettings
 ): Promise<Buffer> {
   const ttsUrl = `${ELEVENLABS_TTS_URL}/${voice_id}?output_format=${output_format}`;
   
@@ -137,10 +147,17 @@ async function generateSpeechChunk(
   const preview = text.length > 200 ? text.substring(0, 200) + "..." : text;
   console.log(`📤 Sending to ElevenLabs: ${text.length} chars - "${preview}"`);
   
+  // Build request body with optional voice_settings
+  const requestBody: any = { text, model_id };
+  if (voice_settings) {
+    requestBody.voice_settings = voice_settings;
+    console.log(`🎚️ Including voice settings:`, voice_settings);
+  }
+  
   try {
     const response = await axios.post(
       ttsUrl,
-      { text, model_id },
+      requestBody,
       {
         headers: {
           "xi-api-key": API_KEY,
@@ -235,7 +252,8 @@ async function generateSpeechPart(
   text: string,
   model_id: string,
   output_format: string,
-  partName: string
+  partName: string,
+  voice_settings?: VoiceSettings
 ): Promise<SpeechResult> {
   const characterLimit = getCharacterLimit(model_id);
   const textLength = text.length;
@@ -254,7 +272,7 @@ async function generateSpeechPart(
     const audioChunks: Buffer[] = [];
     for (let i = 0; i < chunks.length; i++) {
       console.log(`🎤 Generating chunk ${i + 1}/${chunks.length} for ${partName} (${chunks[i].length} chars)`);
-      const audioBuffer = await generateSpeechChunk(voice_id, chunks[i], model_id, output_format);
+      const audioBuffer = await generateSpeechChunk(voice_id, chunks[i], model_id, output_format, voice_settings);
       audioChunks.push(audioBuffer);
     }
 
@@ -303,7 +321,7 @@ async function generateSpeechPart(
   }
 
   // Text is within limit, process normally
-  const audioBuffer = await generateSpeechChunk(voice_id, text, model_id, output_format);
+  const audioBuffer = await generateSpeechChunk(voice_id, text, model_id, output_format, voice_settings);
   const timestamp = Date.now();
   const hash = crypto.createHash("md5").update(`${text}_${partName}`).digest("hex").substring(0, 8);
   const s3Key = `voices/${voice_id}/${partName}/${timestamp}_${hash}.mp3`;
@@ -414,9 +432,9 @@ export async function generateSpeech(options: TextToSpeechOptions) {
 
     // Generate speech for all three parts in parallel
     const [hookResult, bodyResult, conclusionResult] = await Promise.all([
-      generateSpeechPart(options.voice_id, options.hook, model_id, output_format, "hook"),
-      generateSpeechPart(options.voice_id, options.body, model_id, output_format, "body"),
-      generateSpeechPart(options.voice_id, options.conclusion, model_id, output_format, "conclusion"),
+      generateSpeechPart(options.voice_id, options.hook, model_id, output_format, "hook", options.voice_settings),
+      generateSpeechPart(options.voice_id, options.body, model_id, output_format, "body", options.voice_settings),
+      generateSpeechPart(options.voice_id, options.conclusion, model_id, output_format, "conclusion", options.voice_settings),
     ]);
 
     return {
