@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import * as ctrl from '../../controllers/video.controller'
+import * as muteCtrl from '../../controllers/videoMute.controller'
 
 const router = Router()
 
@@ -17,6 +18,7 @@ router.get('/pending-workflows/:userId', ctrl.checkPendingWorkflows)
 // PUBLIC ROUTES (no authentication required)
 router.post('/download', ctrl.download)
 router.post('/status', ctrl.updateStatus)
+router.post('/mute', muteCtrl.muteVideo)
 
 // PUBLIC ROUTE: Video creation via webhook
 router.post('/create', ctrl.createVideo);

@@ -202,7 +202,9 @@ export class VideoService {
     // Delete from database only (not from S3)
     await Video.deleteOne({ videoId });
 
-    console.log(`✅ Video ${videoId} deleted from database (S3 file preserved)`);
+    console.log(
+      `✅ Video ${videoId} deleted from database (S3 file preserved)`
+    );
 
     return true;
   }
@@ -334,7 +336,9 @@ export class VideoService {
               // Update the video object for this response
               (video as any).socialMediaCaptions = captions;
 
-              console.log(`✅ Regenerated and stored captions for video: ${video.videoId}`);
+              console.log(
+                `✅ Regenerated and stored captions for video: ${video.videoId}`
+              );
             } catch (captionError) {
               console.warn(
                 `Failed to regenerate captions for video ${video.videoId}:`,
