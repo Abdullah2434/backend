@@ -88,9 +88,18 @@ export function sanitizeRequestBody(body: any, endpoint: string): any {
       // Skip length limits for TTS fields (hook, body, conclusion) - they can be very long
       const isTTSField = ['hook', 'body', 'conclusion'].includes(key.toLowerCase())
       
-      if (isTTSField) {
-        // For TTS fields, only remove HTML tags and dangerous characters, but don't limit length
-        let cleaned = value.trim()
+      // Skip length limits and aggressive sanitization for caption fields - preserve user input
+      const isCaptionField = key.toLowerCase().includes('caption') || 
+                            key.toLowerCase().includes('instagram') ||
+                            key.toLowerCase().includes('facebook') ||
+                            key.toLowerCase().includes('linkedin') ||
+                            key.toLowerCase().includes('twitter') ||
+                            key.toLowerCase().includes('tiktok') ||
+                            key.toLowerCase().includes('youtube')
+      
+      if (isTTSField || isCaptionField) {
+        // For TTS and caption fields, only remove HTML tags and dangerous characters, but preserve spaces and don't limit length
+        let cleaned = value // Don't trim - preserve leading/trailing spaces if user wants them
         cleaned = stripHtmlTags(cleaned)
         cleaned = cleaned.replace(/[<>\"'&]/g, '')
         sanitized[key] = cleaned
