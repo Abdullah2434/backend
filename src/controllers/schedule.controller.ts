@@ -48,14 +48,14 @@ function requireAuth(req: Request) {
  */
 export async function getPendingSchedulePosts(req: Request, res: Response) {
   try {
-    console.log("📋 Getting pending schedule posts...");
+  
 
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
     // Detect timezone from request headers
     const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
+
 
     // Get user's active schedule
     const schedule = await videoScheduleService.getUserSchedule(payload.userId);

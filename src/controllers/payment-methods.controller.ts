@@ -22,11 +22,9 @@ export async function getPaymentMethods(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
     
-    console.log(`🔍 Fetching payment methods for user: ${payload.userId}`);
     
     const paymentMethods = await paymentMethodsService.getPaymentMethods(payload.userId);
     
-    console.log(`✅ Found ${paymentMethods.length} payment methods for user`);
     
     return res.json({
       success: true,
@@ -55,11 +53,9 @@ export async function createSetupIntent(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
     
-    console.log(`🔍 Creating setup intent for user: ${payload.userId}`);
     
     const setupIntentData = await paymentMethodsService.createSetupIntent(payload.userId);
     
-    console.log(`✅ Setup intent created: ${setupIntentData.setupIntent.id}`);
     
     return res.json({
       success: true,
@@ -93,7 +89,7 @@ export async function updatePaymentMethod(req: Request, res: Response) {
       });
     }
 
-    console.log(`🔍 Confirming setup intent: ${setupIntentId} for user: ${payload.userId}`);
+
     
     const cardInfo = await paymentMethodsService.confirmSetupIntent(
       payload.userId,
@@ -101,7 +97,6 @@ export async function updatePaymentMethod(req: Request, res: Response) {
       setAsDefault || false
     );
     
-    console.log(`✅ Payment method confirmed and attached: ${cardInfo.id}`);
     
     return res.status(201).json({
       success: true,
@@ -138,11 +133,9 @@ export async function setDefaultPaymentMethod(req: Request, res: Response) {
       });
     }
 
-    console.log(`🔍 Setting default payment method: ${paymentMethodId} for user: ${payload.userId}`);
     
     await paymentMethodsService.setDefaultPaymentMethod(payload.userId, paymentMethodId);
     
-    console.log(`✅ Payment method set as default: ${paymentMethodId}`);
     
     return res.json({
       success: true,

@@ -44,9 +44,7 @@ export const generateDynamicPosts = asyncHandler(
             city: userSettings.city,
             socialHandles: userSettings.socialHandles,
           };
-          console.log(
-            `📋 Retrieved agent info from UserVideoSettings: ${agentInfo.name} - ${agentInfo.companyName}`
-          );
+        
         } else {
           console.log(
             `⚠️ No UserVideoSettings found for user ${userId}, using default agent info`
@@ -62,10 +60,6 @@ export const generateDynamicPosts = asyncHandler(
       // Merge with provided userContext (form data takes priority)
       const finalUserContext = { ...agentInfo, ...userContext };
 
-      console.log(`🎯 Generating dynamic posts for user ${userId}`);
-      console.log(`📝 Topic: ${topic}`);
-      console.log(`🎯 Platforms: ${platforms.join(", ")}`);
-
       // Generate dynamic posts
       const generatedPosts =
         await DynamicPostGenerationService.generateDynamicPosts(
@@ -76,7 +70,7 @@ export const generateDynamicPosts = asyncHandler(
           platforms
         );
 
-      console.log(`✅ Generated ${generatedPosts.length} dynamic posts`);
+
 
       res.status(200).json({
         success: true,
@@ -303,13 +297,7 @@ export const testDynamicPosts = asyncHandler(
         ...userContext,
       };
 
-      console.log(`🧪 Testing dynamic post generation`);
-      console.log(`📝 Topic: ${topic}`);
-      console.log(
-        `🎯 Platforms: ${
-          Array.isArray(platforms) ? platforms.join(", ") : platforms || "all"
-        }`
-      );
+  
 
       // Ensure platforms is an array
       const platformsArray = Array.isArray(platforms)
@@ -328,7 +316,7 @@ export const testDynamicPosts = asyncHandler(
           platformsArray
         );
 
-      console.log(`✅ Generated ${generatedPosts.length} test posts`);
+
 
       res.status(200).json({
         success: true,

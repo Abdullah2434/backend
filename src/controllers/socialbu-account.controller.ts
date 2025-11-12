@@ -8,11 +8,9 @@ import { userConnectedAccountService } from '../services/userConnectedAccount.se
 export const disconnectAccount = async (req: Request, res: Response, token: string) => {
   try {
     const { accountId } = req.params;
-    console.log("Getting user from token")
     const authService = new (await import("../services/auth.service")).default();
 
     const user = await authService.getCurrentUser(token);
-    console.log("User found:", user)
     if (!user) {
       return res.status(401).json({
         success: false,

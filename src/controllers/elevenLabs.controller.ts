@@ -403,8 +403,6 @@ export async function getVoiceById(req: Request, res: Response) {
  */
 export async function syncVoices(req: Request, res: Response) {
   try {
-    console.log("🔄 Manual ElevenLabs voices sync triggered via API");
-
     // Run sync in background (don't wait for completion)
     fetchAndSyncElevenLabsVoices().catch((error: any) => {
       console.error("❌ ElevenLabs voices sync failed:", error);
