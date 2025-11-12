@@ -27,6 +27,7 @@ import {
 import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
+import { startHeyGenAvatarSyncCron } from "./cron/syncHeyGenAvatars";
 import "./queues/photoAvatarWorker";
 import { connectMongo } from "./config/mongoose";
 import { notificationService } from "./services/notification.service";
@@ -83,14 +84,7 @@ app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "1gb" }));
 
 // Special middleware for video avatar endpoint to handle large files
 app.use("/api/v2/video_avatar", (req, res, next) => {
-  // Log request details for debugging
-  console.log("🚀 Video Avatar Request Debug:");
-  console.log("- Method:", req.method);
-  console.log("- Content-Type:", req.headers["content-type"]);
-  console.log("- Content-Length:", req.headers["content-length"]);
-  console.log("- User-Agent:", req.headers["user-agent"]);
-  console.log("- X-Forwarded-For:", req.headers["x-forwarded-for"]);
-  console.log("- Host:", req.headers["host"]);
+  
 
   // Set specific headers for large file uploads
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -213,6 +207,9 @@ cron.schedule("*/2 * * * *", async () => {
   console.log("Checking pending avatars status...");
   await checkPendingAvatarsAndUpdate();
 });
+
+// Start HeyGen avatar sync cron job (runs every 5 minutes)
+startHeyGenAvatarSyncCron();
 
 // Start scheduled video processing cron jobs
 startAllCronJobs();
