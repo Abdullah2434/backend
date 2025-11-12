@@ -88,6 +88,9 @@ export class VideoScheduleProcessing {
     const trend = schedule.generatedTrends[trendIndex];
     if (!trend) throw new Error("Trend not found");
 
+    // Check if video is already processing to prevent duplicate emails
+    const isAlreadyProcessing = trend.status === "processing";
+    
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
@@ -139,20 +142,26 @@ export class VideoScheduleProcessing {
       console.error("Subscription check failed for scheduled video:", subErr);
     }
 
-    // Send processing email (non-blocking)
-    try {
-      const processingEmailData: VideoProcessingEmailData = {
-        userEmail: schedule.email,
-        scheduleId: schedule._id.toString(),
-        videoTitle: trend.description,
-        videoDescription: trend.description,
-        videoKeypoints: trend.keypoints,
-        startedAt: new Date(),
-        timezone: schedule.timezone,
-      };
-      await this.emailService.sendVideoProcessingEmail(processingEmailData);
-    } catch (emailError) {
-      console.error("Error sending video processing email:", emailError);
+    // Send processing email only once (when video first starts processing)
+    // Only send if status was not already "processing" (prevents duplicate emails)
+    if (!isAlreadyProcessing) {
+      try {
+        const processingEmailData: VideoProcessingEmailData = {
+          userEmail: schedule.email,
+          scheduleId: schedule._id.toString(),
+          videoTitle: trend.description,
+          videoDescription: trend.description,
+          videoKeypoints: trend.keypoints,
+          startedAt: new Date(),
+          timezone: schedule.timezone,
+        };
+        await this.emailService.sendVideoProcessingEmail(processingEmailData);
+        console.log(`📧 Video processing email sent for: ${trend.description}`);
+      } catch (emailError) {
+        console.error("Error sending video processing email:", emailError);
+      }
+    } else {
+      console.log(`⏭️ Skipping email - video already in processing state: ${trend.description}`);
     }
 
     notificationService.notifyScheduledVideoProgress(
@@ -536,33 +545,10 @@ export class VideoScheduleProcessing {
 
       const trend = schedule.generatedTrends[trendIndex];
 
-      // Send email notification for completed videos
+      // Do NOT send email notification when video is completed
+      // (Email is only sent when video starts processing)
       if (status === "completed") {
-        try {
-          // Check if this is the last video in the schedule
-          const completedVideos = schedule.generatedTrends.filter(
-            (t: any) => t.status === "completed"
-          ).length;
-          const totalVideos = schedule.generatedTrends.length;
-          const isLastVideo = completedVideos === totalVideos;
-
-          const emailData: VideoGeneratedEmailData = {
-            userEmail: schedule.email,
-            scheduleId: schedule._id.toString(),
-            videoTitle: trend.description,
-            videoDescription: trend.description,
-            videoKeypoints: trend.keypoints,
-            generatedAt: new Date(),
-            videoId: videoId,
-            isLastVideo: isLastVideo,
-            timezone: schedule.timezone, // Add timezone for email display
-          };
-
-          await this.emailService.sendVideoGeneratedEmail(emailData);
-        } catch (emailError) {
-          console.error("Error sending video generated email:", emailError);
-          // Don't fail the status update if email fails
-        }
+        console.log(`✅ Video completed (no email sent): ${trend.description}`);
       }
 
       // Log status update (no WebSocket notification)

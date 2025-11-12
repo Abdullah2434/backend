@@ -196,10 +196,22 @@ class ScheduleEmailService {
             </ul>
           </div>
 
+          <!-- Visit Website Button -->
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="https://www.edgeairealty.com/" 
+               target="_blank"
+               style="background-color: #5046E5; color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; transition: background-color 0.2s;">
+              🌐 Visit EdgeAI Website
+            </a>
+          </div>
+
           <!-- Footer -->
           <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e5e5;">
             <p style="color: #667085; margin: 0; font-size: 14px;">
               Need help? Contact us at support@edgeai.com
+            </p>
+            <p style="color: #667085; margin: 10px 0 0 0; font-size: 14px;">
+              <a href="https://www.edgeairealty.com/" target="_blank" style="color: #5046E5; text-decoration: none;">Visit our website</a>
             </p>
           </div>
         </div>
