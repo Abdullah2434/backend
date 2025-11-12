@@ -162,7 +162,9 @@ export class VideoSchedulePostManagement {
         `🔄 Topic changed from "${originalDescription}" to "${updateData.description}". Fetching new key points from OpenAI...`
       );
       try {
-        const trendData = await generateFromDescription(updateData.description);
+        // TypeScript: description is guaranteed to be defined here because descriptionChanged is true
+        const description = updateData.description!;
+        const trendData = await generateFromDescription(description);
         newKeypoints = trendData.keypoints;
         console.log(
           `✅ Generated new key points from OpenAI based on new topic`
@@ -199,16 +201,22 @@ export class VideoSchedulePostManagement {
           );
         }
 
-        // Create user context from user settings
+        // Create user context from user settings (provide defaults if not available)
         const userContext = userSettings
           ? {
-              name: userSettings.name,
-              position: userSettings.position,
-              companyName: userSettings.companyName,
-              city: userSettings.city,
-              socialHandles: userSettings.socialHandles,
+              name: userSettings.name || "",
+              position: userSettings.position || "",
+              companyName: userSettings.companyName || "",
+              city: userSettings.city || "",
+              socialHandles: userSettings.socialHandles || "",
             }
-          : undefined;
+          : {
+              name: "",
+              position: "",
+              companyName: "",
+              city: "",
+              socialHandles: "",
+            };
 
         // Use the new description and new keypoints for caption generation
         const descriptionForCaptions =
