@@ -1,5 +1,8 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import { generateFromDescription } from "../trends.service";
+import UserVideoSettings from "../../models/UserVideoSettings";
+import { DynamicPostGenerationService } from "../dynamicPostGeneration.service";
+import { VideoScheduleCaptionGeneration } from "./caption-generation.service";
 
 export class VideoSchedulePostManagement {
   /**
@@ -145,14 +148,15 @@ export class VideoSchedulePostManagement {
     const originalKeypoints = post.keypoints;
     let newKeypoints = updateData.keypoints;
 
+    // Check if description changed
+    const descriptionChanged =
+      updateData.description !== undefined &&
+      updateData.description.trim() !== originalDescription.trim();
+
     // IMPORTANT: Only fetch new keypoints from OpenAI if description (topic) changes
     // If description doesn't change, keep existing keypoints (no OpenAI call)
     // If keypoints are explicitly provided, use those instead of fetching
-    if (
-      updateData.description !== undefined &&
-      updateData.description.trim() !== originalDescription.trim() &&
-      updateData.keypoints === undefined
-    ) {
+    if (descriptionChanged && updateData.keypoints === undefined) {
       // Description changed and keypoints not provided → fetch new keypoints from OpenAI
       console.log(
         `🔄 Topic changed from "${originalDescription}" to "${updateData.description}". Fetching new key points from OpenAI...`
@@ -173,13 +177,107 @@ export class VideoSchedulePostManagement {
         newKeypoints = originalKeypoints;
         console.log(`⚠️ Keeping existing key points due to OpenAI error`);
       }
-    } else if (
-      updateData.description === undefined ||
-      updateData.description.trim() === originalDescription.trim()
-    ) {
+    } else if (!descriptionChanged) {
       // Description not changed → keep existing keypoints (no OpenAI call)
       if (updateData.keypoints === undefined) {
         newKeypoints = originalKeypoints; // Keep existing
+      }
+    }
+
+    // Generate dynamic captions when description changes (same method as schedule creation)
+    if (descriptionChanged) {
+      console.log(
+        `🔄 Topic changed, generating dynamic captions (same method as schedule creation)...`
+      );
+
+      try {
+        // Fetch user settings for context
+        const userSettings = await UserVideoSettings.findOne({ userId });
+        if (!userSettings) {
+          console.warn(
+            `⚠️ User video settings not found for user ${userId}, generating captions without user context`
+          );
+        }
+
+        // Create user context from user settings
+        const userContext = userSettings
+          ? {
+              name: userSettings.name,
+              position: userSettings.position,
+              companyName: userSettings.companyName,
+              city: userSettings.city,
+              socialHandles: userSettings.socialHandles,
+            }
+          : undefined;
+
+        // Use the new description and new keypoints for caption generation
+        const descriptionForCaptions =
+          updateData.description || originalDescription;
+        const keypointsForCaptions = newKeypoints || originalKeypoints;
+
+        // Generate dynamic posts using the same method as schedule creation
+        const dynamicPosts =
+          await DynamicPostGenerationService.generateDynamicPosts(
+            descriptionForCaptions,
+            keypointsForCaptions,
+            userContext,
+            userId,
+            [
+              "instagram",
+              "facebook",
+              "linkedin",
+              "twitter",
+              "tiktok",
+              "youtube",
+            ]
+          );
+
+        // Extract captions using the helper method
+        const generatedCaptions = {
+          instagram_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "instagram"
+          ),
+          facebook_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "facebook"
+          ),
+          linkedin_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "linkedin"
+          ),
+          twitter_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "twitter"
+          ),
+          tiktok_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "tiktok"
+          ),
+          youtube_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
+            dynamicPosts,
+            "youtube"
+          ),
+        };
+
+        // Replace ALL old captions with new generated ones (ignore user-provided captions when description changes)
+        post.instagram_caption = generatedCaptions.instagram_caption;
+        post.facebook_caption = generatedCaptions.facebook_caption;
+        post.linkedin_caption = generatedCaptions.linkedin_caption;
+        post.twitter_caption = generatedCaptions.twitter_caption;
+        post.tiktok_caption = generatedCaptions.tiktok_caption;
+        post.youtube_caption = generatedCaptions.youtube_caption;
+        post.enhanced_with_dynamic_posts = true;
+        post.caption_status = "ready";
+        post.caption_processed_at = new Date();
+
+        console.log(`✅ Generated dynamic captions for all 6 platforms`);
+      } catch (error: any) {
+        console.error(
+          `⚠️ Failed to generate dynamic captions, keeping existing captions:`,
+          error.message
+        );
+        // Continue with existing captions as fallback - don't fail the entire update
       }
     }
 
@@ -196,24 +294,30 @@ export class VideoSchedulePostManagement {
     if (updateData.scheduledFor !== undefined) {
       post.scheduledFor = updateData.scheduledFor;
     }
-    // Captions are only updated if explicitly provided - no automatic regeneration
-    if (updateData.instagram_caption !== undefined) {
-      post.instagram_caption = updateData.instagram_caption;
-    }
-    if (updateData.facebook_caption !== undefined) {
-      post.facebook_caption = updateData.facebook_caption;
-    }
-    if (updateData.linkedin_caption !== undefined) {
-      post.linkedin_caption = updateData.linkedin_caption;
-    }
-    if (updateData.twitter_caption !== undefined) {
-      post.twitter_caption = updateData.twitter_caption;
-    }
-    if (updateData.tiktok_caption !== undefined) {
-      post.tiktok_caption = updateData.tiktok_caption;
-    }
-    if (updateData.youtube_caption !== undefined) {
-      post.youtube_caption = updateData.youtube_caption;
+
+    // Captions handling:
+    // - If description changed: captions were already generated above (user-provided captions are ignored)
+    // - If description didn't change: only update captions that are explicitly provided
+    if (!descriptionChanged) {
+      // Description didn't change - use user-provided captions (only update provided ones)
+      if (updateData.instagram_caption !== undefined) {
+        post.instagram_caption = updateData.instagram_caption;
+      }
+      if (updateData.facebook_caption !== undefined) {
+        post.facebook_caption = updateData.facebook_caption;
+      }
+      if (updateData.linkedin_caption !== undefined) {
+        post.linkedin_caption = updateData.linkedin_caption;
+      }
+      if (updateData.twitter_caption !== undefined) {
+        post.twitter_caption = updateData.twitter_caption;
+      }
+      if (updateData.tiktok_caption !== undefined) {
+        post.tiktok_caption = updateData.tiktok_caption;
+      }
+      if (updateData.youtube_caption !== undefined) {
+        post.youtube_caption = updateData.youtube_caption;
+      }
     }
 
     // Save the updated schedule to database

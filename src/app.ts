@@ -36,6 +36,11 @@ import { notificationService } from "./services/notification.service";
 const app = express();
 const server = createServer(app);
 
+// Set server-level timeout (default is 2 minutes, increase for long-running requests)
+server.setTimeout(600000); // 10 minutes
+server.keepAliveTimeout = 65000; // 65 seconds
+server.headersTimeout = 66000; // 66 seconds
+
 // Initialize WebSocket server
 notificationService.initialize(server);
 
@@ -95,6 +100,22 @@ app.use("/api/v2/video_avatar", (req, res, next) => {
   req.setTimeout(600000); // 10 minutes
   res.setTimeout(600000); // 10 minutes
 
+  next();
+});
+
+// Special middleware for schedule edit endpoint to handle dynamic caption generation
+app.use((req, res, next) => {
+  // Check if this is the schedule edit endpoint (PUT /api/schedule/:scheduleId/post/:postId)
+  if (
+    req.method === "PUT" &&
+    req.path &&
+    req.path.match(/^\/api\/schedule\/[^/]+\/post\/[^/]+$/)
+  ) {
+    // Increase timeout for dynamic caption generation (OpenAI API calls)
+    req.setTimeout(600000); // 10 minutes
+    res.setTimeout(600000); // 10 minutes
+    console.log(`⏱️ Increased timeout for schedule edit endpoint: ${req.path}`);
+  }
   next();
 });
 
