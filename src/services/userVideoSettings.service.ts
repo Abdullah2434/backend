@@ -36,6 +36,7 @@ export interface UserVideoSettingsData {
   city: string;
   preferredTone: string;
   callToAction: string;
+  gender?: "male" | "female";
   email: string;
   voiceEnergy?: VoiceEnergyLevel;
   musicEnergy?: MusicEnergyLevel;
@@ -96,6 +97,7 @@ export class UserVideoSettingsService {
           city: data.city,
           preferredTone: data.preferredTone,
           callToAction: data.callToAction,
+          gender: data.gender,
           email: data.email,
           voiceEnergy: data.voiceEnergy,
           musicEnergy: data.musicEnergy,
@@ -133,6 +135,7 @@ export class UserVideoSettingsService {
         city: data.city,
         preferredTone: data.preferredTone,
         callToAction: data.callToAction,
+        gender: data.gender,
         voiceEnergy: data.voiceEnergy,
         musicEnergy: data.musicEnergy,
         selectedMusicTrackId: data.selectedMusicTrackId,
