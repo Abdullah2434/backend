@@ -24,8 +24,7 @@ export async function checkPendingAvatarsAndUpdate() {
       if (status === "ready") {
         avatar.status = "ready";
         await avatar.save();
-        console.log(`Avatar ${avatarId} is now ready.`);
-
+  
         // Send notification to user that avatar is ready
         if (avatar.userId) {
           notificationService.notifyPhotoAvatarProgress(

@@ -88,7 +88,7 @@ export class SocialBuInsightsService {
         '/insights/posts/top_posts',
         requestBody
       );
-      console.log('insightsResult', JSON?.stringify(insightsResult, null, 2));
+
       if (!insightsResult.success || !insightsResult.data) {
         return {
           success: false,
@@ -177,7 +177,6 @@ export class SocialBuInsightsService {
         data: responseData,
       };
     } catch (error) {
-      console.error("Error getting user top posts", error);
       return {
         success: false,
         message: "Failed to retrieve user top posts",

@@ -13,7 +13,6 @@ import { socialBuInsightsService } from "../services/socialbu-insights.service";
  */
 export const manualLogin = async (req: Request, res: Response) => {
   try {
-    console.log("Manual SocialBu login requested");
 
     const result = await socialBuService.manualLogin();
 
@@ -30,8 +29,7 @@ export const manualLogin = async (req: Request, res: Response) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("Error in manual login:", error);
-
+ 
     res.status(500).json({
       success: false,
       message: "Failed to login to SocialBu",
@@ -54,7 +52,6 @@ export const saveToken = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Saving SocialBu token manually");
 
     const result = await socialBuService.saveToken({
       authToken,
@@ -84,8 +81,7 @@ export const saveToken = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error saving token:", error);
-
+   
     res.status(500).json({
       success: false,
       message: "Failed to save token",
@@ -134,20 +130,16 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Getting SocialBu accounts for user:", userId);
-
     // Get all SocialBu accounts
     let socialBuResult = await socialBuService.getAccounts();
 
     // If still not successful, try one more time with fresh login
     if (!socialBuResult.success) {
-      console.log("First attempt failed, trying fresh login...");
-
+   
       // Try to login and get fresh token
       const loginResult = await socialBuService.manualLogin();
 
       if (loginResult.success) {
-        console.log("Fresh login successful, retrying accounts...");
         // Try again with fresh token
         socialBuResult = await socialBuService.getAccounts();
       }
@@ -167,9 +159,7 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
 
     // If SocialBu accounts are not available, return user's account IDs
     if (!socialBuResult.success) {
-      console.log(
-        "SocialBu accounts not available, returning user account IDs"
-      );
+   
       return res.status(200).json({
         success: true,
         message: "User connected accounts retrieved successfully",
@@ -199,8 +189,7 @@ export const getAccountsPublic = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error getting user SocialBu accounts:", error);
-
+    
     res.status(500).json({
       success: false,
       message: "Failed to get user SocialBu accounts",
@@ -237,12 +226,6 @@ export const connectAccount = async (req: Request, res: Response) => {
       ? `${postback_url}?user_id=${userId}`
       : `http://localhost:4000/api/webhook/socialbu?user_id=${userId}`;
 
-    console.log("Connecting new account:", {
-      provider,
-      postback_url: userSpecificPostbackUrl,
-      account_id,
-      userId,
-    });
 
     const result = await socialBuService.connectAccount(
       provider,
@@ -264,8 +247,6 @@ export const connectAccount = async (req: Request, res: Response) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("Error connecting account:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to connect account",
@@ -282,14 +263,6 @@ export const testAuth = async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
     const accessToken = authHeader?.replace("Bearer ", "");
 
-    console.log("Test auth request:", {
-      user: req.user,
-      hasUser: !!req.user,
-      userId: req.user?._id,
-      hasToken: !!accessToken,
-      tokenLength: accessToken?.length,
-    });
-
     res.status(200).json({
       success: true,
       message: "Authentication test successful",
@@ -302,7 +275,6 @@ export const testAuth = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error in test auth:", error);
     res.status(500).json({
       success: false,
       message: "Test auth failed",
@@ -382,8 +354,7 @@ export const getInsights = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getScheduledPosts = async (req: Request, res: Response) => {
   try {
-    console.log("Getting scheduled posts from SocialBu...");
-
+ 
     // Get user ID from authenticated request or body
     const userId = req.user?._id || req.body.user_id;
 
@@ -395,7 +366,6 @@ export const getScheduledPosts = async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`Getting scheduled posts for user: ${userId}`);
 
     // Get user's SocialBu account IDs
     const userResult = await webhookService.getUserSocialBuAccounts(userId);
@@ -408,16 +378,10 @@ export const getScheduledPosts = async (req: Request, res: Response) => {
     }
 
     const userAccountIds = userResult.data?.socialbu_account_ids || [];
-    console.log(
-      `User has ${
-        userAccountIds.length
-      } connected SocialBu accounts: ${userAccountIds.join(", ")}`
-    );
-    
+   
     // Ensure all account IDs are numbers
     const normalizedAccountIds = userAccountIds.map((id: string | number) => Number(id));
-    console.log(`Normalized account IDs: ${normalizedAccountIds.join(", ")} (types: ${normalizedAccountIds.map((id: number) => typeof id).join(", ")})`);
-
+  
     // Get scheduled posts filtered by user's account IDs
     const result = await socialBuService.getScheduledPosts(normalizedAccountIds);
 
@@ -441,7 +405,6 @@ export const getScheduledPosts = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error getting scheduled posts:", error);
 
     res.status(500).json({
       success: false,
@@ -456,9 +419,7 @@ export const getScheduledPosts = async (req: Request, res: Response) => {
  */
 export const testConnection = async (req: Request, res: Response) => {
   try {
-    console.log("Testing SocialBu API connection");
-
-    // Try to get a valid token
+  
     const token = await socialBuService.getValidToken();
 
     if (!token) {
@@ -477,8 +438,7 @@ export const testConnection = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error testing connection:", error);
-
+  
     res.status(500).json({
       success: false,
       message: "Failed to test connection",

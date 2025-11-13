@@ -46,15 +46,13 @@ function requireAuth(req: Request) {
  */
 export async function createSchedule(req: Request, res: Response) {
   try {
-    console.log("📝 Creating video schedule...");
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
 
     const payload = requireAuth(req);
     const { frequency, schedule, startDate, endDate } = req.body;
 
     // Detect timezone from request
     const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
+  
 
     // Validate required fields (endDate is optional - will be set to one month from startDate)
     if (!frequency || !schedule || !startDate) {
@@ -113,18 +111,6 @@ export async function createSchedule(req: Request, res: Response) {
         });
       }
     }
-
-    // Keep original times - they will be converted to UTC in the service
-    // when combined with specific dates
-    if (processedSchedule.times && Array.isArray(processedSchedule.times)) {
-      console.log(
-        "🕐 Keeping original times for timezone conversion in service:",
-        processedSchedule.times
-      );
-      console.log("🌍 User timezone:", timezone);
-    }
-
-    console.log("Processed schedule:", processedSchedule);
 
     // Validate frequency
     const validFrequencies = ["once_week", "twice_week", "three_week", "daily"];
@@ -202,15 +188,6 @@ export async function createSchedule(req: Request, res: Response) {
       endDateUTC = new Date(); // Will be overridden to one month
     }
 
-    console.log(
-      `🕐 Start date conversion: ${startDate} (${timezone}) → ${startDateUTC.toISOString()} (UTC)`
-    );
-    if (endDate) {
-      console.log(
-        `🕐 End date conversion: ${endDate} (${timezone}) → ${endDateUTC.toISOString()} (UTC)`
-      );
-    }
-
     const scheduleData: ScheduleData = {
       frequency,
       schedule: processedSchedule,
@@ -243,12 +220,6 @@ export async function createSchedule(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("❌ Error creating schedule:", e);
-    console.error("Error details:", {
-      message: e.message,
-      stack: e.stack,
-      name: e.name,
-    });
 
     // Return appropriate status code based on error type
     const statusCode = e.message.includes("Access token")
@@ -322,7 +293,6 @@ export async function getSchedule(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error getting schedule:", e);
     return res.status(500).json({
       success: false,
       message: e.message || "Failed to get video schedule",
@@ -365,7 +335,7 @@ export async function updateSchedule(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error updating schedule:", e);
+  
     return res.status(400).json({
       success: false,
       message: e.message || "Failed to update video schedule",
@@ -398,7 +368,7 @@ export async function deactivateSchedule(req: Request, res: Response) {
       message: "Schedule deactivated successfully",
     });
   } catch (e: any) {
-    console.error("Error deactivating schedule:", e);
+  
     return res.status(500).json({
       success: false,
       message: e.message || "Failed to deactivate video schedule",
@@ -454,7 +424,7 @@ export async function getScheduleDetails(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error getting schedule details:", e);
+  
     return res.status(500).json({
       success: false,
       message: e.message || "Failed to get schedule details",
@@ -508,7 +478,6 @@ export async function getScheduleStats(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error getting schedule stats:", e);
     return res.status(500).json({
       success: false,
       message: e.message || "Failed to get schedule statistics",

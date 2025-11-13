@@ -232,20 +232,13 @@ function extractJsonFromText(content: string): any {
   try {
     return JSON.parse(candidateFixed);
   } catch (err) {
-    console.warn("Parse failed, attempting auto-repair...");
-    console.log("Original content:", content.substring(0, 200) + "...");
-    console.log(
-      "Parse error:",
-      err instanceof Error ? err.message : String(err)
-    );
+    
 
     // Try parsing the original candidate first
     try {
       return JSON.parse(cleaned);
     } catch (err2) {
-      console.warn(
-        "Original candidate also failed, trying more aggressive fixes..."
-      );
+    
     }
 
     // If array opened but not closed
@@ -277,12 +270,11 @@ function extractJsonFromText(content: string): any {
         try {
           return JSON.parse(trimmed);
         } catch (err3) {
-          console.error("Final JSON parse failed. Returning empty array.");
+   
           return [];
         }
       }
 
-      console.error("No valid JSON found at all. Returning empty array.");
       return [];
     }
   }
@@ -409,13 +401,9 @@ function generateFastTrends(
 
   if (matchedKey) {
     templates = positionTemplates[matchedKey];
-    console.log(
-      `✅ Matched template for position: "${position}" → "${matchedKey}"`
-    );
+   
   } else {
-    console.warn(
-      `⚠️ No template match for position: "${position}", using default "Real Estate Agent" templates`
-    );
+
   }
 
   // Generate requested number of trends
@@ -520,10 +508,7 @@ Return ONLY valid JSON, no additional text.`;
       throw error;
     }
     
-    console.warn(
-      "Error validating description with AI, falling back to keyword validation:",
-      error
-    );
+  
     return validateWithKeywords(description);
   }
 }
@@ -564,8 +549,7 @@ async function checkContentSafety(
         // Reset regex lastIndex to avoid issues with global regex
         pattern.lastIndex = 0;
         if (pattern.test(normalizedContent)) {
-          console.warn(`⚠️ Content moderation flagged ${category}:`, content.substring(0, 100));
-          console.log(`🔒 Blocked content: "${normalizedContent}" matched pattern in ${category}`);
+    
           return {
             isSafe: false,
             reason: `Content contains inappropriate ${category} related content`,
@@ -620,11 +604,6 @@ async function checkContentSafety(
             else if (foundCategory.includes("sexual")) category = "nudity";
             else if (foundCategory.includes("violence")) category = "vulgar";
 
-            console.warn(`⚠️ OpenAI moderation flagged content:`, {
-              category: foundCategory,
-              score: moderationResult.category_scores?.[foundCategory],
-              content: content.substring(0, 100),
-            });
 
             return {
               isSafe: false,
@@ -637,10 +616,7 @@ async function checkContentSafety(
         // Content passed OpenAI moderation
         return { isSafe: true };
       } catch (moderationError: any) {
-        console.warn(
-          "Error calling OpenAI moderation API, using keyword fallback:",
-          moderationError.message
-        );
+     
         // Fall through to return safe if keyword check passed
       }
     }
@@ -648,7 +624,7 @@ async function checkContentSafety(
     // Content passed all checks
     return { isSafe: true };
   } catch (error) {
-    console.error("Error validating content safety:", error);
+   
     // On error, err on the side of caution - reject content
     return {
       isSafe: false,
@@ -748,10 +724,7 @@ export async function generateFromDescription(
       throw new Error("OPENAI_API_KEY environment variable is not set");
     }
 
-    // First, validate content safety (racism, nudity, vulgar content) - this is REQUIRED
-    console.log(
-      `🔒 Validating content safety: "${description.substring(0, 100)}..."`
-    );
+ 
     const safetyCheck = await checkContentSafety(description);
     if (!safetyCheck.isSafe) {
       const errorMessage =
@@ -763,27 +736,16 @@ export async function generateFromDescription(
       throw new Error(errorMessage);
     }
 
-    console.log(`✅ Content safety check passed`);
-
-    // Optional: Check if description is real estate related (for better context, but not required)
-    console.log(
-      `🔍 Checking if description is real estate related: "${description.substring(0, 100)}..."`
-    );
     let isRealEstateRelated = false;
     try {
       isRealEstateRelated = await validateRealEstateDescription(description);
-      if (isRealEstateRelated) {
-        console.log(`✅ Description is real estate related`);
-      } else {
-        console.log(`ℹ️ Description is not real estate related, but will still generate content`);
-      }
+    
     } catch (validationError: any) {
       // If validation throws a content moderation error, re-throw it
       if (validationError.message?.includes("CONTENT_MODERATION_ERROR")) {
         throw validationError;
       }
-      // Otherwise, continue even if validation fails - we allow non-real-estate content
-      console.log(`ℹ️ Real estate validation failed, but continuing with content generation`);
+
     }
 
     const cityInfo = city ? cityData[city] : null;
@@ -880,7 +842,7 @@ Return only valid JSON:
       keypoints: keypoints,
     };
   } catch (error) {
-    console.error(`Error generating content from description:`, error);
+   
 
     // Re-throw validation errors and content moderation errors (they should be returned as 400 errors)
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -930,30 +892,18 @@ export async function generateCityBasedTrends(
     const cacheKey = `${normalizedCity}_${normalizedPosition}_${count}`;
     const cached = trendsCache.get(cacheKey);
 
-    console.log(
-      `🔍 Cache lookup: City="${city}", Position="${position}" → Cache Key: "${cacheKey}"`
-    );
+  
 
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(
-        `✅ Cache HIT: Returning cached trends for ${city} (${position}) - Cache Key: ${cacheKey}`
-      );
+   
       return cached.data;
     }
 
-    if (cached) {
-      console.log(
-        `⏰ Cache EXPIRED: Generating new trends for ${city} (${position}) - Cache Key: ${cacheKey}`
-      );
-    } else {
-      console.log(
-        `🆕 Cache MISS: Generating new trends for ${city} (${position}) - Cache Key: ${cacheKey}`
-      );
-    }
+
 
     // For fast mode or small counts, use template-based generation
     if (count <= 5) {
-      console.log(`Using fast template generation for ${city} (${position})`);
+ 
       const trends = generateFastTrends(city, position, count);
 
       // Cache the results with city and position in key
@@ -961,9 +911,7 @@ export async function generateCityBasedTrends(
         data: trends,
         timestamp: Date.now(),
       });
-      console.log(
-        `💾 Cache SAVED: Trends cached for ${city} (${position}) - Cache Key: ${cacheKey}`
-      );
+    
 
       return trends;
     }
@@ -1036,9 +984,7 @@ Ensure all fields are filled and formatted as strings. Keypoints must be a comma
 
     // Handle count mismatch gracefully
     if (parsed.length !== count) {
-      console.warn(
-        `Expected ${count} trends but got ${parsed.length}. Adjusting to match request.`
-      );
+
 
       // If we got fewer than requested, pad with generated trends
       if (parsed.length < count) {
@@ -1091,16 +1037,12 @@ Ensure all fields are filled and formatted as strings. Keypoints must be a comma
       data: mappedTrends,
       timestamp: Date.now(),
     });
-    console.log(
-      `💾 Cache SAVED: AI-generated trends cached for ${city} (${position}) - Cache Key: ${cacheKey}`
-    );
+
 
     return mappedTrends;
   } catch (error) {
     if (retryCount < 1) {
-      console.warn(
-        `First attempt failed for ${city} (${position}), retrying once...`
-      );
+   
       return await generateCityBasedTrends(
         city,
         position,
@@ -1109,10 +1051,7 @@ Ensure all fields are filled and formatted as strings. Keypoints must be a comma
         seed
       );
     }
-    console.error(`Error generating trends for ${city}:`, error);
 
-    // Return fallback trends if AI completely fails
-    console.log(`Generating fallback trends for ${city}`);
     return generateFallbackTrends(city, count);
   }
 }
@@ -1205,18 +1144,16 @@ Ensure all fields are filled and formatted as strings.
 
     // Log if we got fewer trends than requested
     if (mappedTrends.length < count) {
-      console.warn(
-        `⚠️ Requested ${count} trends but got ${mappedTrends.length} trends`
-      );
+ 
     }
 
     return mappedTrends;
   } catch (error) {
     if (retryCount < 1) {
-      console.warn("First attempt failed, retrying once...");
+ 
       return await generateRealEstateTrends(count, retryCount + 1, seed);
     }
-    console.error("Error generating real estate trends:", error);
+
     return [];
   }
 }

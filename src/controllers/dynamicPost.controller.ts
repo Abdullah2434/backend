@@ -84,7 +84,6 @@ export const generateDynamicPosts = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error generating dynamic posts:", error);
       res.status(500).json({
         success: false,
         message: "Failed to generate dynamic posts",
@@ -127,7 +126,6 @@ export const getPostHistory = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error retrieving post history:", error);
       res.status(500).json({
         success: false,
         message: "Failed to retrieve post history",
@@ -230,7 +228,6 @@ export const getPostAnalytics = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error retrieving post analytics:", error);
       res.status(500).json({
         success: false,
         message: "Failed to retrieve post analytics",
@@ -265,7 +262,6 @@ export const getTemplates = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error retrieving templates:", error);
       res.status(500).json({
         success: false,
         message: "Failed to retrieve templates",
@@ -330,7 +326,6 @@ export const testDynamicPosts = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error generating test dynamic posts:", error);
       res.status(500).json({
         success: false,
         message: "Failed to generate test dynamic posts",
@@ -352,9 +347,6 @@ export const enhanceScheduleWithDynamicPosts = asyncHandler(
           message: "User not authenticated",
         });
       }
-
-      // This would integrate with VideoScheduleService
-      // For now, return a placeholder response
       res.status(200).json({
         success: true,
         message: "Schedule enhancement endpoint ready",
@@ -365,7 +357,6 @@ export const enhanceScheduleWithDynamicPosts = asyncHandler(
         },
       });
     } catch (error) {
-      console.error("Error enhancing schedule:", error);
       res.status(500).json({
         success: false,
         message: "Failed to enhance schedule",

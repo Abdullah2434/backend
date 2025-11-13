@@ -170,19 +170,9 @@ export async function textToSpeech(req: Request, res: Response) {
           
           if (preset) {
             voice_settings = getVoiceSettingsByPreset(preset);
-            if (voice_settings) {
-              console.log(`🎯 Using voice settings for preset: ${preset}`, voice_settings);
-            } else {
-              console.log(`⚠️ Invalid preset value: ${preset}. Valid values: low, medium, high`);
-            }
-          } else {
-            console.log(`⚠️ No preset found in user video settings for user ${user._id}`);
           }
-        } else {
-          console.log(`⚠️ No user video settings found for user ${user._id}`);
         }
       } catch (error: any) {
-        console.error("Error getting user or video settings:", error);
         return res.status(401).json({
           success: false,
           message: "Failed to authenticate user",
@@ -212,7 +202,6 @@ export async function textToSpeech(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error in textToSpeech:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to generate speech",
@@ -246,9 +235,6 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
           }
         } catch (error) {
           // Invalid token - continue without userId (will only return default voices)
-          console.log(
-            "Optional auth: Invalid token, returning default voices only"
-          );
         }
       }
     }
@@ -315,7 +301,6 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
       count: voicesWithCustomFlag.length,
     });
   } catch (error: any) {
-    console.error("Error fetching voices:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch voices",
@@ -390,7 +375,6 @@ export async function getVoiceById(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error fetching voice by ID:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch voice",
@@ -404,8 +388,8 @@ export async function getVoiceById(req: Request, res: Response) {
 export async function syncVoices(req: Request, res: Response) {
   try {
     // Run sync in background (don't wait for completion)
-    fetchAndSyncElevenLabsVoices().catch((error: any) => {
-      console.error("❌ ElevenLabs voices sync failed:", error);
+    fetchAndSyncElevenLabsVoices().catch(() => {
+      // Error handled silently
     });
 
     return res.status(200).json({
@@ -413,7 +397,7 @@ export async function syncVoices(req: Request, res: Response) {
       message: "ElevenLabs voices sync started successfully",
     });
   } catch (error: any) {
-    console.error("Error starting voices sync:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to start voices sync",
@@ -497,7 +481,6 @@ export async function addCustomVoiceEndpoint(
       },
     });
   } catch (error: any) {
-    console.error("Error adding custom voice:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to add custom voice",

@@ -26,11 +26,6 @@ export const uploadMedia = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Starting complete media upload workflow for user:", userId, {
-      name,
-      mime_type,
-      videoUrl,
-    });
 
     const result = await socialBuMediaService.uploadMedia(userId, {
       name,
@@ -72,8 +67,7 @@ export const uploadMedia = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error in media upload workflow:", error);
-
+ 
     res.status(500).json({
       success: false,
       message: "Failed to complete media upload workflow",
@@ -96,7 +90,7 @@ export const getUserMedia = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Getting media for user:", userId);
+
 
     const result = await socialBuMediaService.getUserMedia(userId);
 
@@ -114,7 +108,7 @@ export const getUserMedia = async (req: Request, res: Response) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("Error getting user media:", error);
+   
 
     res.status(500).json({
       success: false,
@@ -146,7 +140,7 @@ export const getMediaById = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Getting media by ID:", mediaId, "for user:", userId);
+
 
     const result = await socialBuMediaService.getMediaById(mediaId);
 
@@ -164,8 +158,7 @@ export const getMediaById = async (req: Request, res: Response) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("Error getting media by ID:", error);
-
+    
     res.status(500).json({
       success: false,
       message: "Failed to get media",
@@ -196,7 +189,6 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Updating media status:", mediaId, "to", status);
 
     const result = await socialBuMediaService.updateMediaStatus(
       mediaId,
@@ -218,8 +210,7 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
       data: result.data,
     });
   } catch (error) {
-    console.error("Error updating media status:", error);
-
+    
     res.status(500).json({
       success: false,
       message: "Failed to update media status",
@@ -320,7 +311,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Selected accounts length:", normalizedSelectedAccounts.length);
+    
 
     if (!name || !videoUrl || !date || !time || !caption) {
       return res.status(400).json({
@@ -329,17 +320,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       });
     }
 
-    console.log("Starting social media post creation workflow:", {
-      accountIds: normalizedAccountIds,
-      name,
-      videoUrl,
-      date,
-      time,
-      caption,
-    });
-
-    // Step 1: Use the working media upload logic
-    console.log("Step 1: Using working media upload logic...");
+  
     const uploadResult = await socialBuMediaService.uploadMedia(userId, {
       name,
       mime_type: videoUrl,
@@ -365,10 +346,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
     }
 
     const { key } = socialbuResponse;
-    console.log("Media upload completed successfully, key:", key);
-
-    // Step 2: Wait 2 seconds and check upload status
-    console.log("Step 2: Waiting 2 seconds before checking upload status...");
+   
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const statusResponse = await socialBuService.makeAuthenticatedRequest(
@@ -376,7 +354,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       `/upload_media/status?key=${encodeURIComponent(key)}`
     );
 
-    console.log("Status response:", statusResponse);
+  
 
     if (!statusResponse.success) {
       return res.status(400).json({
@@ -387,13 +365,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
     }
 
     const { upload_token } = statusResponse.data;
-    console.log(
-      "Upload status checked successfully, upload_token:",
-      upload_token
-    );
-
-    // Step 3: Create social media posts for each selected account
-    console.log("Step 3: Creating social media posts for each account...");
+  
 
     // Format date and time for publish_at
     const publishAt = `${date} ${time}`;
@@ -405,8 +377,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
     try {
       for (const account of normalizedSelectedAccounts) {
         try {
-          console.log(`Processing account: ${account.name} (${account.type})`);
-
+         
           // Determine the appropriate caption based on account type
           let accountCaption = caption; // Default to main caption
 
@@ -447,7 +418,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
           );
 
           if (postResponse.success) {
-            console.log(`Post created successfully for ${account.name}`);
+  
             results.push({
               account: account.name,
               accountId: account.id,
@@ -456,10 +427,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
               data: postResponse.data,
             });
           } else {
-            console.error(
-              `Failed to create post for ${account.name}:`,
-              postResponse.message
-            );
+        
             errors.push({
               account: account.name,
               accountId: account.id,
@@ -471,7 +439,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
           // Add a small delay between posts to avoid rate limiting
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } catch (error) {
-          console.error(`Error creating post for ${account.name}:`, error);
+        
           errors.push({
             account: account.name,
             accountId: account.id,
@@ -481,7 +449,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
         }
       }
     } catch (loopError) {
-      console.error("Error in account processing loop:", loopError);
+      
       return res.status(500).json({
         success: false,
         message: "Failed to process selected accounts",
@@ -489,10 +457,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       });
     }
 
-    console.log(
-      `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`
-    );
-
+ 
     res.status(200).json({
       success: true,
       message: `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`,
@@ -509,8 +474,7 @@ export const createSocialPost = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error in social media post creation workflow:", error);
-
+    
     res.status(500).json({
       success: false,
       message: "Failed to create social media post",

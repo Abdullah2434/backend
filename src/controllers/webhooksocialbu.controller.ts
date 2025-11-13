@@ -6,13 +6,6 @@ import webhookService from '../services/webhooksocialbu.service';
  */
 export const testWebhook = async (req: Request, res: Response) => {
   try {
-    console.log('Test webhook request:', {
-      body: req.body,
-      headers: req.headers,
-      method: req.method,
-      rawBody: req.body
-    });
-
     // Try to parse body if it's a string
     let parsedBody = req.body;
     if (typeof req.body === 'string') {
@@ -35,7 +28,7 @@ export const testWebhook = async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error in test webhook:', error);
+
     res.status(500).json({
       success: false,
       message: 'Test webhook failed',
@@ -49,22 +42,13 @@ export const testWebhook = async (req: Request, res: Response) => {
  */
 export const handleSocialBuWebhook = async (req: Request, res: Response) => {
   try {
-    console.log('=== SocialBu Webhook Debug ===');
-    console.log('Request Method:', req.method);
-    console.log('Request URL:', req.url);
-    console.log('Request Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Request Query:', JSON.stringify(req.query, null, 2));
-    console.log('Request Body Type:', typeof req.body);
-    console.log('Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('Request Body Length:', req.body ? JSON.stringify(req.body).length : 0);
-    console.log('================================');
-
+  
     // Try to parse body if it's a string
     let webhookData = req.body;
     if (typeof req.body === 'string') {
       try {
         webhookData = JSON.parse(req.body);
-        console.log('Parsed JSON body:', JSON.stringify(webhookData, null, 2));
+    
       } catch (e) {
         console.error('Failed to parse JSON body:', e);
         console.error('Raw body that failed to parse:', req.body);
@@ -74,26 +58,10 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
     const { account_action, account_id, account_type, account_name } = webhookData || {};
     const userId = req.query.user_id as string; // Extract user ID from query parameters
 
-    console.log('Extracted data:', {
-      account_action,
-      account_id,
-      account_type,
-      account_name,
-      userId
-    });
 
     // Validate required fields
     if (!account_action || !account_id || !account_type || !account_name) {
-      console.log('Validation failed - Missing required fields:', {
-        hasAccountAction: !!account_action,
-        hasAccountId: !!account_id,
-        hasAccountType: !!account_type,
-        hasAccountName: !!account_name,
-        account_action,
-        account_id,
-        account_type,
-        account_name
-      });
+ 
       
       return res.status(400).json({
         success: false,
@@ -130,18 +98,6 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
       data: result.data
     });
   } catch (error) {
-    console.error('=== SocialBu Webhook Error ===');
-    console.error('Error details:', error);
-    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    console.error('Request details:', {
-      method: req.method,
-      url: req.url,
-      headers: req.headers,
-      body: req.body,
-      query: req.query
-    });
-    console.error('===============================');
     
     res.status(500).json({
       success: false,
@@ -186,7 +142,6 @@ export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
       data: result.data
     });
   } catch (error) {
-    console.error('Error getting user SocialBu accounts:', error);
     
     res.status(500).json({
       success: false,
@@ -226,8 +181,7 @@ export const removeUserSocialBuAccount = async (req: Request, res: Response) => 
       data: result.data
     });
   } catch (error) {
-    console.error('Error removing SocialBu account:', error);
-    
+
     res.status(500).json({
       success: false,
       message: 'Failed to remove SocialBu account',

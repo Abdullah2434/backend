@@ -34,7 +34,7 @@ class WebhookService {
     try {
       await connectMongo();
 
-      console.log('Processing SocialBu webhook:', webhookData, 'for user:', userId);
+  
 
       const { account_action, account_id, account_type, account_name } = webhookData;
 
@@ -53,7 +53,6 @@ class WebhookService {
           }
         );
 
-        console.log(`${account_action === 'updated' ? 'Updated' : 'Added'} account ${account_id} to ${result.modifiedCount} user(s)`);
 
         return {
           success: true,
@@ -81,7 +80,6 @@ class WebhookService {
           }
         );
 
-        console.log(`Removed account ${account_id} from ${result.modifiedCount} user(s)`);
 
         return {
           success: true,
@@ -101,7 +99,6 @@ class WebhookService {
         };
       }
     } catch (error) {
-      console.error('Error processing SocialBu webhook:', error);
       return {
         success: false,
         message: 'Failed to process webhook',
@@ -134,7 +131,6 @@ class WebhookService {
         }
       };
     } catch (error) {
-      console.error('Error getting user SocialBu accounts:', error);
       return {
         success: false,
         message: 'Failed to get SocialBu accounts',
@@ -175,7 +171,6 @@ class WebhookService {
         }
       };
     } catch (error) {
-      console.error('Error removing SocialBu account:', error);
       return {
         success: false,
         message: 'Failed to remove SocialBu account',
@@ -191,7 +186,6 @@ class WebhookService {
     try {
       await connectMongo();
 
-      console.log(`Checking if user ${userId} has account ${accountId}`);
 
       const user = await User.findById(userId);
       if (!user) {
@@ -215,7 +209,6 @@ class WebhookService {
         }
       };
     } catch (error) {
-      console.error('Error checking user account:', error);
       return {
         success: false,
         message: 'Failed to check user account',

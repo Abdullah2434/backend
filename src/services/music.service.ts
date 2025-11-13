@@ -64,7 +64,7 @@ export class MusicService {
       await musicTrack.save();
       return musicTrack;
     } catch (error: any) {
-      console.error("Error creating music track:", error);
+
       throw new Error(`Failed to create music track: ${error.message}`);
     }
   }
@@ -139,7 +139,7 @@ export class MusicService {
       await MusicTrack.deleteOne({ trackId });
       return true;
     } catch (error: any) {
-      console.error("Error deleting music track:", error);
+
       throw new Error(`Failed to delete music track: ${error.message}`);
     }
   }
@@ -167,7 +167,7 @@ export class MusicService {
 
       return track;
     } catch (error: any) {
-      console.error("Error generating clean URLs for track:", error);
+  
       // Return track with original URLs if generation fails
       return track;
     }
@@ -191,7 +191,7 @@ export class MusicService {
       const urlObj = new URL(url);
       return urlObj.pathname.substring(1); // Remove leading slash
     } catch (error: any) {
-      console.error("Error extracting S3 key from URL:", error);
+
       return null;
     }
   }

@@ -54,7 +54,7 @@ export class WebhookService {
         };
       }
 
-      console.log(`Sending webhook to ${webhookUrl}:`, webhookPayload);
+
 
       const response = await fetch(webhookUrl, {
         method: "POST",
@@ -80,7 +80,6 @@ export class WebhookService {
         data: responseData,
       };
     } catch (error: any) {
-      console.error("Error sending webhook:", error);
       return {
         success: false,
         message: `Webhook failed: ${error.message}`,
@@ -112,7 +111,7 @@ export class WebhookService {
         Buffer.from(expectedSignature, "hex")
       );
     } catch (error) {
-      console.error("Error verifying webhook signature:", error);
+    
       return false;
     }
   }
@@ -121,9 +120,7 @@ export class WebhookService {
    * Validate user token (placeholder implementation)
    */
   private async validateUserToken(token: string): Promise<any> {
-    // This is a placeholder implementation
-    // In a real application, you would validate the JWT token here
-    console.log("Validating user token:", token);
+
     return {
       id: "user123",
       email: "user@example.com",
@@ -152,7 +149,7 @@ export class WebhookService {
       // Send webhook notification
       return await this.sendWebhookNotification(webhookUrl, payload, user);
     } catch (error: any) {
-      console.error("Error processing webhook with auth:", error);
+  
       return {
         success: false,
         message: `Webhook processing failed: ${error.message}`,
@@ -171,10 +168,7 @@ export class WebhookService {
     title: string
   ): Promise<void> {
     try {
-      console.log(
-        `📊 Tracking ${webhookType} webhook completion for video: ${videoId}`
-      );
-
+ 
       // Find or create webhook status record
       let webhookStatus = await VideoWebhookStatus.findOne({ videoId });
 
@@ -206,15 +200,6 @@ export class WebhookService {
       if (bothCompleted && !webhookStatus.allWebhooksCompleted) {
         webhookStatus.allWebhooksCompleted = true;
         webhookStatus.allWebhooksCompletedAt = new Date();
-
-        console.log(`🎉 Both webhooks completed for video: ${videoId}`);
-        console.log(
-          `🔄 Triggering dynamic generation for video: ${videoId} (video may still be processing)`
-        );
-        //new commit
-        
-        // Trigger dynamic generation immediately when second webhook arrives
-        // This happens even if video is still in "processing" status
         await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
           videoId,
           email,
@@ -223,9 +208,7 @@ export class WebhookService {
 
         // Call trends API to generate keypoints from description (video title)
         try {
-          console.log(
-            `📊 Calling trends API for keypoints generation: ${title}`
-          );
+     
 
           // Get city from UserVideoSettings using email
           const UserVideoSettings =
@@ -236,11 +219,9 @@ export class WebhookService {
           const videoCity = userSettings?.city || null;
 
           if (videoCity) {
-            console.log(`📍 City found in user settings: ${videoCity}`);
+         
           } else {
-            console.log(
-              `📍 No city found in user settings, proceeding without city`
-            );
+       
           }
 
           // Call generateFromDescription API with video title as description
@@ -250,10 +231,7 @@ export class WebhookService {
           );
 
           if (keypointsResult && keypointsResult.keypoints) {
-            console.log(
-              `✅ Generated keypoints from trends API: ${keypointsResult.keypoints}`
-            );
-
+        
             // Update PendingCaptions with generated keypoints
             const PendingCaptions =
               require("../models/PendingCaptions").default;
@@ -269,38 +247,19 @@ export class WebhookService {
               { upsert: true, new: true }
             );
 
-            console.log(`💾 Keypoints saved for video: ${videoId}`);
+           
           }
         } catch (keypointsError: any) {
-          console.error(
-            `⚠️ Error generating keypoints from trends API for video ${videoId}:`,
-            keypointsError
-          );
+        
           // Don't fail the webhook if keypoints generation fails
         }
       }
 
       await webhookStatus.save();
 
-      console.log(`📊 Webhook status updated for video ${videoId}:`);
-      console.log(
-        `  📹 Video webhook: ${
-          webhookStatus.videoWebhookCompleted ? "✅" : "⏳"
-        }`
-      );
-      console.log(
-        `  📝 Caption webhook: ${
-          webhookStatus.captionWebhookCompleted ? "✅" : "⏳"
-        }`
-      );
-      console.log(
-        `  🎯 All webhooks: ${webhookStatus.allWebhooksCompleted ? "✅" : "⏳"}`
-      );
+    
     } catch (error: any) {
-      console.error(
-        `❌ Error tracking webhook completion for video ${videoId}:`,
-        error
-      );
+     
     }
   }
 
@@ -319,14 +278,12 @@ export class WebhookService {
           videoId,
           status as "processing" | "ready" | "failed"
         );
-        console.log(`Video ${videoId} status updated to: ${status}`);
+
       }
 
       // Handle scheduled video completion
       if (scheduleId && trendIndex !== undefined) {
-        console.log(
-          `🎬 Processing scheduled video completion: ${videoId} for schedule ${scheduleId}, trend ${trendIndex}`
-        );
+   
 
         // Update schedule status
         await this.videoScheduleService.updateVideoStatus(
@@ -346,39 +303,7 @@ export class WebhookService {
             if (schedule && schedule.generatedTrends[trendIndex]) {
               const trend = schedule.generatedTrends[trendIndex];
 
-              // Use existing captions from schedule instead of generating new ones
-              console.log(
-                "📋 Using existing captions from schedule database..."
-              );
-              console.log("📋 Available captions in schedule:");
-              console.log(
-                `  📱 Instagram: ${
-                  trend.instagram_caption ? "Available" : "Missing"
-                }`
-              );
-              console.log(
-                `  📱 Facebook: ${
-                  trend.facebook_caption ? "Available" : "Missing"
-                }`
-              );
-              console.log(
-                `  📱 LinkedIn: ${
-                  trend.linkedin_caption ? "Available" : "Missing"
-                }`
-              );
-              console.log(
-                `  📱 Twitter: ${
-                  trend.twitter_caption ? "Available" : "Missing"
-                }`
-              );
-              console.log(
-                `  📱 TikTok: ${trend.tiktok_caption ? "Available" : "Missing"}`
-              );
-              console.log(
-                `  📱 YouTube: ${
-                  trend.youtube_caption ? "Available" : "Missing"
-                }`
-              );
+              
 
               // Store captions from schedule in video record
               const captionsFromSchedule = {
@@ -394,20 +319,11 @@ export class WebhookService {
                 videoId,
                 captionsFromSchedule
               );
-              console.log(
-                `✅ Captions from schedule stored for video ${videoId}`
-              );
+         
 
               // Auto post to social media platforms
               try {
-                console.log(
-                  `🚀 Starting auto social media posting for scheduled video ${videoId}`
-                );
-                console.log(`📋 Video URL: ${updatedVideo.videoUrl}`);
-                console.log(`📋 Video Title: ${trend.description}`);
-                console.log(`📋 User ID: ${schedule.userId}`);
-                console.log(`📋 Schedule ID: ${scheduleId}`);
-                console.log(`📋 Trend Index: ${trendIndex}`);
+           
 
                 const postingResults =
                   await this.autoSocialPostingService.postVideoToSocialMedia({
@@ -418,40 +334,26 @@ export class WebhookService {
                     videoTitle: trend.description,
                   });
 
-                console.log(`📱 Auto social posting results:`, postingResults);
+  
 
                 // Log posting results
                 const successfulPosts = postingResults.filter((r) => r.success);
                 const failedPosts = postingResults.filter((r) => !r.success);
 
                 if (successfulPosts.length > 0) {
-                  console.log(
-                    `✅ Successfully posted to ${successfulPosts.length} platforms:`,
-                    successfulPosts.map((r) => r.accountName).join(", ")
-                  );
+                  
                 }
 
                 if (failedPosts.length > 0) {
-                  console.log(
-                    `❌ Failed to post to ${failedPosts.length} platforms:`,
-                    failedPosts
-                      .map((r) => `${r.accountName} (${r.error})`)
-                      .join(", ")
-                  );
+               
                 }
               } catch (postingError) {
-                console.error(
-                  `❌ Error in auto social media posting for video ${videoId}:`,
-                  postingError
-                );
+             
                 // Don't fail the webhook if social posting fails
               }
             }
           } catch (captionError) {
-            console.error(
-              `❌ Error storing captions for video ${videoId}:`,
-              captionError
-            );
+          
             // Don't fail the webhook if caption storage fails
           }
         }
@@ -462,9 +364,7 @@ export class WebhookService {
       // This happens regardless of video status (processing/ready) - captions generate in background
       if (updatedVideo && !scheduleId) {
         try {
-          console.log(
-            `📊 Tracking video webhook completion for manual video: ${videoId}`
-          );
+    
           
           // Only track if video is ready (for webhook tracking system)
           if (finalStatus === "ready") {
@@ -476,10 +376,7 @@ export class WebhookService {
             );
           }
         } catch (trackingError) {
-          console.error(
-            `❌ Error tracking webhook completion for video ${videoId}:`,
-            trackingError
-          );
+    
           // Don't fail the webhook if tracking fails
         }
 
@@ -487,22 +384,15 @@ export class WebhookService {
         // This happens after n8n webhook completes (second hook), even if video is still processing
         (async () => {
           try {
-            console.log(
-              `🎨 Starting asynchronous caption generation for video: ${videoId} after n8n webhook completion (video status: ${finalStatus})`
-            );
+       
             await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
               videoId,
               updatedVideo.email,
               updatedVideo.title
             );
-            console.log(
-              `✅ Asynchronous caption generation completed for video: ${videoId}`
-            );
+         
           } catch (captionError) {
-            console.error(
-              `❌ Error in asynchronous caption generation for video ${videoId}:`,
-              captionError
-            );
+        
             // Don't fail the webhook response if caption generation fails
           }
         })();
@@ -519,7 +409,7 @@ export class WebhookService {
         },
       };
     } catch (error: any) {
-      console.error("Error processing video completion:", error);
+
       return {
         success: false,
         message: `Video completion processing failed: ${error.message}`,
@@ -540,15 +430,13 @@ export class WebhookService {
     const { videoId, status, email, title } = data;
 
     try {
-      console.log(`📝 Caption webhook received for video: ${videoId}`);
+
 
       // If email and title are provided, track caption webhook completion
       if (email && title) {
         await this.trackWebhookCompletion(videoId, "caption", email, title);
       } else {
-        console.log(
-          `⚠️ Email and title not provided for caption webhook ${videoId}, skipping tracking`
-        );
+    
       }
 
       return {
@@ -560,7 +448,7 @@ export class WebhookService {
         },
       };
     } catch (error: any) {
-      console.error("Error processing caption completion:", error);
+ 
       return {
         success: false,
         message: `Caption completion processing failed: ${error.message}`,
@@ -608,7 +496,7 @@ export class WebhookService {
         },
       };
     } catch (error: any) {
-      console.error("Error processing legacy video completion:", error);
+
       return {
         success: false,
         message: `Video completion processing failed: ${error.message}`,

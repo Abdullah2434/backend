@@ -35,8 +35,7 @@ export async function getPaymentMethods(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("❌ Error fetching payment methods:", e.message);
-    
+  
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
@@ -62,9 +61,7 @@ export async function createSetupIntent(req: Request, res: Response) {
       message: "Setup intent created successfully",
       data: setupIntentData,
     });
-  } catch (e: any) {
-    console.error("❌ Error creating setup intent:", e.message);
-    
+  } catch (e: any) {    
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
@@ -106,7 +103,6 @@ export async function updatePaymentMethod(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("❌ Error updating payment method:", e.message);
     
     const status = e.message.includes("Access token") ? 401 : 
                    e.message.includes("not succeeded") ? 400 : 500;
@@ -142,7 +138,6 @@ export async function setDefaultPaymentMethod(req: Request, res: Response) {
       message: "Default payment method updated successfully",
     });
   } catch (e: any) {
-    console.error("❌ Error setting default payment method:", e.message);
     
     let status = 500;
     let message = e.message || "Internal server error";
@@ -179,19 +174,17 @@ export async function removePaymentMethod(req: Request, res: Response) {
       });
     }
 
-    console.log(`🔍 Removing payment method: ${paymentMethodId} for user: ${payload.userId}`);
     
     await paymentMethodsService.removePaymentMethod(payload.userId, paymentMethodId);
     
-    console.log(`✅ Payment method removed: ${paymentMethodId}`);
     
     return res.json({
       success: true,
       message: "Payment method removed successfully",
     });
   } catch (e: any) {
-    console.error("❌ Error removing payment method:", e.message);
-    
+  
+  
     const status = e.message.includes("Access token") ? 401 : 
                    e.message.includes("does not belong") ? 403 :
                    e.message.includes("Cannot remove") ? 400 : 500;

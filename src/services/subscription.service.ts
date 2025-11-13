@@ -145,11 +145,6 @@ export class SubscriptionService {
       }
     }
 
-    // DO NOT create subscription record here - wait for manual sync after payment
-    // The subscription record will be created when the frontend calls /api/subscription/sync-from-stripe
-    console.log(
-      `📝 Stripe subscription created: ${subscription.id}, waiting for manual sync after payment`
-    );
 
     // Return a temporary subscription object for API response
     // The actual database record will be created via manual sync endpoint
@@ -339,32 +334,18 @@ export class SubscriptionService {
     stripeSubscriptionId: string,
     status: string
   ): Promise<void> {
-    console.log(
-      `🔍 Looking for subscription with Stripe ID: ${stripeSubscriptionId}`
-    );
+  
     const subscription = await Subscription.findOne({ stripeSubscriptionId });
 
     if (subscription) {
-      console.log(`✅ Found subscription in database:`, {
-        id: subscription._id,
-        userId: subscription.userId,
-        currentStatus: subscription.status,
-        planId: subscription.planId,
-        stripeCustomerId: subscription.stripeCustomerId,
-      });
-
-      console.log(
-        `🔄 Updating subscription ${stripeSubscriptionId} status from ${subscription.status} to ${status}`
-      );
+     
 
       const oldStatus = subscription.status;
       subscription.status = status as any;
 
       // If status is changing to active, update the period dates
       if (status === "active" && oldStatus !== "active") {
-        console.log(
-          `🎉 Subscription is becoming active! Updating period dates...`
-        );
+      
         try {
           // Get the latest subscription data from Stripe to ensure we have current period info
           const stripeSubscription = await this.stripe.subscriptions.retrieve(
@@ -378,49 +359,30 @@ export class SubscriptionService {
             stripeSubscription.current_period_end * 1000
           );
 
-          console.log(
-            `📅 Updated period dates for subscription ${stripeSubscriptionId}:`,
-            {
-              start: subscription.currentPeriodStart,
-              end: subscription.currentPeriodEnd,
-            }
-          );
+         
         } catch (error) {
-          console.error(
-            `❌ Failed to fetch Stripe subscription data for ${stripeSubscriptionId}:`,
-            error
-          );
+          
         }
       } else {
-        console.log(
-          `ℹ️ Status change from ${oldStatus} to ${status} - no period update needed`
-        );
+        
       }
 
-      console.log(`💾 Saving subscription to database...`);
+
       await subscription.save();
 
       // Verify the save was successful
       const verifySubscription = await Subscription.findOne({
         stripeSubscriptionId,
       });
-      console.log(
-        `✅ Database save verification: Status is now ${verifySubscription?.status}`
-      );
-
-      console.log(
-        `🎯 Successfully updated subscription ${stripeSubscriptionId} status to ${status}`
-      );
+      
     } else {
-      console.error(
-        `❌ Subscription not found for stripeSubscriptionId: ${stripeSubscriptionId}`
-      );
+      
 
       // Additional debugging: List all subscriptions to see what's available
       const allSubscriptions = await Subscription.find({})
         .select("stripeSubscriptionId status planId")
         .limit(5);
-      console.log(`🔍 Available subscriptions in database:`, allSubscriptions);
+    
     }
   }
 
@@ -432,9 +394,7 @@ export class SubscriptionService {
     paymentIntentId: string
   ): Promise<string | null> {
     try {
-      console.log(
-        `🔍 Looking for subscription ID from payment intent ${paymentIntentId}...`
-      );
+    
 
       const paymentIntent = await this.stripe.paymentIntents.retrieve(
         paymentIntentId
@@ -442,15 +402,11 @@ export class SubscriptionService {
 
       // Method 1: Check metadata for subscription ID
       if (paymentIntent.metadata?.subscriptionId) {
-        console.log(
-          `✅ Found subscription ID in metadata: ${paymentIntent.metadata.subscriptionId}`
-        );
+       
         return paymentIntent.metadata.subscriptionId;
       }
 
-      console.log(
-        `⚠️ Subscription ID not found in payment intent metadata. Checking invoice...`
-      );
+     
 
       // Method 2: Check invoice (payment intent might be linked to invoice)
       if (paymentIntent.invoice) {
@@ -459,7 +415,6 @@ export class SubscriptionService {
             ? paymentIntent.invoice
             : paymentIntent.invoice.id;
 
-        console.log(`📄 Found invoice link: ${invoiceId}, retrieving invoice...`);
 
         const invoice = await this.stripe.invoices.retrieve(invoiceId);
         if (invoice.subscription) {
@@ -467,20 +422,13 @@ export class SubscriptionService {
             typeof invoice.subscription === "string"
               ? invoice.subscription
               : invoice.subscription.id;
-          console.log(
-            `✅ Found subscription ID from invoice: ${subscriptionId}`
-          );
+        
           return subscriptionId;
         }
-        console.log(`⚠️ Invoice ${invoiceId} has no subscription link`);
+
       }
 
-      // Method 3: Search for invoices with this payment intent
-      // This handles cases where the invoice might not be directly linked
-      console.log(
-        `🔍 Searching for invoices with payment intent ${paymentIntentId}...`
-      );
-
+     
       // Try to get customer ID from payment intent to narrow search
       let customerId: string | undefined;
       if (paymentIntent.customer) {
@@ -496,7 +444,7 @@ export class SubscriptionService {
 
       if (customerId) {
         searchParams.customer = customerId;
-        console.log(`🔍 Narrowing search to customer: ${customerId}`);
+      
       }
 
       const invoices = await this.stripe.invoices.list(searchParams);
@@ -513,26 +461,16 @@ export class SubscriptionService {
               typeof invoice.subscription === "string"
                 ? invoice.subscription
                 : invoice.subscription.id;
-            console.log(
-              `✅ Found subscription ID by searching invoices: ${subscriptionId}`
-            );
+           
             return subscriptionId;
           }
         }
       }
 
-      console.error(
-        `❌ Could not find subscription ID for payment intent ${paymentIntentId}`
-      );
-      console.error(`Payment intent metadata:`, paymentIntent.metadata);
-      console.error(`Payment intent invoice:`, paymentIntent.invoice);
 
       return null;
     } catch (error) {
-      console.error(
-        `❌ Error getting subscription ID from payment intent ${paymentIntentId}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+    
       return null;
     }
   }
@@ -555,9 +493,7 @@ export class SubscriptionService {
       // Check if it's a payment intent ID (starts with "pi_")
       if (stripeSubscriptionIdOrPaymentIntentId.startsWith("pi_")) {
         paymentIntentId = stripeSubscriptionIdOrPaymentIntentId;
-        console.log(
-          `🔍 Payment intent ID provided: ${paymentIntentId}, finding subscription...`
-        );
+     
 
         // Get subscription ID from payment intent
         const foundSubscriptionId =
@@ -570,9 +506,7 @@ export class SubscriptionService {
         }
 
         stripeSubscriptionId = foundSubscriptionId;
-        console.log(
-          `✅ Found subscription ID: ${stripeSubscriptionId} from payment intent ${paymentIntentId}`
-        );
+  
       }
 
       // Get subscription from Stripe
@@ -580,9 +514,6 @@ export class SubscriptionService {
         stripeSubscriptionId
       );
 
-      console.log(
-        `🔄 Syncing subscription ${stripeSubscriptionId} from Stripe (status: ${stripeSubscription.status})`
-      );
 
       // Get local subscription
       let localSubscription = await Subscription.findOne({
@@ -591,9 +522,7 @@ export class SubscriptionService {
 
       // If subscription doesn't exist, create it from Stripe data
       if (!localSubscription) {
-        console.log(
-          `📝 Subscription ${stripeSubscriptionId} not found locally, creating from Stripe data`
-        );
+    
 
         // Get userId from metadata or parameter
         const subscriptionUserId =
@@ -628,9 +557,6 @@ export class SubscriptionService {
           );
         }
 
-        console.log(
-          `✅ Successfully created subscription ${stripeSubscriptionId} from Stripe`
-        );
       } else {
         // Update existing subscription with all current data from Stripe
         const oldStatus = localSubscription.status;
@@ -646,9 +572,7 @@ export class SubscriptionService {
 
         await localSubscription.save();
 
-        console.log(
-          `✅ Successfully synced subscription ${stripeSubscriptionId} status from ${oldStatus} to ${localSubscription.status}`
-        );
+
       }
 
       // Ensure billing records exist for all invoices of this subscription
@@ -665,10 +589,7 @@ export class SubscriptionService {
         stripeSubscriptionId ||
         stripeSubscriptionIdOrPaymentIntentId ||
         "unknown";
-      console.error(
-        `❌ Error syncing subscription ${subscriptionIdForLog}:`,
-        error?.message || error
-      );
+    
       throw error;
     }
   }
@@ -784,9 +705,7 @@ export class SubscriptionService {
     stripeCustomerId: string,
     paymentIntentId: string
   ): Promise<void> {
-    console.log(
-      `🔍 Searching for recent subscription for customer: ${stripeCustomerId}`
-    );
+  
 
     try {
       // Find the most recent subscription for this customer that might need syncing
@@ -796,15 +715,10 @@ export class SubscriptionService {
       }).sort({ createdAt: -1 }); // Most recent first
 
       if (!localSubscription) {
-        console.log(
-          `📭 No pending subscriptions found for customer ${stripeCustomerId}`
-        );
+  
         return;
       }
 
-      console.log(
-        `🎯 Found potential subscription to sync: ${localSubscription.stripeSubscriptionId}`
-      );
 
       // Get the latest subscription data from Stripe
       const stripeSubscription = await this.stripe.subscriptions.retrieve(
@@ -818,34 +732,22 @@ export class SubscriptionService {
         );
 
         if (invoice.payment_intent === paymentIntentId) {
-          console.log(
-            `✅ Confirmed subscription ${stripeSubscription.id} matches payment intent ${paymentIntentId}`
-          );
-
+    
           // Update the subscription status
           await this.updateSubscriptionStatus(
             stripeSubscription.id,
             stripeSubscription.status
           );
 
-          console.log(
-            `🎉 Successfully synced subscription ${stripeSubscription.id} status to ${stripeSubscription.status}`
-          );
+        
         } else {
-          console.log(
-            `⚠️ Payment intent mismatch. Expected: ${paymentIntentId}, Found: ${invoice.payment_intent}`
-          );
+         
         }
       } else {
-        console.log(
-          `⚠️ Subscription ${stripeSubscription.id} has no latest_invoice`
-        );
+     
       }
     } catch (error) {
-      console.error(
-        `❌ Error in syncRecentSubscriptionByCustomer for customer ${stripeCustomerId}:`,
-        error
-      );
+    
       throw error;
     }
   }
@@ -970,36 +872,23 @@ export class SubscriptionService {
         throw new Error("No invoice found in subscription");
       }
 
-      // DO NOT create subscription record here - wait for payment to succeed
-      // The subscription record will be created automatically when payment succeeds
-      console.log(
-        `📝 Stripe subscription created: ${subscription.id}, waiting for payment to succeed`
-      );
 
       // If payment intent already succeeded, automatically sync subscription
       if (paymentIntent.status === "succeeded") {
-        console.log(
-          `✅ Payment intent already succeeded, auto-syncing subscription...`
-        );
+   
         try {
           const syncedSubscription = await this.syncSubscriptionFromStripe(
             paymentIntent.id,
             userId
           );
-          console.log(
-            `✅ Subscription automatically synced: ${syncedSubscription.stripeSubscriptionId}`
-          );
+        
 
           return {
             paymentIntent,
             subscription: syncedSubscription,
           };
         } catch (syncError: any) {
-          console.error(
-            `⚠️ Auto-sync failed, subscription will be synced later:`,
-            syncError.message
-          );
-          // Continue with pending subscription if sync fails
+       
         }
       }
 
@@ -1030,7 +919,7 @@ export class SubscriptionService {
       try {
         await this.cleanupIncompleteSubscriptions(data.userId);
       } catch (cleanupError) {
-        console.error("Error during automatic cleanup:", cleanupError);
+
       }
       throw error;
     }
@@ -1053,22 +942,14 @@ export class SubscriptionService {
       throw new Error("Payment intent is not succeeded");
     }
 
-    console.log(
-      `✅ Payment intent ${paymentIntentId} succeeded, auto-syncing subscription...`
-    );
-
-    // Automatically sync subscription from payment intent
-    // This will create or update the subscription in the database
+   
     const userId = paymentIntent.metadata?.userId;
     const subscription = await this.syncSubscriptionFromStripe(
       paymentIntentId,
       userId
     );
 
-    console.log(
-      `✅ Subscription automatically synced: ${subscription.stripeSubscriptionId}`
-    );
-
+  
     return subscription;
   }
 
@@ -1140,22 +1021,9 @@ export class SubscriptionService {
       });
 
       if (!subscription) {
-        console.error(
-          `Subscription not found for userId: ${userId}, status: active or pending`
-        );
-        console.error(`Current subscription data:`, currentSubscription);
-
-        // Debug: Check what subscriptions exist for this user
-        const allUserSubscriptions = await Subscription.find({ userId });
-        console.error(
-          `All subscriptions for user ${userId}:`,
-          allUserSubscriptions.map((sub) => ({
-            id: sub._id,
-            status: sub.status,
-            planId: sub.planId,
-            stripeSubscriptionId: sub.stripeSubscriptionId,
-          }))
-        );
+       
+         await Subscription.find({ userId });
+      
 
         throw new Error("Subscription record not found in database");
       }
@@ -1226,20 +1094,15 @@ export class SubscriptionService {
           // Delete from database
           await Subscription.deleteOne({ _id: subscription._id });
 
-          console.log(
-            `Auto-cleaned up incomplete subscription: ${subscription.stripeSubscriptionId}`
-          );
+       
         } catch (stripeError) {
-          console.error(
-            `Error canceling subscription ${subscription.stripeSubscriptionId}:`,
-            stripeError
-          );
+        
           // Still delete from database even if Stripe cancellation fails
           await Subscription.deleteOne({ _id: subscription._id });
         }
       }
     } catch (error) {
-      console.error("Error during automatic subscription cleanup:", error);
+     
     }
   }
 
@@ -1264,19 +1127,11 @@ export class SubscriptionService {
     stripeSubscription: Stripe.Subscription
   ): Promise<void> {
     try {
-      console.log(
-        `📝 Syncing billing records for subscription ${localSubscription._id}`
-      );
-
-      // Get all invoices for this subscription from Stripe
+     
       const invoices = await this.stripe.invoices.list({
         subscription: stripeSubscription.id,
         limit: 100, // Get up to 100 invoices
       });
-
-      console.log(
-        `📊 Found ${invoices.data.length} invoices for subscription ${stripeSubscription.id}`
-      );
 
       let createdCount = 0;
       let updatedCount = 0;
@@ -1292,9 +1147,7 @@ export class SubscriptionService {
 
         if (!existingBilling) {
           // Create new billing record
-          console.log(
-            `📝 Creating billing record for invoice ${invoice.id} with subscription ${localSubscription._id}`
-          );
+     
           await this.createBillingRecord(
             localSubscription.userId.toString(),
             invoice,
@@ -1304,23 +1157,16 @@ export class SubscriptionService {
           createdCount++;
         } else if (!existingBilling.subscriptionId) {
           // Update existing billing record with subscription ID if missing
-          console.log(
-            `📝 Updating billing record ${existingBilling._id} with subscription ID ${localSubscription._id}`
-          );
+       
           existingBilling.subscriptionId = localSubscription._id;
           await existingBilling.save();
           updatedCount++;
         }
       }
 
-      console.log(
-        `✅ Billing sync completed: ${createdCount} created, ${updatedCount} updated for subscription ${localSubscription._id}`
-      );
+  
     } catch (error: any) {
-      console.error(
-        `❌ Error syncing billing records for subscription ${localSubscription._id}:`,
-        error?.message || error
-      );
+   
       // Don't throw - this is a non-critical operation
     }
   }
@@ -1343,9 +1189,7 @@ export class SubscriptionService {
       if (existingBilling) {
         // Update existing billing record with subscription ID if missing
         if (!existingBilling.subscriptionId) {
-          console.log(
-            `📝 Updating existing billing record ${existingBilling._id} with subscription ID ${subscriptionId}`
-          );
+      
           existingBilling.subscriptionId = subscriptionId as any;
           await existingBilling.save();
         }
@@ -1366,14 +1210,6 @@ export class SubscriptionService {
           }
         }
       }
-
-      console.log(
-        `📝 Creating new billing record for invoice ${invoice.id} with subscription ID ${subscriptionId}`
-      );
-
-      // Map Stripe invoice status to billing status
-      // Stripe: "draft", "open", "void", "uncollectible", "paid"
-      // Our model: "pending", "succeeded", "failed", "canceled", "open"
       let billingStatus = "pending";
       if (invoice.status === "paid") {
         billingStatus = "succeeded";
@@ -1400,15 +1236,11 @@ export class SubscriptionService {
       });
 
       await billing.save();
-      console.log(
-        `✅ Billing record created with subscription ID: ${subscriptionId}`
-      );
+  
     } catch (error: any) {
       // If it's a duplicate key error (stripeInvoiceId already exists), update it
       if (error.code === 11000 && error.keyPattern?.stripeInvoiceId) {
-        console.log(
-          `⚠️ Billing record already exists for invoice ${invoice.id}, updating with subscription ID`
-        );
+   
         const existingBilling = await Billing.findOne({
           stripeInvoiceId: invoice.id,
         });
@@ -1551,11 +1383,7 @@ export class SubscriptionService {
     stripeSubscription: Stripe.Subscription,
     metadata?: { [key: string]: string }
   ): Promise<UserSubscription> {
-    console.log(
-      `🔄 Creating/updating subscription from Stripe: ${stripeSubscription.id}`
-    );
-    console.log(`📊 Metadata received:`, metadata);
-    console.log(`📊 Stripe subscription status: ${stripeSubscription.status}`);
+   
 
     // Check if subscription already exists
     let existingSubscription = await Subscription.findOne({
@@ -1563,7 +1391,7 @@ export class SubscriptionService {
     });
 
     if (existingSubscription) {
-      console.log(`📝 Updating existing subscription ${stripeSubscription.id}`);
+   
       // Update existing subscription
       existingSubscription.status =
         stripeSubscription.status === "active" ? "active" : "pending";
@@ -1587,39 +1415,26 @@ export class SubscriptionService {
       return this.formatSubscription(existingSubscription);
     }
 
-    // Create new subscription record
-    console.log(
-      `🆕 Creating new subscription record for ${stripeSubscription.id}`
-    );
 
     // Get plan information from metadata or subscription items
     let planId = metadata?.planId;
-    console.log(`🔍 Plan ID from metadata: ${planId}`);
 
     if (!planId && stripeSubscription.items.data.length > 0) {
       const priceId = stripeSubscription.items.data[0].price.id;
-      console.log(`🔍 Price ID from subscription: ${priceId}`);
+      
 
       // Find plan by price ID
       const plans = this.getPlans();
-      console.log(
-        `🔍 Available plans:`,
-        plans.map((p) => ({ id: p.id, stripePriceId: p.stripePriceId }))
-      );
-
+   
       const plan = plans.find(
         (p: SubscriptionPlan) => p.stripePriceId === priceId
       );
       planId = plan?.id;
-      console.log(`🔍 Found plan by price ID: ${planId}`);
+
     }
 
     if (!planId) {
-      console.error(
-        `❌ Could not determine plan ID for subscription ${stripeSubscription.id}`
-      );
-      console.error(`❌ Metadata:`, metadata);
-      console.error(`❌ Subscription items:`, stripeSubscription.items.data);
+     
       throw new Error(
         `Could not determine plan ID for subscription ${stripeSubscription.id}`
       );
@@ -1662,9 +1477,7 @@ export class SubscriptionService {
       stripeSubscription
     );
 
-    console.log(
-      `✅ Successfully created subscription record for ${stripeSubscription.id}`
-    );
+ 
     return this.formatSubscription(subscriptionRecord);
   }
 

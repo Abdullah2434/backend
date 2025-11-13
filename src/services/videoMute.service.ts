@@ -55,8 +55,7 @@ export class VideoMuteService {
     );
 
     try {
-      // Step 1: Download video from URL
-      console.log(`📥 Downloading video from: ${videoUrl}`);
+  
       const videoResponse = await fetch(videoUrl, {
         method: "GET",
         headers: {
@@ -75,15 +74,12 @@ export class VideoMuteService {
       const contentType =
         videoResponse.headers.get("content-type") || "video/mp4";
 
-      console.log(
-        `✅ Video downloaded successfully, size: ${videoBuffer.byteLength} bytes`
-      );
+   
 
       // Step 2: Write video to temporary file
       writeFileSync(inputFile, Buffer.from(videoBuffer));
 
-      // Step 3: Mute audio using ffmpeg
-      console.log(`🔇 Muting audio...`);
+    
       await new Promise<void>((resolve, reject) => {
         ffmpeg(inputFile)
           .outputOptions([
@@ -92,11 +88,11 @@ export class VideoMuteService {
           ])
           .output(outputFile)
           .on("end", () => {
-            console.log(`✅ Audio muted successfully`);
+            
             resolve();
           })
           .on("error", (err: any) => {
-            console.error("FFmpeg error:", err);
+          
             reject(new Error(`Failed to mute audio: ${err.message}`));
           })
           .run();
@@ -104,16 +100,14 @@ export class VideoMuteService {
 
       // Step 4: Read muted video file
       const mutedVideoBuffer = readFileSync(outputFile);
-      console.log(
-        `✅ Muted video created, size: ${mutedVideoBuffer.length} bytes`
-      );
+      
 
       // Step 5: Upload to S3 (muted-video bucket)
       const timestamp = Date.now();
       const randomId = crypto.randomBytes(8).toString("hex");
       const s3Key = `${timestamp}_${randomId}.mp4`;
 
-      console.log(`📤 Uploading muted video to S3...`);
+    
       await this.s3Service.uploadVideoDirectly(
         s3Key,
         mutedVideoBuffer,
@@ -124,7 +118,7 @@ export class VideoMuteService {
         }
       );
 
-      console.log(`✅ Muted video uploaded to S3: ${s3Key}`);
+     
 
       // Step 6: Generate simple URL (without query parameters)
       const mutedVideoUrl = this.s3Service.getVideoUrl(s3Key);
@@ -140,7 +134,7 @@ export class VideoMuteService {
         if (inputFile) await unlinkAsync(inputFile).catch(() => {});
         if (outputFile) await unlinkAsync(outputFile).catch(() => {});
       } catch (error) {
-        console.warn("Error cleaning up temporary files:", error);
+
       }
     }
   }
@@ -170,10 +164,7 @@ export class VideoMuteService {
         });
       } else {
         const errorMsg = result.reason?.message || "Unknown error";
-        console.error(
-          `Failed to mute video ${index + 1} (${videoUrls[index]}):`,
-          errorMsg
-        );
+      
         failed.push({
           index: index + 1,
           url: videoUrls[index],
@@ -191,9 +182,7 @@ export class VideoMuteService {
 
     // If some failed, log warning but return successful ones
     if (failed.length > 0) {
-      console.warn(
-        `${failed.length} video(s) failed to mute, ${successful.length} succeeded`
-      );
+  
     }
 
     return successful;

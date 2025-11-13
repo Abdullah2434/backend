@@ -158,12 +158,10 @@ export class VideoAvatarService {
         if (!isS3Url(trainingFootageUrl) && !isS3Url(consentStatementUrl)) {
           await this.validateVideoUrls(trainingFootageUrl, consentStatementUrl);
         } else {
-          console.log("Skipping URL HEAD validation for S3 URLs");
+       
         }
       }
 
-      // Submit to Heygen if env is configured and wait for completion
-      console.log(`🚀 Starting Heygen submission for avatar ${avatar_id}...`);
 
       // Emit socket notification for Heygen submission start
       if (userId) {
@@ -180,10 +178,7 @@ export class VideoAvatarService {
         );
       }
 
-      // Return immediately with processing status - socket will handle real-time updates
-      console.log(
-        `✅ Returning processing status for avatar ${avatar_id} - socket will provide updates`
-      );
+ 
 
       // Wait for Heygen response and return it
       const heygenResponse = await this.submitToHeygen(
@@ -200,7 +195,7 @@ export class VideoAvatarService {
 
       return heygenResponse;
     } catch (error: any) {
-      console.error("Error creating video avatar:", error);
+
       throw new Error(`Failed to create video avatar: ${error.message}`);
     }
   }
@@ -235,7 +230,7 @@ export class VideoAvatarService {
 
       return response;
     } catch (error: any) {
-      console.error("Error getting avatar status:", error);
+
       throw new Error(`Failed to get avatar status: ${error.message}`);
     }
   }
@@ -272,7 +267,7 @@ export class VideoAvatarService {
         await this.sendCallback(avatar);
       }
     } catch (error: any) {
-      console.error("Error updating avatar status:", error);
+   
       throw new Error(`Failed to update avatar status: ${error.message}`);
     }
   }
@@ -314,7 +309,7 @@ export class VideoAvatarService {
 
       return { s3Key, signedUrl: result.viewUrl };
     } catch (error: any) {
-      console.error(`Error uploading ${fileType} to S3:`, error);
+    
       throw new Error(`Failed to upload ${fileType} to S3: ${error.message}`);
     }
   }
@@ -354,7 +349,7 @@ export class VideoAvatarService {
         throw new Error("Consent statement must be a video file");
       }
     } catch (error: any) {
-      console.error("Error validating video URLs:", error);
+
       throw new Error(`Video URL validation failed: ${error.message}`);
     }
   }
@@ -376,9 +371,7 @@ export class VideoAvatarService {
     const baseUrl = process.env.HEYGEN_BASE_URL;
     const apiKey = process.env.HEYGEN_API_KEY;
     if (!baseUrl || !apiKey) {
-      console.log(
-        "HEYGEN_BASE_URL/HEYGEN_API_KEY not set; skipping Heygen submission"
-      );
+
       return;
     }
     const url = `${baseUrl.replace(/\/$/, "")}/video_avatar`;
@@ -396,7 +389,7 @@ export class VideoAvatarService {
     }
 
     const data = (await res.json().catch(() => ({}))) as any;
-    console.log("Heygen response data:", JSON.stringify(data, null, 2));
+   
 
     // Get user information using auth service if userId is not provided
     let finalUserId = userId;
@@ -408,32 +401,25 @@ export class VideoAvatarService {
         const user = await authService.getCurrentUser(authToken);
         if (user) {
           finalUserId = user._id.toString();
-          console.log("Got userId from auth service:", finalUserId);
+
         }
       } catch (error: any) {
-        console.error("Error getting user from auth service:", error);
+     
       }
     }
 
     if (data?.data?.avatar_id) {
-      console.log(
-        `Starting polling for avatar ${data.data.avatar_id} as status is processing`
-      );
+  
       // Start polling in background - don't wait for completion
       this.startAvatarStatusPolling(
         data.data.avatar_id,
         authToken,
         finalUserId
       ).catch((error) => {
-        console.error(
-          `Error in background polling for ${data.data.avatar_id}:`,
-          error
-        );
+     
       });
     }
 
-    // Return the initial Heygen response immediately
-    console.log("Returning initial Heygen response:", data);
     return data;
   }
 
@@ -449,17 +435,17 @@ export class VideoAvatarService {
     const apiKey = process.env.HEYGEN_API_KEY;
 
     if (!baseUrl || !apiKey) {
-      console.log("HEYGEN_BASE_URL/HEYGEN_API_KEY not set; skipping polling");
+     
       return null;
     }
 
     const url = `${baseUrl.replace(/\/$/, "")}/video_avatar/${avatarId}`;
-    console.log(`Starting polling for avatar ${avatarId}:`, url);
+    
 
     return new Promise((resolve, reject) => {
       const pollInterval = setInterval(async () => {
         try {
-          console.log(`Polling Heygen API for avatar ${avatarId}...`);
+
 
           const heygenRes = await fetch(url, {
             method: "GET",
@@ -470,14 +456,12 @@ export class VideoAvatarService {
           });
 
           if (!heygenRes.ok) {
-            console.error(
-              `Heygen API polling error for ${avatarId}: ${heygenRes.status}`
-            );
+        
             return;
           }
 
           const heygenData = (await heygenRes.json().catch(() => ({}))) as any;
-          console.log(`Heygen polling response for ${avatarId}:`, heygenData);
+   
 
           // Update local database with Heygen response
           if (heygenData && Object.keys(heygenData).length > 0) {
@@ -504,13 +488,7 @@ export class VideoAvatarService {
               heygenData.data.status === "completed" ||
               heygenData.data.status === "failed"
             ) {
-              console.log(
-                `✅ Avatar ${avatarId} status is ${heygenData.data?.status}, stopping polling`
-              );
-              console.log(
-                `Final response for avatar ${avatarId}:`,
-                heygenData
-              );
+            
 
               // Emit final socket notification
               if (userId) {
@@ -544,7 +522,6 @@ export class VideoAvatarService {
                 const hasPreviewImageUrl = previewImageUrl && String(previewImageUrl).trim().length > 0;
 
                 if (!hasPreviewImageUrl) {
-                  console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: preview_image_url is empty`);
                   clearInterval(pollInterval);
                   resolve(heygenData); // Resolve without saving
                   return;
@@ -568,14 +545,12 @@ export class VideoAvatarService {
 
                 const defaultAvatar = new DefaultAvatar(avatarData);
                 await defaultAvatar.save();
-                console.log(`✅ Saved DefaultAvatar for video avatar ${avatarId} with preview_image_url`);
                 
                 // Successfully completed - clear intervals and resolve
                 clearInterval(pollInterval);
                 resolve(heygenData); // Resolve with final response
               } else {
                 // Status is "failed" - stop socket and throw error (don't save)
-                console.warn(`⚠️ Skipping DefaultAvatar save for video avatar ${avatarId}: status is "failed"`);
                 
                 clearInterval(pollInterval);
                 
@@ -585,21 +560,13 @@ export class VideoAvatarService {
                 );
               }
             } else {
-              console.log(
-                `⏳ Avatar ${avatarId} status is ${heygenData.status}, continuing polling...`
-              );
+          
             }
           } else {
-            console.log(
-              `⚠️ No valid response data for avatar ${avatarId}, continuing polling...`
-            );
+      
           }
         } catch (error: any) {
-          console.error(
-            `Error polling Heygen API for avatar ${avatarId}:`,
-            error
-          );
-
+      
           // Emit error socket notification
           if (userId) {
             notificationService.notifyVideoAvatarProgress(
@@ -647,20 +614,12 @@ export class VideoAvatarService {
       );
 
       if (result.success) {
-        console.log(
-          `Callback sent successfully for avatar ${avatar.avatar_id}`
-        );
+      
       } else {
-        console.error(
-          `Callback failed for avatar ${avatar.avatar_id}:`,
-          result.message
-        );
+       
       }
     } catch (error: any) {
-      console.error(
-        `Error sending callback for avatar ${avatar.avatar_id}:`,
-        error
-      );
+    
     }
   }
 
@@ -674,7 +633,7 @@ export class VideoAvatarService {
       // Remove leading slash and return the key
       return pathname.startsWith("/") ? pathname.slice(1) : pathname;
     } catch (error) {
-      console.error("Error extracting S3 key from URL:", error);
+
       return null;
     }
   }
@@ -702,7 +661,7 @@ export class VideoAvatarService {
         completedAt: avatar.completedAt,
       }));
     } catch (error: any) {
-      console.error("Error getting avatars by group:", error);
+
       throw new Error(`Failed to get avatars by group: ${error.message}`);
     }
   }
@@ -715,7 +674,7 @@ export class VideoAvatarService {
       const result = await VideoAvatar.findOneAndDelete({ avatar_id });
       return !!result;
     } catch (error: any) {
-      console.error("Error deleting avatar:", error);
+
       throw new Error(`Failed to delete avatar: ${error.message}`);
     }
   }

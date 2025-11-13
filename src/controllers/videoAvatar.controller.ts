@@ -69,23 +69,10 @@ export async function createVideoAvatar(
     // Get userId for socket notifications
     const userId = req.user?._id;
     const authToken = req.headers.authorization?.replace("Bearer ", "");
-
-    console.log("🔐 Video Avatar Controller - User check:", {
-      hasUser: !!req.user,
-      userId: userId,
-      userObject: req.user,
-      path: req.path,
-    });
-
     trainingFootageFile =
       (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined;
     consentStatementFile =
       (rawFiles?.consent_statement?.[0] as Express.Multer.File) || undefined;
-    console.log("trainingFootageFile:", trainingFootageFile);
-    console.log("File paths:", {
-      training: trainingFootageFile?.path,
-      consent: consentStatementFile?.path,
-    });
     if (!avatar_name) {
       return res
         .status(400)
@@ -131,7 +118,6 @@ export async function createVideoAvatar(
       trainingFootageFile &&
       (!trainingFootageFile.path || trainingFootageFile.size === 0)
     ) {
-      console.error("Received empty training_footage file");
       return res
         .status(400)
         .json({ success: false, message: "Empty training_footage file" });
@@ -140,7 +126,6 @@ export async function createVideoAvatar(
       consentStatementFile &&
       (!consentStatementFile.path || consentStatementFile.size === 0)
     ) {
-      console.error("Received empty consent_statement file");
       return res
         .status(400)
         .json({ success: false, message: "Empty consent_statement file" });
@@ -199,14 +184,12 @@ export async function createVideoAvatar(
         fs.existsSync(trainingFootageFile.path)
       ) {
         fs.unlinkSync(trainingFootageFile.path);
-        console.log("Cleaned up training footage temp file");
       }
       if (
         consentStatementFile?.path &&
         fs.existsSync(consentStatementFile.path)
       ) {
         fs.unlinkSync(consentStatementFile.path);
-        console.log("Cleaned up consent statement temp file");
       }
     } catch (cleanupError) {
       console.warn("Failed to clean up temp files:", cleanupError);
@@ -242,7 +225,6 @@ export async function createVideoAvatar(
 
     return res.status(202).json(result);
   } catch (error: any) {
-    console.error("Error creating video avatar:", error);
 
     // Emit error socket notification
     const userId = req.user?._id;
@@ -294,12 +276,10 @@ export const uploadMiddleware = (req: any, res: any, next: any) => {
   ]);
   mw(req, res, (err: any) => {
     if (err) {
-      console.error("Multer error:", err);
       return res
         .status(400)
         .json({ success: false, message: "Upload error", error: String(err) });
     }
-    console.log("Multer parsed files:", Object.keys((req as any).files || {}));
     next();
   });
 };
@@ -324,9 +304,7 @@ export async function getVideoAvatarStatus(req: Request, res: Response) {
 
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("Error getting video avatar status:", error);
 
-    // Handle specific error cases
     if (error.message === "Avatar ID not found") {
       return res.status(404).json({
         success: false,
@@ -387,7 +365,6 @@ export async function proxyVideoFile(req: Request, res: Response) {
         return res.redirect(signedUrl);
       } catch (error) {
         // If .mov doesn't exist, try the .mp4 version
-        console.log("MOV file not found, trying MP4 version:", error);
       }
     }
 
@@ -397,7 +374,6 @@ export async function proxyVideoFile(req: Request, res: Response) {
     // Redirect to the signed URL
     return res.redirect(signedUrl);
   } catch (error: any) {
-    console.error("Error proxying video file:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to serve video file",

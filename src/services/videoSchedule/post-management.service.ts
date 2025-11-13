@@ -80,10 +80,6 @@ export class VideoSchedulePostManagement {
     // Save the updated schedule
     await schedule.save();
 
-    console.log(
-      `✅ Updated post ${postIndex} in schedule ${scheduleId} for user ${userId}`
-    );
-
     return schedule;
   }
 
@@ -153,31 +149,19 @@ export class VideoSchedulePostManagement {
       updateData.description !== undefined &&
       updateData.description.trim() !== originalDescription.trim();
 
-    // IMPORTANT: Only fetch new keypoints from OpenAI if description (topic) changes
-    // If description doesn't change, keep existing keypoints (no OpenAI call)
-    // If keypoints are explicitly provided, use those instead of fetching
     if (descriptionChanged && updateData.keypoints === undefined) {
-      // Description changed and keypoints not provided → fetch new keypoints from OpenAI
-      console.log(
-        `🔄 Topic changed from "${originalDescription}" to "${updateData.description}". Fetching new key points from OpenAI...`
-      );
+
       try {
         // TypeScript: description is guaranteed to be defined here because descriptionChanged is true
         const description = updateData.description!;
         const trendData = await generateFromDescription(description);
         newKeypoints = trendData.keypoints;
-        console.log(
-          `✅ Generated new key points from OpenAI based on new topic`
-        );
-        console.log(`📝 New key points: ${newKeypoints}`);
+       
       } catch (error: any) {
-        console.error(
-          `❌ Failed to generate key points from OpenAI:`,
-          error.message
-        );
+      
         // If generation fails, keep existing keypoints
         newKeypoints = originalKeypoints;
-        console.log(`⚠️ Keeping existing key points due to OpenAI error`);
+
       }
     } else if (!descriptionChanged) {
       // Description not changed → keep existing keypoints (no OpenAI call)
@@ -188,18 +172,11 @@ export class VideoSchedulePostManagement {
 
     // Generate dynamic captions when description changes (same method as schedule creation)
     if (descriptionChanged) {
-      console.log(
-        `🔄 Topic changed, generating dynamic captions (same method as schedule creation)...`
-      );
 
       try {
         // Fetch user settings for context
         const userSettings = await UserVideoSettings.findOne({ userId });
-        if (!userSettings) {
-          console.warn(
-            `⚠️ User video settings not found for user ${userId}, generating captions without user context`
-          );
-        }
+       
 
         // Create user context from user settings (provide defaults if not available)
         const userContext = userSettings
@@ -279,12 +256,8 @@ export class VideoSchedulePostManagement {
         post.caption_status = "ready";
         post.caption_processed_at = new Date();
 
-        console.log(`✅ Generated dynamic captions for all 6 platforms`);
       } catch (error: any) {
-        console.error(
-          `⚠️ Failed to generate dynamic captions, keeping existing captions:`,
-          error.message
-        );
+     
         // Continue with existing captions as fallback - don't fail the entire update
       }
     }
@@ -331,25 +304,15 @@ export class VideoSchedulePostManagement {
     // Save the updated schedule to database
     await schedule.save();
 
-    console.log(
-      `✅ Updated post ${postId} in schedule ${scheduleId} for user ${userId}`
-    );
-
     // Log what was updated
     if (
       updateData.description !== undefined &&
       updateData.description.trim() !== originalDescription.trim()
     ) {
-      console.log(
-        `📝 Topic updated: "${originalDescription}" → "${updateData.description}"`
-      );
+   
     }
     if (newKeypoints && newKeypoints !== originalKeypoints) {
-      console.log(
-        `📝 Key points automatically updated in database from OpenAI`
-      );
-      console.log(`   Old: ${originalKeypoints}`);
-      console.log(`   New: ${newKeypoints}`);
+   
     }
 
     return schedule;
@@ -382,9 +345,7 @@ export class VideoSchedulePostManagement {
       throw new Error("Post not found");
     }
 
-    // Allow deleting posts in any status (pending, completed, processing, failed)
-    // This gives users flexibility to clean up their schedule
-    console.log(`🗑️ Deleting post with status: ${post.status}`);
+   
 
     // Remove the post from the array
     schedule.generatedTrends.splice(postIndex, 1);
@@ -392,9 +353,6 @@ export class VideoSchedulePostManagement {
     // Save the updated schedule
     await schedule.save();
 
-    console.log(
-      `🗑️ Deleted post ${postIndex} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
-    );
 
     return schedule;
   }
@@ -437,9 +395,7 @@ export class VideoSchedulePostManagement {
       throw new Error("Post not found");
     }
 
-    // Allow deleting posts in any status (pending, completed, processing, failed)
-    // This gives users flexibility to clean up their schedule
-    console.log(`🗑️ Deleting post with status: ${post.status}`);
+
 
     // Remove the post from the array
     schedule.generatedTrends.splice(postIndex, 1);
@@ -447,9 +403,7 @@ export class VideoSchedulePostManagement {
     // Save the updated schedule
     await schedule.save();
 
-    console.log(
-      `🗑️ Deleted post ${postId} (status: ${post.status}) from schedule ${scheduleId} for user ${userId}`
-    );
+    
 
     return schedule;
   }

@@ -49,7 +49,7 @@ export async function fetchAndStoreDefaultAvatars() {
           default: true,
           status: 'ready',
         });
-        console.log(`🆕 Added ${avatar.avatarType}: ${avatar.avatar_name}`);
+    
       } else {
         await DefaultAvatar.updateOne(
           { avatar_id: avatar.avatar_id },
@@ -62,11 +62,11 @@ export async function fetchAndStoreDefaultAvatars() {
             },
           }
         );
-        console.log(`🔄 Updated ${avatar.avatarType}: ${avatar.avatar_name}`);
+       
       }
     }
 
-    console.log('✅ Default avatars sync complete.');
+
   } catch (error : any) {
     console.error('❌ Error fetching default avatars:', error.message);
   }
@@ -96,7 +96,6 @@ export async function fetchAndStoreDefaultVoices() {
         });
       }
     }
-    console.log('Default voices sync complete.');
   } catch (error) {
     console.error('Error fetching default voices:', error);
   }

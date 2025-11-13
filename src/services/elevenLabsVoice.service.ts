@@ -151,10 +151,7 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
     ) {
       voices = response.data.data.voices;
     } else {
-      console.error(
-        "Unexpected API response structure:",
-        JSON.stringify(response.data, null, 2)
-      );
+     
       throw new Error(
         "API response is not an array. Response structure: " +
           JSON.stringify(response.data).substring(0, 200)
@@ -162,7 +159,7 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
     }
 
     if (voices.length === 0) {
-      console.log("⚠️ No voices found in API response");
+   
       return;
     }
 
@@ -173,19 +170,14 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
 
     const clonedCount = voices.length - filteredVoices.length;
     if (clonedCount > 0) {
-      console.log(
-        `🚫 Ignored ${clonedCount} cloned voices from ElevenLabs API (not adding to DB)`
-      );
+  
     }
 
     if (filteredVoices.length === 0) {
-      console.log("⚠️ No voices to sync after filtering out cloned voices");
+   
       return;
     }
 
-    console.log(
-      `📥 Fetched ${voices.length} voices from ElevenLabs API, processing ${filteredVoices.length} (excluding cloned)`
-    );
 
     // Get all voice_ids from filtered API response (excluding cloned)
     const apiVoiceIds = new Set(filteredVoices.map((v) => v.voice_id));
@@ -208,9 +200,7 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
         ],
       });
       deletedCount = deleteResult.deletedCount || 0;
-      console.log(
-        `🗑️ Deleted ${deletedCount} voices that no longer exist in API (excluding cloned voices)`
-      );
+
     }
 
     let savedCount = 0;
@@ -304,22 +294,16 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
             { $set: voiceData }
           );
           updatedCount++;
-          console.log(`🔄 Updated voice (duplicate handled): ${voice.name}`);
+      
         } else {
-          console.error(
-            `❌ Error saving voice ${voice.name}:`,
-            dbError.message
-          );
+         
           throw dbError;
         }
       }
     }
 
-    console.log(
-      `✅ ElevenLabs voices sync complete. Saved: ${savedCount}, Updated: ${updatedCount}, Deleted: ${deletedCount}`
-    );
   } catch (error: any) {
-    console.error("❌ Error fetching ElevenLabs voices:", error.message);
+   
     throw error;
   }
 }
@@ -347,8 +331,7 @@ export async function addCustomVoice(params: {
 
     const { file, name, description, language = "en", gender, userId } = params;
 
-    // Step 1: Add voice to ElevenLabs
-    console.log(`📤 Step 1: Adding voice to ElevenLabs with name: ${name}`);
+
     const FormData = require("form-data");
     const fs = require("fs");
     const formData = new FormData();
@@ -374,10 +357,7 @@ export async function addCustomVoice(params: {
       throw new Error("Failed to get voice_id from ElevenLabs API");
     }
 
-    console.log(`✅ Step 1 complete: Voice created with ID: ${voiceId}`);
 
-    // Step 2: Edit voice with description and labels
-    console.log(`📤 Step 2: Editing voice ${voiceId} with description and labels`);
     const editFormData = new FormData();
     editFormData.append("name", name);
     if (description) {
@@ -408,10 +388,9 @@ export async function addCustomVoice(params: {
       }
     );
 
-    console.log(`✅ Step 2 complete: Voice edited with description and labels`);
 
-    // Step 3: Get full voice details
-    console.log(`📤 Step 3: Fetching full voice details for ${voiceId}`);
+
+
     const getResponse = await axios.get(
       `https://api.elevenlabs.io/v1/voices/${voiceId}`,
       {
@@ -422,10 +401,7 @@ export async function addCustomVoice(params: {
     );
 
     const voiceData = getResponse.data;
-    console.log(`✅ Step 3 complete: Got voice details`);
 
-    // Step 4: Store in database with userId
-    console.log(`📤 Step 4: Storing voice in database for user ${userId}`);
     
     // Extract verified languages from voice data
     const verified_language_en = voiceData.verified_language_en
@@ -486,10 +462,10 @@ export async function addCustomVoice(params: {
     if (existingVoice) {
       await ElevenLabsVoice.updateOne({ voice_id: voiceId }, { $set: voiceRecord });
       savedVoice = await ElevenLabsVoice.findOne({ voice_id: voiceId }) as IElevenLabsVoice;
-      console.log(`🔄 Updated existing voice: ${voiceId}`);
+  
     } else {
       savedVoice = await ElevenLabsVoice.create(voiceRecord);
-      console.log(`✅ Created new voice: ${voiceId}`);
+
     }
 
     // Clean up temporary file
@@ -498,15 +474,14 @@ export async function addCustomVoice(params: {
         if (err) console.error("Error deleting temp file:", err);
       });
     } catch (cleanupError) {
-      console.warn("Failed to cleanup temp file:", cleanupError);
+      
     }
 
-    console.log(`✅ Step 4 complete: Voice stored in database`);
     return savedVoice;
   } catch (error: any) {
-    console.error("❌ Error adding custom voice:", error.message);
+   
     if (error.response) {
-      console.error("ElevenLabs API error:", error.response.data);
+   
       throw new Error(
         `ElevenLabs API error: ${error.response.data?.detail?.message || error.message}`
       );

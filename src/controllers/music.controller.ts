@@ -79,7 +79,6 @@ export async function uploadMusicTrack(req: Request, res: Response) {
       data: musicTrack,
     });
   } catch (error: any) {
-    console.error("Error uploading music track:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to upload music track",
@@ -104,7 +103,6 @@ export async function getAllMusicTracks(req: Request, res: Response) {
       data: tracks,
     });
   } catch (error: any) {
-    console.error("Error getting music tracks:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get music tracks",
@@ -136,7 +134,6 @@ export async function getMusicTracksByEnergy(req: Request, res: Response) {
       data: tracks,
     });
   } catch (error: any) {
-    console.error("Error getting music tracks by energy:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get music tracks",
@@ -166,7 +163,7 @@ export async function getMusicTrackById(req: Request, res: Response) {
       data: track,
     });
   } catch (error: any) {
-    console.error("Error getting music track:", error);
+  
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get music track",
@@ -199,7 +196,7 @@ export async function streamMusicPreview(req: Request, res: Response) {
     // Redirect to S3 URL for streaming
     return res.redirect(previewUrl);
   } catch (error: any) {
-    console.error("Error streaming music preview:", error);
+  
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to stream music preview",
@@ -228,7 +225,6 @@ export async function deleteMusicTrack(req: Request, res: Response) {
       message: "Music track deleted successfully",
     });
   } catch (error: any) {
-    console.error("Error deleting music track:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to delete music track",
@@ -249,7 +245,6 @@ export async function getMusicTracksStats(req: Request, res: Response) {
       data: stats,
     });
   } catch (error: any) {
-    console.error("Error getting music tracks stats:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get music tracks statistics",

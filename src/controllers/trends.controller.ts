@@ -7,8 +7,6 @@ import {
 
 export const getRealEstateTrends = async (req: Request, res: Response) => {
   try {
-    console.log("Generating real estate trends...");
-
     const trends = await generateRealEstateTrends();
 
     res.status(200).json({
@@ -22,8 +20,6 @@ export const getRealEstateTrends = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error("Error generating real estate trends:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to generate real estate trends",
@@ -59,12 +55,6 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
     // Normalize position for consistent handling
     const normalizedPosition = String(position).trim();
     const normalizedCity = String(city).trim();
-
-    console.log(
-      `📥 API Request received: City="${normalizedCity}", Position="${normalizedPosition}"`
-    );
-
-    // Validate count parameter
     let validCount = Math.min(Math.max(parseInt(count) || 10, 1), 20);
 
     // Super fast mode: max 3 trends, uses templates only
@@ -75,11 +65,6 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
     else if (fast) {
       validCount = Math.min(validCount, 5);
     }
-
-    console.log(
-      `Generating real estate trends for ${normalizedCity} (${normalizedPosition}) (${validCount} trends, fast: ${fast}, super_fast: ${super_fast})...`
-    );
-
     const startTime = Date.now();
     const trends = await generateCityBasedTrends(
       normalizedCity,
@@ -106,11 +91,6 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error(
-      `Error generating trends for ${req.body.city} (${req.body.position}):`,
-      error
-    );
-
     res.status(500).json({
       success: false,
       message: `Failed to generate real estate trends for ${req.body.city} (${req.body.position})`,
@@ -133,10 +113,6 @@ export const generateContentFromDescription = async (
       });
     }
 
-    console.log(
-      `Generating content from description${city ? ` for ${city}` : ""}...`
-    );
-
     const startTime = Date.now();
     const content = await generateFromDescription(description, city);
     const endTime = Date.now();
@@ -152,9 +128,7 @@ export const generateContentFromDescription = async (
       },
     });
   } catch (error) {
-    console.error(`Error generating content from description:`, error);
 
-    // Check error type
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isContentModerationError =

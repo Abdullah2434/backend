@@ -138,8 +138,7 @@ export class VideoScheduleProcessing {
       ) {
         throw subErr;
       }
-      // For other errors, log and continue (might be a temporary issue)
-      console.error("Subscription check failed for scheduled video:", subErr);
+     
     }
 
     // Send processing email only once (when video first starts processing)
@@ -156,12 +155,12 @@ export class VideoScheduleProcessing {
           timezone: schedule.timezone,
         };
         await this.emailService.sendVideoProcessingEmail(processingEmailData);
-        console.log(`📧 Video processing email sent for: ${trend.description}`);
+
       } catch (emailError) {
-        console.error("Error sending video processing email:", emailError);
+
       }
     } else {
-      console.log(`⏭️ Skipping email - video already in processing state: ${trend.description}`);
+   
     }
 
     notificationService.notifyScheduledVideoProgress(
@@ -177,7 +176,7 @@ export class VideoScheduleProcessing {
     );
 
     try {
-      console.log("🎨 Generating social media captions...");
+      
       const captions =
         await CaptionGenerationService.generateScheduledVideoCaptions(
           trend.description,
@@ -191,7 +190,7 @@ export class VideoScheduleProcessing {
           }
         );
 
-      console.log("✅ Captions generated successfully");
+
 
       // ✅ Helper functions to extract clean IDs and types
       const extractAvatarId = (avatarValue: any): string => {
@@ -264,15 +263,14 @@ export class VideoScheduleProcessing {
         trendIndex: trendIndex,
       };
 
-      console.log("🔄 Step 1: Calling Create Video API...");
       let enhancedContent: any;
       try {
         enhancedContent = await VideoScheduleAPICalls.callCreateVideoAPI(
           videoCreationData
         );
-        console.log("✅ Step 1: Create Video API successful");
+  
       } catch (err: any) {
-        console.error("❌ Step 1 failed:", err);
+
         throw new Error(`Create Video API failed: ${err.message}`);
       }
 
@@ -285,11 +283,9 @@ export class VideoScheduleProcessing {
         // Get voice_id from user settings
         const selectedVoiceId = userSettings.selectedVoiceId;
         if (!selectedVoiceId) {
-          console.warn(
-            "⚠️ No selectedVoiceId found in user settings, skipping ElevenLabs TTS"
-          );
+      
         } else {
-          console.log(`🎤 Generating speech with voice_id: ${selectedVoiceId}`);
+         
 
           // Check if voice category is "cloned" and get preset from userSettings
           let voice_settings = null;
@@ -304,18 +300,14 @@ export class VideoScheduleProcessing {
                 
                 if (preset) {
                   voice_settings = getVoiceSettingsByPreset(preset);
-                  if (voice_settings) {
-                    console.log(`🎯 Using voice settings for preset: ${preset}`, voice_settings);
-                  } else {
-                    console.log(`⚠️ Invalid preset value: ${preset}. Valid values: low, medium, high`);
-                  }
+                 
                 } else {
                   console.log(`⚠️ No preset found in user settings for auto posting`);
                 }
               }
             }
           } catch (voiceError: any) {
-            console.error("Error checking voice category:", voiceError);
+
             // Continue without voice_settings if there's an error
           }
 
@@ -329,21 +321,14 @@ export class VideoScheduleProcessing {
             voice_settings: voice_settings || undefined, // Pass voice_settings if available
           });
 
-          console.log("✅ ElevenLabs TTS completed:", {
-            hook_url: ttsResult.hook_url,
-            body_url: ttsResult.body_url,
-            conclusion_url: ttsResult.conclusion_url,
-          });
+    
 
           // Get music URL from selectedMusicTrackId
           // Auto: Find track by ID → Extract S3 key from s3FullTrackUrl → Convert to clean MP3 URL
 
           if (userSettings.selectedMusicTrackId) {
             try {
-              console.log(
-                `🎵 Finding music track with ID: ${userSettings.selectedMusicTrackId}`
-              );
-
+           
               // Step 1: Find music track by ID from userSettings
               const musicTrack = await MusicTrack.findById(
                 userSettings.selectedMusicTrackId
@@ -358,9 +343,7 @@ export class VideoScheduleProcessing {
                   `⚠️ Music track has no s3FullTrackUrl: ${musicTrack._id}`
                 );
               } else {
-                console.log(
-                  `✅ Found music track: ${musicTrack.name} (${musicTrack.energyCategory})`
-                );
+             
 
                 // Step 2: Extract S3 key from s3FullTrackUrl (stored in DB)
                 const extractS3KeyFromUrl = (url: string): string | null => {
@@ -391,7 +374,7 @@ export class VideoScheduleProcessing {
 
                     return s3Key;
                   } catch (error: any) {
-                    console.error("Error extracting S3 key from URL:", error);
+
                     return null;
                   }
                 };
@@ -399,11 +382,9 @@ export class VideoScheduleProcessing {
                 const s3Key = extractS3KeyFromUrl(musicTrack.s3FullTrackUrl);
 
                 if (!s3Key) {
-                  console.warn(
-                    `⚠️ Could not extract S3 key from URL: ${musicTrack.s3FullTrackUrl}`
-                  );
+                
                 } else {
-                  console.log(`📦 Extracted S3 key: ${s3Key}`);
+          
 
                   // Step 3: Ensure key ends with .mp3
                   const finalS3Key = s3Key.endsWith(".mp3")
@@ -429,26 +410,19 @@ export class VideoScheduleProcessing {
                     musicUrl = musicUrl + ".mp3";
                   }
 
-                  console.log(
-                    `✅ Music track URL generated (clean MP3 URL): ${musicUrl}`
-                  );
+               
                 }
               }
             } catch (musicError: any) {
-              console.error(
-                `❌ Failed to get music track URL:`,
-                musicError.message
-              );
+           
               // Don't fail the entire process, just log the error
             }
           } else {
-            console.log(
-              "ℹ️ No selectedMusicTrackId in user settings, skipping music"
-            );
+         
           }
         }
       } catch (ttsError: any) {
-        console.error("❌ ElevenLabs TTS failed:", ttsError);
+    
         // Don't fail the entire process, just log the error
       }
 
@@ -477,19 +451,15 @@ export class VideoScheduleProcessing {
         ...(musicUrl ? { music: musicUrl } : {}),
       };
 
-      console.log("🔄 Step 2: Calling Generate Video API...");
       try {
         await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
-        console.log("✅ Step 2: Generate Video API completed successfully");
+     
       } catch (err: any) {
-        console.error("❌ Step 2: Generate Video API failed:", err);
+    
         throw new Error(`Generate Video API failed: ${err.message}`);
       }
 
-      console.log(
-        `🎉 Scheduled video "${trend.description}" created successfully`
-      );
-
+      
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
@@ -503,7 +473,7 @@ export class VideoScheduleProcessing {
         }
       );
     } catch (error: any) {
-      console.error("Error processing scheduled video:", error);
+
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
 
@@ -545,11 +515,7 @@ export class VideoScheduleProcessing {
 
       const trend = schedule.generatedTrends[trendIndex];
 
-      // Do NOT send email notification when video is completed
-      // (Email is only sent when video starts processing)
-      if (status === "completed") {
-        console.log(`✅ Video completed (no email sent): ${trend.description}`);
-      }
+     
 
       // Log status update (no WebSocket notification)
       const statusMessage =
@@ -557,7 +523,6 @@ export class VideoScheduleProcessing {
           ? `✅ Scheduled video "${trend.description}" completed for user ${schedule.userId}`
           : `❌ Scheduled video "${trend.description}" failed for user ${schedule.userId}`;
 
-      console.log(statusMessage);
     }
   }
 }

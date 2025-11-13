@@ -171,7 +171,6 @@ export function validateRequest() {
     
     for (const pattern of suspiciousPatterns) {
       if (pattern.test(path) || pattern.test(url)) {
-        console.log(`🔒 Blocked suspicious request: ${req.method} ${path}`)
         return res.status(403).json({
           success: false,
           message: 'Forbidden'
@@ -192,7 +191,6 @@ export function validateRequest() {
     
     for (const agent of suspiciousUserAgents) {
       if (userAgent.includes(agent)) {
-        console.log(`🔒 Blocked suspicious user agent: ${userAgent}`)
         return res.status(403).json({
           success: false,
           message: 'Forbidden'

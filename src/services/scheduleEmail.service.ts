@@ -63,7 +63,6 @@ class ScheduleEmailService {
 
     await this.emailService.send(data.userEmail, subject, html);
 
-    console.log(`📧 Schedule created email sent to ${data.userEmail}`);
   }
 
   /**
@@ -78,7 +77,6 @@ class ScheduleEmailService {
 
     await this.emailService.send(data.userEmail, subject, html);
 
-    console.log(`📧 Video processing email sent to ${data.userEmail}`);
   }
 
   /**
@@ -93,7 +91,6 @@ class ScheduleEmailService {
 
     await this.emailService.send(data.userEmail, subject, html);
 
-    console.log(`📧 Video generated email sent to ${data.userEmail}`);
   }
 
   /**

@@ -63,22 +63,12 @@ export class DynamicPostGenerationService {
       "youtube",
     ]
   ): Promise<GeneratedPost[]> {
-    console.log(
-      `🎯 Generating dynamic posts for user ${userId} on topic: ${topic}`
-    );
 
-    // Step 1: Analyze topic and classify
     const topicAnalysis = await this.analyzeTopic(topic, keyPoints);
-    console.log(
-      `📊 Topic analysis: ${topicAnalysis.topicType} - ${topicAnalysis.sentiment}`
-    );
-
+  
     // Step 2: Get user's post history for each platform
     const userHistory = await this.getUserPostHistory(userId, platforms);
-    console.log(
-      `📚 Retrieved history for ${Object.keys(userHistory).length} platforms`
-    );
-
+   
     // Step 3: Generate posts for each platform
     const generatedPosts: GeneratedPost[] = [];
 
@@ -92,11 +82,9 @@ export class DynamicPostGenerationService {
           userId
         );
         generatedPosts.push(post);
-        console.log(
-          `✅ Generated ${platform} post (variant ${post.templateVariant})`
-        );
+    
       } catch (error) {
-        console.error(`❌ Failed to generate ${platform} post:`, error);
+        
         // Continue with other platforms
       }
     }
@@ -270,7 +258,7 @@ export class DynamicPostGenerationService {
 
         history[platform] = posts;
       } catch (error) {
-        console.warn(`Failed to get history for ${platform}:`, error);
+
         history[platform] = [];
       }
     }
@@ -348,9 +336,7 @@ export class DynamicPostGenerationService {
     });
 
     if (!template) {
-      console.warn(
-        `⚠️ No template found for ${platform} variant ${templateVariant}, using fallback`
-      );
+   
 
       // Return a fallback post with basic content
       const fallbackContent = `${topicAnalysis.topic} - ${topicAnalysis.keyPoints}`;
@@ -434,7 +420,7 @@ export class DynamicPostGenerationService {
     const availableVariants = availableTemplates.map((t: any) => t.variant);
 
     if (availableVariants.length === 0) {
-      console.warn(`⚠️ No templates found for ${platform}, using fallback`);
+  
       return 0; // This will trigger fallback
     }
 
@@ -458,9 +444,7 @@ export class DynamicPostGenerationService {
           ? userHistory[userHistory.length - 1].templateVariant
           : availableVariants[0];
 
-      console.log(
-        `🔄 All variants used recently for ${platform}, using oldest: ${oldestVariant}`
-      );
+    
       return oldestVariant;
     }
 
@@ -474,11 +458,7 @@ export class DynamicPostGenerationService {
     const selectedVariant =
       smartVariants[Math.floor(Math.random() * smartVariants.length)];
 
-    console.log(
-      `🎯 Selected template variant ${selectedVariant} for ${platform} (avoiding recent: ${recentVariants.join(
-        ", "
-      )})`
-    );
+  
     return selectedVariant;
   }
 
@@ -504,9 +484,7 @@ export class DynamicPostGenerationService {
 
     // If template's hook type wasn't used recently, use it
     if (!recentHookTypes.includes(templateHookType)) {
-      console.log(
-        `🎯 Using template hook type: ${templateHookType} (not used recently)`
-      );
+   
       return templateHookType;
     }
 
@@ -517,11 +495,7 @@ export class DynamicPostGenerationService {
 
     const selectedHook =
       available.length > 0 ? available[0] : availableHooks[0];
-    console.log(
-      `🔄 Template hook used recently, selected: ${selectedHook} (avoiding: ${recentHookTypes.join(
-        ", "
-      )})`
-    );
+  
     return selectedHook;
   }
 
@@ -568,9 +542,7 @@ export class DynamicPostGenerationService {
 
       if (unusedTones.length > 0) {
         selectedTone = unusedTones[0];
-        console.log(
-          `🔄 Tone '${template.tone}' used recently, selected: ${selectedTone}`
-        );
+      
       } else {
         console.log(`🔄 All tones used recently, keeping: ${selectedTone}`);
       }
@@ -591,9 +563,7 @@ export class DynamicPostGenerationService {
 
     // If template's CTA type wasn't used recently, use it
     if (!recentCtaTypes.includes(templateCtaType)) {
-      console.log(
-        `🎯 Using template CTA type: ${templateCtaType} (not used recently)`
-      );
+    
       return templateCtaType;
     }
 
@@ -605,11 +575,6 @@ export class DynamicPostGenerationService {
 
     const selectedCta = available.length > 0 ? available[0] : templateCtaType;
 
-    console.log(
-      `🔄 Template CTA '${templateCtaType}' used recently, selected: ${selectedCta} (avoiding: ${recentCtaTypes.join(
-        ", "
-      )})`
-    );
     return selectedCta;
   }
 
@@ -702,7 +667,7 @@ Generate the post now, following the template structure and variation requiremen
 
       return cleanedContent;
     } catch (error) {
-      console.error("Error generating AI content:", error);
+  
       throw new Error("Failed to generate content with AI");
     }
   }

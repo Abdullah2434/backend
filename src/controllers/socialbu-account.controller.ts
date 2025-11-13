@@ -35,9 +35,6 @@ export const disconnectAccount = async (req: Request, res: Response, token: stri
       });
     }
 
-    console.log(`Disconnecting account ${accountId} for user ${userId}`);
-
-    // First check if user has this account
     const checkResult = await webhookService.checkUserHasAccount(userId, accountIdNumber);
     
     if (!checkResult.success) {
@@ -62,19 +59,13 @@ export const disconnectAccount = async (req: Request, res: Response, token: stri
     // Call SocialBu API to disconnect the account
     try {
       const socialBuService = (await import("../services/socialbu.service")).default;
-      const socialBuResult = await socialBuService.makeAuthenticatedRequest(
+      await socialBuService.makeAuthenticatedRequest(
         'DELETE',
         `/accounts/${accountIdNumber}`
       );
-      
-      if (!socialBuResult.success) {
-        console.warn(`Failed to disconnect account ${accountIdNumber} from SocialBu:`, socialBuResult.message);
-        // Continue with local disconnection even if SocialBu API fails
-      } else {
-        console.log(`Account ${accountIdNumber} successfully disconnected from SocialBu`);
-      }
+ 
     } catch (socialBuError) {
-      console.error('Error calling SocialBu API to disconnect account:', socialBuError);
+    
       // Continue with local disconnection even if SocialBu API fails
     }
 
@@ -93,9 +84,9 @@ export const disconnectAccount = async (req: Request, res: Response, token: stri
     if (removeResult.success) {
       try {
         await userConnectedAccountService.deleteUserConnectedAccount(userId, accountIdNumber);
-        console.log(`Account ${accountIdNumber} deleted from UserConnectedAccount database for user ${userId}`);
+
       } catch (dbError) {
-        console.error('Error deleting account from UserConnectedAccount database:', dbError);
+
         // Don't fail the request if database update fails
       }
     }
@@ -110,8 +101,8 @@ export const disconnectAccount = async (req: Request, res: Response, token: stri
       }
     });
   } catch (error) {
-    console.error('Error disconnecting account:', error);
-    
+   
+   
     res.status(500).json({
       success: false,
       message: 'Failed to disconnect account',
@@ -151,7 +142,6 @@ export const checkAccount = async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`Checking account ${accountId} for user ${userId}`);
 
     const result = await webhookService.checkUserHasAccount(userId, accountIdNumber);
 
@@ -169,7 +159,6 @@ export const checkAccount = async (req: Request, res: Response) => {
       data: result.data
     });
   } catch (error) {
-    console.error('Error checking account:', error);
     
     res.status(500).json({
       success: false,

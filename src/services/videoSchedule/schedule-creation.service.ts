@@ -45,8 +45,6 @@ export class VideoScheduleCreation {
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1); // Add one month
 
-    console.log(`📅 Schedule start date (UTC): ${startDate.toISOString()}`);
-    console.log(`📅 Schedule end date (UTC): ${endDate.toISOString()}`);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = VideoScheduleUtils.calculateNumberOfVideos(
@@ -55,8 +53,7 @@ export class VideoScheduleCreation {
       endDate
     );
 
-    // Generate basic trends immediately (no dynamic captions yet)
-    console.log(`🎬 Generating ${numberOfVideos} basic trends immediately...`);
+    
 
     const allTrends = [];
     const chunkSize = 5;
@@ -66,11 +63,7 @@ export class VideoScheduleCreation {
       const remainingTrends = numberOfVideos - allTrends.length;
       const currentChunkSize = Math.min(chunkSize, remainingTrends);
 
-      console.log(
-        `📦 Generating chunk ${
-          i + 1
-        }/${totalChunks} (${currentChunkSize} trends)...`
-      );
+    
 
       try {
         const chunkTrends = await generateRealEstateTrends(
@@ -97,25 +90,19 @@ export class VideoScheduleCreation {
         }));
 
         allTrends.push(...basicTrends);
-        console.log(
-          `✅ Chunk ${i + 1} completed: ${basicTrends.length} trends`
-        );
+    
 
         // Add a small delay between chunks to avoid rate limiting
         if (i < totalChunks - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error(`❌ Error in chunk ${i + 1}:`, error);
+     
         throw new Error(
           `Failed to generate trends in chunk ${i + 1}. Please try again.`
         );
       }
     }
-
-    console.log(
-      `✅ Generated ${allTrends.length} basic trends from OpenAI in ${totalChunks} chunks`
-    );
 
     // Create scheduled trends
     const generatedTrends = VideoScheduleUtils.createScheduledTrends(
@@ -194,8 +181,6 @@ export class VideoScheduleCreation {
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1); // Add one month
 
-    console.log(`📅 Schedule start date (UTC): ${startDate.toISOString()}`);
-    console.log(`📅 Schedule end date (UTC): ${endDate.toISOString()}`);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = VideoScheduleUtils.calculateNumberOfVideos(
@@ -222,39 +207,21 @@ export class VideoScheduleCreation {
           throw new Error(`Failed to generate trends for chunk ${i + 1}`);
         }
 
-        // Accept partial results if we got at least some trends
-        if (chunkTrends.length < currentChunkSize) {
-          console.warn(
-            `⚠️ Chunk ${i + 1}: Requested ${currentChunkSize} trends but got ${
-              chunkTrends.length
-            } trends`
-          );
-        }
-
+       
         // Hybrid approach: Generate dynamic captions for first video only
         // Remaining videos will be processed in background
         let enhancedTrends;
         if (i === 0) {
-          // First chunk: Generate dynamic captions immediately
-          console.log(
-            `🎯 Generating dynamic captions for first video (chunk ${i + 1})...`
-          );
+    
           enhancedTrends =
             await VideoScheduleCaptionGeneration.generateDynamicCaptionsForTrends(
               chunkTrends,
               userSettings,
               userId
             );
-          console.log(
-            `✅ First video captions generated: ${enhancedTrends.length} trends`
-          );
+       
         } else {
-          // Remaining chunks: Use basic captions, queue for background processing
-          console.log(
-            `⏳ Using basic captions for chunk ${
-              i + 1
-            }, queuing for background processing...`
-          );
+       
           enhancedTrends = chunkTrends.map((trend) => ({
             ...trend,
             instagram_caption: `${trend.description} - ${trend.keypoints}`,
@@ -269,25 +236,19 @@ export class VideoScheduleCreation {
         }
 
         allTrends.push(...enhancedTrends);
-        console.log(
-          `✅ Chunk ${i + 1} completed: ${enhancedTrends.length} trends`
-        );
-
+   
         // Add a small delay between chunks to avoid rate limiting
         if (i < totalChunks - 1) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (error) {
-        console.error(`❌ Error in chunk ${i + 1}:`, error);
+  
         throw new Error(
           `Failed to generate trends in chunk ${i + 1}. Please try again.`
         );
       }
     }
 
-    console.log(
-      `✅ Generated ${allTrends.length} valid trends from OpenAI in ${totalChunks} chunks`
-    );
 
     // Create scheduled trends
     const generatedTrends = VideoScheduleUtils.createScheduledTrends(
@@ -340,14 +301,11 @@ export class VideoScheduleCreation {
 
       await this.emailService.sendScheduleCreatedEmail(emailData);
     } catch (emailError) {
-      console.error("Error sending schedule created email:", emailError);
+
       // Don't fail the schedule creation if email fails
     }
 
-    // Log success (no WebSocket notification)
-    console.log(
-      `✅ Video schedule created for user ${userId}: ${numberOfVideos} videos scheduled`
-    );
+
 
     return schedule;
   }

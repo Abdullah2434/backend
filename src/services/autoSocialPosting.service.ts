@@ -30,14 +30,10 @@ export class AutoSocialPostingService {
     data: AutoPostingData
   ): Promise<SocialPostResult[]> {
     try {
-      console.log(
-        `🚀 Starting auto social media posting for user ${data.userId}, schedule ${data.scheduleId}, trend ${data.trendIndex}`
-      );
-
+   
       // Preflight: ensure active SocialBu token exists
       const activeToken = await SocialBuToken.findOne({ isActive: true });
       if (!activeToken || !activeToken.authToken) {
-        console.warn("⚠️ No active SocialBu token found. Skipping auto-post.");
         notificationService.notifyAutoPostAlert(data.userId, "failure", {
           scheduleId: data.scheduleId,
           trendIndex: data.trendIndex,
@@ -67,9 +63,7 @@ export class AutoSocialPostingService {
       });
 
       if (connectedAccounts.length === 0) {
-        console.log(
-          `⚠️ No connected social media accounts found for user ${data.userId}`
-        );
+    
         notificationService.notifyAutoPostAlert(data.userId, "failure", {
           scheduleId: data.scheduleId,
           trendIndex: data.trendIndex,
@@ -81,25 +75,13 @@ export class AutoSocialPostingService {
         return [];
       }
 
-      console.log(
-        `📱 Found ${connectedAccounts.length} connected accounts for user ${data.userId}`
-      );
+     
 
-      // Log connected accounts details
-      console.log("📋 Connected social media accounts:");
       connectedAccounts.forEach((account, index) => {
-        console.log(
-          `  ${index + 1}. ${account.accountName} (${account.accountType})`
-        );
-        console.log(`     📋 Account ID: ${account.socialbuAccountId}`);
-        console.log(`     📋 Active: ${account.isActive}`);
-        console.log(`     📋 Max Length: ${account.postMaxlength} characters`);
+       
       });
 
-      // Step 1: Upload video using existing manual upload function
-      console.log(
-        "📤 Uploading video using existing manual upload function..."
-      );
+  
       const uploadResult = await socialBuMediaService.uploadMedia(data.userId, {
         name: data.videoTitle.replace(/[^a-zA-Z0-9]/g, "_") + ".mp4",
         mime_type: "video/mp4",
@@ -118,11 +100,11 @@ export class AutoSocialPostingService {
         throw new Error("Failed to get upload key from SocialBu response");
       }
 
-      console.log("✅ Video uploaded successfully to SocialBu");
+ 
 
       // Step 1.1: Fetch upload_token from SocialBu using the key (align with manual flow)
       const key = socialbuResponse.key;
-      console.log("🔑 SocialBu upload key:", key);
+
       // Wait briefly then check status to obtain upload_token
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const statusResponse = await socialBuService.makeAuthenticatedRequest(
@@ -140,7 +122,7 @@ export class AutoSocialPostingService {
       if (!uploadToken) {
         throw new Error("Missing upload_token in SocialBu status response");
       }
-      console.log("🔐 SocialBu upload_token:", uploadToken);
+
 
       // Send socket notification - Video uploaded
       notificationService.notifyAutoPostProgress(
@@ -160,34 +142,25 @@ export class AutoSocialPostingService {
 
       for (const account of connectedAccounts) {
         try {
-          console.log(
-            `📝 Posting to ${account.accountName} (${account.accountType})`
-          );
+     
 
           // Show which caption will be used for this platform
           const caption = this.getPlatformCaption(account.accountType, trend);
-          console.log(`📋 Using caption for ${account.accountType}:`);
-          console.log(
-            `📋 Caption preview: ${
-              caption
-                ? caption.substring(0, 100) + "..."
-                : "No caption available"
-            }`
-          );
+      
 
           const result = await this.postToPlatform(account, trend, uploadToken);
 
           results.push(result);
 
           if (result.success) {
-            console.log(`✅ Successfully posted to ${account.accountName}`);
+   
           } else {
             console.log(
               `❌ Failed to post to ${account.accountName}: ${result.error}`
             );
           }
         } catch (error: any) {
-          console.error(`❌ Error posting to ${account.accountName}:`, error);
+
           results.push({
             platform: account.accountType,
             accountName: account.accountName,
@@ -200,9 +173,6 @@ export class AutoSocialPostingService {
       const successfulPosts = results.filter((r) => r.success);
       const failedPosts = results.filter((r) => !r.success);
 
-      console.log(
-        `🎉 Auto social media posting completed. ${successfulPosts.length}/${results.length} posts successful`
-      );
 
       // Send enhanced alert notifications based on results
       if (successfulPosts.length === results.length) {
@@ -317,7 +287,7 @@ export class AutoSocialPostingService {
         : new Date();
       const publishAt = formatDateTimeUTC(publishDate);
       try {
-        console.log(`🕒 Using publish_at (UTC): ${publishAt}`);
+
       } catch {}
       const postData = {
         accounts: [account.socialbuAccountId], // Use socialbuAccountId like manual posting
@@ -333,10 +303,7 @@ export class AutoSocialPostingService {
 
       // Debug: Log full SocialBu post body
       try {
-        console.log(
-          `📦 SocialBu post body for ${account.accountName} (${account.accountType}):\n` +
-            JSON.stringify(postData, null, 2)
-        );
+     
       } catch {}
 
       // Use existing socialBuService.makeAuthenticatedRequest (same as manual posting)
@@ -362,7 +329,6 @@ export class AutoSocialPostingService {
         };
       }
     } catch (error: any) {
-      console.error(`❌ Error posting to ${account.accountName}:`, error);
       return {
         platform: account.accountType,
         accountName: account.accountName,
@@ -408,8 +374,7 @@ export class AutoSocialPostingService {
       return trend.youtube_caption || null;
     }
 
-    // Unknown platform type
-    console.warn(`Unknown platform type: ${accountType}`);
+
     return null;
   }
 

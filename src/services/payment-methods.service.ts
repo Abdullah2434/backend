@@ -93,7 +93,7 @@ export class PaymentMethodsService {
         };
       });
     } catch (error) {
-      console.error("Error fetching payment methods:", error);
+ 
       throw new Error("Failed to fetch payment methods");
     }
   }
@@ -125,7 +125,7 @@ export class PaymentMethodsService {
         },
       };
     } catch (error) {
-      console.error("Error creating setup intent:", error);
+    
       throw new Error("Failed to create setup intent");
     }
   }
@@ -177,10 +177,7 @@ export class PaymentMethodsService {
               default_payment_method: paymentMethodId,
             });
           } catch (subscriptionError: any) {
-            // If subscription update fails (e.g., subscription is canceled), 
-            // log the error but don't fail the entire operation since we've 
-            // already successfully updated the customer's default payment method
-            console.warn(`Warning: Could not update subscription default payment method: ${subscriptionError.message}`);
+
           }
         }
       }
@@ -202,7 +199,7 @@ export class PaymentMethodsService {
         isExpired: isExpired,
       };
     } catch (error) {
-      console.error("Error confirming setup intent:", error);
+    
       throw new Error("Failed to confirm setup intent");
     }
   }
@@ -240,14 +237,12 @@ export class PaymentMethodsService {
             default_payment_method: paymentMethodId,
           });
         } catch (subscriptionError: any) {
-          // If subscription update fails (e.g., subscription is canceled), 
-          // log the error but don't fail the entire operation since we've 
-          // already successfully updated the customer's default payment method
-          console.warn(`Warning: Could not update subscription default payment method: ${subscriptionError.message}`);
+        
+
         }
       }
     } catch (error) {
-      console.error("Error setting default payment method:", error);
+     
       throw new Error("Failed to set default payment method");
     }
   }
@@ -278,7 +273,7 @@ export class PaymentMethodsService {
       // Detach payment method
       await this.stripe.paymentMethods.detach(paymentMethodId);
     } catch (error) {
-      console.error("Error removing payment method:", error);
+  
       throw new Error("Failed to remove payment method");
     }
   }

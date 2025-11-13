@@ -37,25 +37,14 @@ function requireAuth(req: Request) {
   }
 }
 
-/**
- * Get pending schedule posts for the authenticated user
- * This endpoint returns only the pending posts from the user's active schedule
- *
- * Usage:
- * curl -H "Authorization: Bearer <token>" \
- *      -H "x-timezone: America/New_York" \
- *      http://localhost:4000/api/schedule
- */
 export async function getPendingSchedulePosts(req: Request, res: Response) {
   try {
-  
-
+ 
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
     // Detect timezone from request headers
     const timezone = TimezoneService.detectTimezone(req);
-
 
     // Get user's active schedule
     const schedule = await videoScheduleService.getUserSchedule(payload.userId);
@@ -109,10 +98,6 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
     );
     const failedPosts = allPosts.filter((post) => post.status === "failed");
 
-    console.log(
-      `📊 Found ${allPosts.length} total posts for user ${payload.userId} (${pendingPosts.length} pending, ${completedPosts.length} completed, ${processingPosts.length} processing, ${failedPosts.length} failed)`
-    );
-
     return res.json({
       success: true,
       data: {
@@ -141,7 +126,6 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error getting pending schedule posts:", e);
 
     // Handle authentication errors
     if (e.message.includes("token") || e.message.includes("Token")) {
@@ -158,34 +142,9 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
   }
 }
 
-/**
- * Edit a single post in the user's schedule
- *
- * Usage:
- * curl -X PUT \
- *      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
- *      -H "x-timezone: America/New_York" \
- *      -H "Content-Type: application/json" \
- *      -d '{
- *        "description": "Updated description for this trend",
- *        "keypoints": "Updated key point 1, Updated key point 2, Updated key point 3",
- *        "captions": {
- *          "instagram": "Updated Instagram caption with hashtags #RealEstate #Updated",
- *          "facebook": "Updated Facebook caption with more detailed content...",
- *          "linkedin": "Updated LinkedIn caption for professional audience...",
- *          "twitter": "Updated Twitter caption #RealEstate #Updated",
- *          "tiktok": "Updated TikTok caption with trending content...",
- *          "youtube": "Updated YouTube caption for video content..."
- *        },
- *        "scheduledFor": "2024-01-20 15:30:00"
- *      }' \
- *      http://localhost:4000/api/schedule/SCHEDULE_ID/post/POST_INDEX
- */
 export async function editSchedulePost(req: Request, res: Response) {
   try {
-    console.log("✏️ Editing schedule post...");
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-
+   
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
@@ -202,9 +161,7 @@ export async function editSchedulePost(req: Request, res: Response) {
 
     // Detect timezone from request headers
     const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
 
-    // Extract update data from request body
     const { description, keypoints, scheduledFor, captions } = req.body;
 
     // Validate that at least one field is provided for update
@@ -236,9 +193,6 @@ export async function editSchedulePost(req: Request, res: Response) {
             scheduledFor,
             timezone
           );
-          console.log(
-            `🕐 Converted "${scheduledFor}" from ${timezone} to UTC: ${scheduledForUTC.toISOString()}`
-          );
         } else if (scheduledFor instanceof Date) {
           // If it's already a Date object, assume it's in user's timezone and convert to UTC
           const dateString = scheduledFor
@@ -247,9 +201,7 @@ export async function editSchedulePost(req: Request, res: Response) {
             .replace("Z", "")
             .split(".")[0];
           scheduledForUTC = TimezoneService.ensureUTCDate(dateString, timezone);
-          console.log(
-            `🕐 Converted Date object from ${timezone} to UTC: ${scheduledForUTC.toISOString()}`
-          );
+  
         }
 
         // Validate the date
@@ -260,7 +212,6 @@ export async function editSchedulePost(req: Request, res: Response) {
           });
         }
       } catch (error) {
-        console.error("Error converting scheduledFor to UTC:", error);
         return res.status(400).json({
           success: false,
           message:
@@ -302,10 +253,6 @@ export async function editSchedulePost(req: Request, res: Response) {
         updateData.youtube_caption = captions.youtube;
     }
 
-    console.log(
-      `📝 Updating post ${postId} in schedule ${scheduleId} for user ${payload.userId}`
-    );
-
     // Update the post
     const updatedSchedule = await videoScheduleService.updateSchedulePostById(
       scheduleId,
@@ -328,9 +275,6 @@ export async function editSchedulePost(req: Request, res: Response) {
     // Get the updated post
     const updatedPost = updatedSchedule.generatedTrends[postIndex];
 
-    console.log(
-      `✅ Successfully updated post ${postId} in schedule ${scheduleId}`
-    );
 
     return res.json({
       success: true,
@@ -362,8 +306,6 @@ export async function editSchedulePost(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error editing schedule post:", e);
-
     // Handle specific error cases
     if (e.message.includes("Schedule not found")) {
       return res.status(404).json({
@@ -404,19 +346,8 @@ export async function editSchedulePost(req: Request, res: Response) {
   }
 }
 
-/**
- * Delete a single post from the user's schedule
- *
- * Usage:
- * curl -X DELETE \
- *      -H "Authorization: Bearer <token>" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/1
- */
 export async function deleteSchedulePost(req: Request, res: Response) {
   try {
-    console.log("🗑️ Deleting schedule post...");
-
-    // Authenticate user and extract userId from token
     const payload = requireAuth(req);
 
     // Extract scheduleId and postId from URL parameters
@@ -430,11 +361,6 @@ export async function deleteSchedulePost(req: Request, res: Response) {
       });
     }
 
-    console.log(
-      `🗑️ Deleting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
-    );
-
-    // Delete the post
     const updatedSchedule = await videoScheduleService.deleteSchedulePostById(
       scheduleId,
       postId,
@@ -448,9 +374,7 @@ export async function deleteSchedulePost(req: Request, res: Response) {
       });
     }
 
-    console.log(
-      `✅ Successfully deleted post ${postId} from schedule ${scheduleId}`
-    );
+  
 
     return res.json({
       success: true,
@@ -481,9 +405,7 @@ export async function deleteSchedulePost(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error deleting schedule post:", e);
-
-    // Handle specific error cases
+  
     if (e.message.includes("Schedule not found")) {
       return res.status(404).json({
         success: false,
@@ -523,17 +445,9 @@ export async function deleteSchedulePost(req: Request, res: Response) {
   }
 }
 
-/**
- * Get a single post from the user's schedule by post ID
- *
- * Usage:
- * curl -H "Authorization: Bearer <token>" \
- *      -H "x-timezone: America/New_York" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/68ed0c8a9ff65c5692f718f4_0
- */
 export async function getSchedulePost(req: Request, res: Response) {
   try {
-    console.log("📋 Getting single schedule post...");
+
 
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
@@ -551,13 +465,7 @@ export async function getSchedulePost(req: Request, res: Response) {
 
     // Detect timezone from request headers
     const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
 
-    console.log(
-      `📋 Getting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
-    );
-
-    // Get the post
     const result = await videoScheduleService.getSchedulePostById(
       scheduleId,
       postId,
@@ -572,10 +480,6 @@ export async function getSchedulePost(req: Request, res: Response) {
     }
 
     const { schedule, post, postIndex } = result;
-
-    console.log(
-      `✅ Successfully retrieved post ${postId} from schedule ${scheduleId}`
-    );
 
     return res.json({
       success: true,
@@ -628,9 +532,7 @@ export async function getSchedulePost(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error getting schedule post:", e);
-
-    // Handle specific error cases
+  
     if (e.message.includes("Schedule not found")) {
       return res.status(404).json({
         success: false,
@@ -663,17 +565,9 @@ export async function getSchedulePost(req: Request, res: Response) {
   }
 }
 
-/**
- * Delete entire schedule
- *
- * Usage:
- * curl -X DELETE \
- *      -H "Authorization: Bearer <token>" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1
- */
 export async function deleteEntireSchedule(req: Request, res: Response) {
   try {
-    console.log("🗑️ Deleting entire schedule...");
+
 
     // Authenticate user and extract userId from token
     const payload = requireAuth(req);
@@ -681,11 +575,6 @@ export async function deleteEntireSchedule(req: Request, res: Response) {
     // Extract scheduleId from URL parameters
     const { scheduleId } = req.params;
 
-    console.log(
-      `🗑️ Deleting entire schedule ${scheduleId} for user ${payload.userId}`
-    );
-
-    // Delete the entire schedule
     const deleted = await videoScheduleService.deleteEntireSchedule(
       scheduleId,
       payload.userId
@@ -698,7 +587,6 @@ export async function deleteEntireSchedule(req: Request, res: Response) {
       });
     }
 
-    console.log(`✅ Successfully deleted entire schedule ${scheduleId}`);
 
     return res.json({
       success: true,
@@ -709,8 +597,7 @@ export async function deleteEntireSchedule(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error("Error deleting entire schedule:", e);
-
+    
     // Handle specific error cases
     if (e.message.includes("Schedule not found")) {
       return res.status(404).json({

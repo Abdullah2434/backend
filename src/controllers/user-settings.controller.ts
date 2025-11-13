@@ -54,7 +54,6 @@ export async function getUserVideoSettings(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error getting user video settings:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to get user video settings",
@@ -65,8 +64,6 @@ export async function getUserVideoSettings(req: Request, res: Response) {
 
 export async function saveUserVideoSettings(req: Request, res: Response) {
   try {
-    console.log("Received request body:", JSON.stringify(req.body, null, 2));
-
     const {
       prompt,
       avatar,
@@ -110,20 +107,16 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
           avatarType: 'video_avatar' // Default type
         };
       }
-      
-      console.warn(`Invalid ${fieldName} format:`, value);
       return null;
     };
 
     // Handle avatar array field - it might be sent as a string, array, or object with numeric keys
     let avatarArray = avatar;
-    console.log("[saveUserVideoSettings] Raw avatar field:", avatar);
     
     if (typeof avatar === "string") {
       try {
         avatarArray = JSON.parse(avatar);
       } catch (parseError) {
-        console.error("Error parsing avatar string:", parseError);
         return res.status(400).json({
           success: false,
           message: "avatar field must be a valid array or JSON string",
@@ -273,7 +266,6 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error saving user video settings:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to save user video settings",

@@ -30,25 +30,23 @@ export async function generateAndStoreTopicData() {
     await connectMongo();
     
     if (!OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY environment variable is not set');
       return;
     }
 
-    console.log(`Starting data generation for ${AVAILABLE_TOPICS.length} topics: ${AVAILABLE_TOPICS.join(', ')}`);
     
     // Delete ALL existing topics first
     const deleteResult = await Topic.deleteMany({});
-    console.log(`Deleted ${deleteResult.deletedCount} existing topic records`);
+
     
     // Generate data for each topic in the array
     for (const topic of AVAILABLE_TOPICS) {
-      console.log(`\n--- Processing ${topic} ---`);
+
       
       // Generate all 5 documents for this topic in one API call
       const topicDataArray = await generateMultipleTopicDataWithChatGPT(topic);
       
       if (!topicDataArray || topicDataArray.length === 0) {
-        console.error(`Failed to generate topic data from ChatGPT for ${topic}`);
+    
         continue; // Skip this topic and continue with others
       }
       
@@ -61,16 +59,14 @@ export async function generateAndStoreTopicData() {
           description: topicData.description,
           keypoints: topicData.keypoints
         });
-        console.log(`  ✓ Created document ${i + 1}/${topicDataArray.length} for ${topic}`);
+    
       }
       
-      console.log(`✓ Completed generating ${topicDataArray.length} documents for ${topic}`);
       
       // Add a delay between topics to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    console.log('\n✅ All topics data generation complete!');
   } catch (error) {
     console.error('Error generating topic data:', error);
   }
@@ -138,7 +134,6 @@ Make each piece current, relevant, and engaging for ${topic} professionals and s
 
     const content = response.data.choices[0]?.message?.content;
     if (!content) {
-      console.error('No content received from ChatGPT');
       return [];
     }
 
@@ -156,7 +151,6 @@ Make each piece current, relevant, and engaging for ${topic} professionals and s
       
       // Ensure it's an array
       if (!Array.isArray(parsedData)) {
-        console.error('Expected array response from ChatGPT');
         return [];
       }
       
@@ -175,13 +169,11 @@ Make each piece current, relevant, and engaging for ${topic} professionals and s
       });
       
     } catch (parseError) {
-      console.error('Error parsing ChatGPT response:', parseError);
       console.log('Raw response:', content);
       return [];
     }
 
   } catch (error) {
-    console.error('Error calling ChatGPT API:', error);
     return [];
   }
 }

@@ -46,7 +46,6 @@ export async function getCronHealth(req: Request, res: Response) {
     const statusCode = healthStatus.healthy ? 200 : 503;
     res.status(statusCode).json(response);
   } catch (error: any) {
-    console.error("Error getting cron health:", error);
     res.status(500).json({
       success: false,
       message: "Failed to get cron health status",
@@ -71,7 +70,6 @@ export async function resetCronStats(req: Request, res: Response) {
         : "Reset all cron job statistics",
     });
   } catch (error: any) {
-    console.error("Error resetting cron stats:", error);
     res.status(500).json({
       success: false,
       message: "Failed to reset cron statistics",

@@ -202,10 +202,6 @@ export class VideoService {
     // Delete from database only (not from S3)
     await Video.deleteOne({ videoId });
 
-    console.log(
-      `✅ Video ${videoId} deleted from database (S3 file preserved)`
-    );
-
     return true;
   }
 
@@ -230,8 +226,7 @@ export class VideoService {
       // Add download URL to video object (not saved to database)
       (video as any).downloadUrl = downloadResult.downloadUrl;
     } catch (s3Error) {
-      console.error("Error creating download URL:", s3Error);
-      // Continue without download URL
+  
     }
 
     return video;
@@ -257,10 +252,7 @@ export class VideoService {
             );
             (video as any).downloadUrl = downloadResult.downloadUrl;
           } catch (s3Error) {
-            console.error(
-              `Error creating download URL for video ${video.videoId}:`,
-              s3Error
-            );
+        
             // Continue without download URL
           }
         }
@@ -278,10 +270,7 @@ export class VideoService {
             !video.socialMediaCaptions.youtube_caption) // ✅ Also check for youtube_caption
         ) {
           try {
-            console.log(
-              `🎨 Generating missing captions for video: ${video.videoId}`
-            );
-
+        
             // Generate captions using the video title as topic
             const { CaptionGenerationService } = await import(
               "../../../services/captionGeneration.service"
@@ -304,10 +293,7 @@ export class VideoService {
             // Update the video object for this response
             (video as any).socialMediaCaptions = captions;
           } catch (captionError) {
-            console.warn(
-              `Failed to generate captions for video ${video.videoId}:`,
-              captionError
-            );
+         
             // Continue without captions
           }
         } else if (video.status === "ready" && video.socialMediaCaptions) {
@@ -336,14 +322,8 @@ export class VideoService {
               // Update the video object for this response
               (video as any).socialMediaCaptions = captions;
 
-              console.log(
-                `✅ Regenerated and stored captions for video: ${video.videoId}`
-              );
             } catch (captionError) {
-              console.warn(
-                `Failed to regenerate captions for video ${video.videoId}:`,
-                captionError
-              );
+           
             }
           }
         }
@@ -435,8 +415,6 @@ export class VideoService {
       counter++;
     }
 
-    // Download video from external URL
-    console.log("Downloading video from:", videoUrl);
     const videoResponse = await fetch(videoUrl, {
       method: "GET",
       headers: {
@@ -456,12 +434,6 @@ export class VideoService {
     const contentType =
       videoResponse.headers.get("content-type") || "video/mp4";
 
-    console.log(
-      "Video downloaded successfully, size:",
-      videoBuffer.byteLength,
-      "bytes"
-    );
-
     // Create S3 key and secret key
     const s3Key = this.s3Service.generateS3Key(
       user._id.toString(),
@@ -470,8 +442,7 @@ export class VideoService {
     );
     const secretKey = crypto.randomBytes(32).toString("hex");
 
-    // Upload video to S3
-    console.log("Uploading video to S3...");
+
     await this.s3Service.uploadVideoDirectly(
       s3Key,
       Buffer.from(videoBuffer),
@@ -483,7 +454,7 @@ export class VideoService {
       }
     );
 
-    console.log("Video uploaded to S3 successfully");
+ 
 
     // Create video record in database
     const video = await this.createVideo({

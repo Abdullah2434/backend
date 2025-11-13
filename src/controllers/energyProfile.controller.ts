@@ -46,7 +46,6 @@ export async function setPresetProfile(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error setting preset profile:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to set energy profile",
@@ -100,7 +99,6 @@ export async function setCustomVoiceMusic(req: Request, res: Response) {
       },
     });
   } catch (error: any) {
-    console.error("Error setting custom voice music:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to set custom voice and music settings",
@@ -137,7 +135,6 @@ export async function getCurrentProfile(req: Request, res: Response) {
       data: profile,
     });
   } catch (error: any) {
-    console.error("Error getting current profile:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get energy profile",
@@ -163,7 +160,6 @@ export async function getPresetConfigurations(req: Request, res: Response) {
       data: presets,
     });
   } catch (error: any) {
-    console.error("Error getting preset configurations:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to get preset configurations",

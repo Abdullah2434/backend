@@ -90,7 +90,6 @@ export class AuthService {
 
   // Login user
   async login(loginData: LoginData): Promise<AuthResult> {
-    console.log(`🔍 Login attempt for email: ${loginData.email}`);
 
     // Find user by email and include password
     const user = await User.findOne({ email: loginData.email }).select(
@@ -98,32 +97,20 @@ export class AuthService {
     );
 
     if (!user) {
-      console.log(`❌ User not found for email: ${loginData.email}`);
       throw new Error("Invalid email or password");
     }
 
-    console.log(`✅ User found: ${user.email}`);
-    console.log(`🔐 Password field exists: ${!!user.password}`);
-    console.log(
-      `🔐 Password field length: ${user.password ? user.password.length : 0}`
-    );
-
-    // Check if password is correct
-    console.log(`🔍 Attempting password comparison...`);
     const isPasswordValid = await bcrypt.compare(
       loginData.password,
       user.password
     );
-    console.log(`🔍 Password comparison result: ${isPasswordValid}`);
+
 
     if (!isPasswordValid) {
-      console.log(`❌ Password validation failed for user: ${user.email}`);
       throw new Error("Invalid email or password");
     }
 
-    console.log(`✅ Password validation successful for user: ${user.email}`);
 
-    // Generate new JWT access token
     const accessToken = this.generateToken(user._id.toString(), user.email);
 
     return { user, accessToken };
@@ -303,16 +290,16 @@ export class AuthService {
   // Debug method to test password hashing
   async debugPasswordHash(password: string): Promise<string> {
     const hash = await bcrypt.hash(password, 12);
-    console.log(`🔍 Debug: Password "${password}" hashes to: ${hash}`);
+
     return hash;
   }
 
   // Verify email
   async verifyEmail(token: string): Promise<{ user: IUser; message: string }> {
     // Hash the token to compare with stored hash
-    console.log(`🔍 Verifying email with token: ${token}`);
+
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-    console.log(`🔍 Verifying email with token hash: ${hashedToken}`);
+
 
     // Find user with this verification token
     const user = await User.findOne({
@@ -393,10 +380,7 @@ export class AuthService {
       try {
         await sendWelcomeEmail(user.email, user.firstName);
       } catch (emailError) {
-        console.error(
-          `Failed to send welcome email to linked Google user ${user.email}:`,
-          emailError
-        );
+      
         // Don't fail the entire login if email fails
       }
 
@@ -423,10 +407,7 @@ export class AuthService {
     try {
       await sendWelcomeEmail(user.email, user.firstName);
     } catch (emailError) {
-      console.error(
-        `Failed to send welcome email to new Google user ${user.email}:`,
-        emailError
-      );
+
       // Don't fail the entire registration if email fails
     }
 

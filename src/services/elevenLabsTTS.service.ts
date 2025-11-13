@@ -145,13 +145,12 @@ async function generateSpeechChunk(
   
   // Log the exact text being sent (first 200 chars for debugging)
   const preview = text.length > 200 ? text.substring(0, 200) + "..." : text;
-  console.log(`📤 Sending to ElevenLabs: ${text.length} chars - "${preview}"`);
   
   // Build request body with optional voice_settings
   const requestBody: any = { text, model_id };
   if (voice_settings) {
     requestBody.voice_settings = voice_settings;
-    console.log(`🎚️ Including voice settings:`, voice_settings);
+
   }
   
   try {
@@ -170,15 +169,10 @@ async function generateSpeechChunk(
     );
 
     const audioBuffer = Buffer.from(response.data);
-    console.log(`✅ Received audio: ${audioBuffer.length} bytes`);
     
     return audioBuffer;
   } catch (error: any) {
-    console.error(`❌ ElevenLabs API error for ${text.length} chars:`, {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
+  
     throw error;
   }
 }
@@ -258,28 +252,25 @@ async function generateSpeechPart(
   const characterLimit = getCharacterLimit(model_id);
   const textLength = text.length;
 
-  console.log(`📝 Generating speech for ${partName}: ${textLength} characters (limit: ${characterLimit})`);
 
   // Check if text exceeds limit
   if (textLength > characterLimit) {
-    console.warn(`⚠️ Text for ${partName} exceeds character limit (${textLength} > ${characterLimit}). Splitting into chunks...`);
+
     
     // Split text into chunks
     const chunks = splitTextIntoChunks(text, characterLimit);
-    console.log(`📦 Split ${partName} into ${chunks.length} chunks`);
+   
 
     // Generate speech for each chunk
     const audioChunks: Buffer[] = [];
     for (let i = 0; i < chunks.length; i++) {
-      console.log(`🎤 Generating chunk ${i + 1}/${chunks.length} for ${partName} (${chunks[i].length} chars)`);
+      
       const audioBuffer = await generateSpeechChunk(voice_id, chunks[i], model_id, output_format, voice_settings);
       audioChunks.push(audioBuffer);
     }
 
-    // Concatenate all chunks
-    console.log(`🔗 Concatenating ${audioChunks.length} audio chunks for ${partName}...`);
     const finalAudioBuffer = await concatenateAudioChunks(audioChunks);
-    console.log(`✅ Concatenation complete for ${partName}`);
+
 
     // Upload to S3
     const timestamp = Date.now();
@@ -380,13 +371,13 @@ function selectOptimalModel(
 
   // If any text part exceeds 10k, automatically use turbo_v2_5 (40k limit)
   if (maxLength > 10000) {
-    console.log(`📊 Long text detected (${maxLength} chars). Auto-selecting eleven_turbo_v2_5 for 40k limit.`);
+
     return "eleven_turbo_v2_5";
   }
 
   // If text is between 5k-10k, use turbo_v2 (30k limit) for better quality
   if (maxLength > 5000) {
-    console.log(`📊 Medium-long text detected (${maxLength} chars). Auto-selecting eleven_turbo_v2 for 30k limit.`);
+  
     return "eleven_turbo_v2";
   }
 
@@ -427,8 +418,7 @@ export async function generateSpeech(options: TextToSpeechOptions) {
     
     // Log model selection for debugging
     const characterLimit = getCharacterLimit(model_id);
-    console.log(`🎯 Using model: ${model_id} (Character limit: ${characterLimit.toLocaleString()})`);
-    console.log(`📏 Text lengths - Hook: ${textLengths.hook}, Body: ${textLengths.body}, Conclusion: ${textLengths.conclusion}`);
+   
 
     // Generate speech for all three parts in parallel
     const [hookResult, bodyResult, conclusionResult] = await Promise.all([
@@ -445,7 +435,6 @@ export async function generateSpeech(options: TextToSpeechOptions) {
       contentType: "audio/mpeg",
     };
   } catch (error: any) {
-    console.error("Error generating speech:", error.message);
     throw new Error(
       `Failed to generate speech: ${error.response?.data?.detail?.message || error.message}`
     );

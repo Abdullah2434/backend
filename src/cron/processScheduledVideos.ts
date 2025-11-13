@@ -28,9 +28,7 @@ export function startScheduledVideoProcessor() {
 
     // Prevent overlapping executions
     if (isProcessing) {
-      console.warn(
-        "⚠️ Previous cron execution still running, skipping this cycle"
-      );
+  
       return;
     }
 
@@ -40,50 +38,23 @@ export function startScheduledVideoProcessor() {
 
     // Mark job as started
     cronMonitor.markJobStarted("scheduled-video-processor");
-
-    console.log(
-      `🔄 Processing scheduled videos (Execution #${executionCount})...`
-    );
-    console.log(`🌍 Current UTC time: ${currentUTC.toISOString()}`);
-    console.log(
-      `📊 Memory usage: ${Math.round(
-        process.memoryUsage().heapUsed / 1024 / 1024
-      )}MB`
-    );
-    console.log(`⏰ Cron job started at: ${new Date().toISOString()}`);
-    console.log(
-      `📋 Checking for videos scheduled within the next 30 minutes (processing 30 minutes early)...`
-    );
-
     try {
       // Add timeout protection
       const timeout = setTimeout(() => {
-        console.error("⏰ Cron job timeout after 10 minutes");
         isProcessing = false;
       }, 10 * 60 * 1000); // 10 minutes timeout
 
-      // Get all pending videos that are due for processing
-      console.log(`🔍 Step 1: Fetching pending videos from database...`);
+  
       const schedules = await videoScheduleService.getPendingVideos();
-      console.log(`📋 Found ${schedules.length} schedules with pending videos`);
+  
 
       if (schedules.length > 0) {
-        console.log(`📊 Schedule details:`);
         schedules.forEach((schedule, index) => {
-          console.log(`  ${index + 1}. Schedule ID: ${schedule._id}`);
-          console.log(`     User ID: ${schedule.userId}`);
-          console.log(`     Timezone: ${schedule.timezone}`);
-          console.log(
-            `     Pending trends: ${
-              schedule.generatedTrends.filter((t) => t.status === "pending")
-                .length
-            }`
-          );
+      
         });
       }
 
       if (schedules.length === 0) {
-        console.log("✅ No pending videos to process");
         clearTimeout(timeout);
         isProcessing = false;
         return;
@@ -97,28 +68,13 @@ export function startScheduledVideoProcessor() {
         batches.push(schedules.slice(i, i + batchSize));
       }
 
-      console.log(
-        `📦 Processing ${batches.length} batches of ${batchSize} schedules each`
-      );
-
-      // Process each batch
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
-        console.log(`📦 Processing batch ${batchIndex + 1}/${batches.length}`);
-
-        // Process batch in parallel with error isolation
-        console.log(
-          `🔄 Step 2: Processing batch ${batchIndex + 1} with ${
-            batch.length
-          } schedules...`
-        );
+ 
+  
         const batchPromises = batch.map(async (schedule, scheduleIndex) => {
           try {
-            console.log(
-              `  📋 Processing schedule ${scheduleIndex + 1}/${batch.length}: ${
-                schedule._id
-              }`
-            );
+        
             return await processScheduleWithTimeout(schedule);
           } catch (error) {
             console.error(
@@ -142,11 +98,7 @@ export function startScheduledVideoProcessor() {
           (r) => r.status === "rejected" || !r.value?.success
         ).length;
 
-        console.log(
-          `📦 Batch ${
-            batchIndex + 1
-          } completed: ${successful} successful, ${failed} failed`
-        );
+  
 
         // Add small delay between batches to prevent overwhelming the system
         if (batchIndex < batches.length - 1) {
@@ -155,20 +107,13 @@ export function startScheduledVideoProcessor() {
       }
 
       const duration = Date.now() - startTime;
-      console.log(`✅ Scheduled video processing completed in ${duration}ms`);
-      console.log(
-        `📊 Memory usage after processing: ${Math.round(
-          process.memoryUsage().heapUsed / 1024 / 1024
-        )}MB`
-      );
-
+  
       // Mark job as completed
       cronMonitor.markJobCompleted("scheduled-video-processor", duration, true);
 
       clearTimeout(timeout);
     } catch (error) {
-      console.error("❌ Error in scheduled video processor:", error);
-
+   
       // Mark job as failed
       cronMonitor.markJobFailed(
         "scheduled-video-processor",
@@ -178,7 +123,6 @@ export function startScheduledVideoProcessor() {
       // Retry mechanism for critical failures
       setTimeout(async () => {
         try {
-          console.log("🔄 Retrying failed cron execution...");
           await retryFailedProcessing();
         } catch (retryError) {
           console.error("❌ Retry failed:", retryError);
@@ -188,10 +132,6 @@ export function startScheduledVideoProcessor() {
       isProcessing = false;
     }
   });
-
-  console.log(
-    "⏰ Enhanced scheduled video processor started - running every 5 minutes"
-  );
 }
 
 /**
@@ -202,19 +142,11 @@ async function processScheduleWithTimeout(
 ): Promise<{ success: boolean; processed: number }> {
   return new Promise(async (resolve) => {
     const timeout = setTimeout(() => {
-      console.error(`⏰ Timeout processing schedule ${schedule._id}`);
       resolve({ success: false, processed: 0 });
     }, 5 * 60 * 1000); // 5 minutes timeout per schedule
 
     try {
-      console.log(
-        `📅 Processing schedule for user ${schedule.userId} in timezone: ${schedule.timezone}`
-      );
-      console.log(`🔍 Step 3: Analyzing schedule trends...`);
-      console.log(
-        `  📊 Total trends in schedule: ${schedule.generatedTrends.length}`
-      );
-      console.log(`  ⏰ Current time: ${new Date().toISOString()}`);
+  
 
       // Get user video settings
       const userSettings = await UserVideoSettings.findOne({
@@ -222,9 +154,7 @@ async function processScheduleWithTimeout(
       });
 
       if (!userSettings) {
-        console.error(
-          `❌ User settings not found for schedule ${schedule._id}`
-        );
+    
         clearTimeout(timeout);
         resolve({ success: false, processed: 0 });
         return;
@@ -243,32 +173,14 @@ async function processScheduleWithTimeout(
 
         // Process if it's time (30 minutes before scheduled time) and still pending
         const minutesUntil = Math.round(timeDiff / (1000 * 60));
-        console.log(`  📋 Trend ${i}: "${trend.description}"`);
-        console.log(`     ⏰ Scheduled for: ${scheduledTime.toISOString()}`);
-        console.log(`     📊 Status: ${trend.status}`);
-        console.log(`     ⏱️ Minutes until: ${minutesUntil}`);
-        console.log(
-          `     ✅ Should process: ${
-            timeDiff <= 30 * 60 * 1000 &&
-            timeDiff >= -15 * 60 * 1000 &&
-            trend.status === "pending"
-          }`
-        );
+  
 
         if (
           timeDiff <= 30 * 60 * 1000 && // 30 minutes before scheduled time
           timeDiff >= -15 * 60 * 1000 && // 15 minutes after (grace period)
           trend.status === "pending"
         ) {
-          console.log(
-            `🎬 Step 4: Starting video processing for: "${trend.description}"`
-          );
-          console.log(`  📋 Schedule ID: ${schedule._id}`);
-          console.log(`  📋 Trend Index: ${i}`);
-          console.log(
-            `  ⏰ Time until scheduled: ${minutesUntil} minutes (processing 30 minutes early)`
-          );
-
+       
           try {
             await videoScheduleService.processScheduledVideo(
               schedule._id.toString(),
@@ -277,10 +189,7 @@ async function processScheduleWithTimeout(
             );
             processedCount++;
           } catch (error) {
-            console.error(
-              `❌ Error processing video ${i} for schedule ${schedule._id}:`,
-              error
-            );
+          
           }
         }
       }
@@ -288,7 +197,6 @@ async function processScheduleWithTimeout(
       clearTimeout(timeout);
       resolve({ success: true, processed: processedCount });
     } catch (error) {
-      console.error(`❌ Error processing schedule ${schedule._id}:`, error);
       clearTimeout(timeout);
       resolve({ success: false, processed: 0 });
     }
@@ -300,9 +208,7 @@ async function processScheduleWithTimeout(
  */
 async function retryFailedProcessing(): Promise<void> {
   try {
-    console.log("🔄 Retrying failed processing...");
 
-    // Find schedules that might have failed
     const failedSchedules = await VideoSchedule.find({
       isActive: true,
       "generatedTrends.status": "processing",
@@ -312,10 +218,7 @@ async function retryFailedProcessing(): Promise<void> {
     });
 
     if (failedSchedules.length > 0) {
-      console.log(
-        `🔄 Found ${failedSchedules.length} schedules that may have failed`
-      );
-
+   
       for (const schedule of failedSchedules) {
         // Reset failed trends to pending
         schedule.generatedTrends.forEach((trend: any) => {
@@ -328,7 +231,6 @@ async function retryFailedProcessing(): Promise<void> {
         });
 
         await schedule.save();
-        console.log(`🔄 Reset failed trends for schedule ${schedule._id}`);
       }
     }
   } catch (error) {
@@ -341,9 +243,7 @@ async function retryFailedProcessing(): Promise<void> {
  */
 export function startScheduleCleanup() {
   // Schedule cleanup is disabled to keep all schedules for historical purposes
-  console.log(
-    "⏰ Schedule cleanup is disabled - keeping all schedules for history"
-  );
+ 
 }
 
 /**
@@ -352,7 +252,6 @@ export function startScheduleCleanup() {
 export function startTrendGeneration() {
   cron.schedule("0 1 * * *", async () => {
     const startTime = Date.now();
-    console.log("📊 Generating trends for upcoming schedules...");
 
     try {
       // Find active schedules that need more trends
@@ -360,11 +259,6 @@ export function startTrendGeneration() {
         isActive: true,
         endDate: { $gt: new Date() },
       }).limit(10); // Limit to prevent overwhelming
-
-      console.log(
-        `📊 Found ${activeSchedules.length} active schedules to check`
-      );
-
       let processedSchedules = 0;
 
       for (const schedule of activeSchedules) {
@@ -375,10 +269,7 @@ export function startTrendGeneration() {
 
           // If we have less than 3 pending trends, generate more
           if (pendingTrends.length < 3) {
-            console.log(
-              `📈 Generating additional trends for schedule ${schedule._id}`
-            );
-
+          
             const {
               generateRealEstateTrends,
             } = require("../services/trends.service");
@@ -397,10 +288,6 @@ export function startTrendGeneration() {
 
             schedule.generatedTrends.push(...additionalTrends);
             await schedule.save();
-
-            console.log(
-              `✅ Added ${additionalTrends.length} new trends to schedule ${schedule._id}`
-            );
             processedSchedules++;
           }
         } catch (error) {
@@ -412,15 +299,11 @@ export function startTrendGeneration() {
       }
 
       const duration = Date.now() - startTime;
-      console.log(
-        `✅ Trend generation completed in ${duration}ms - processed ${processedSchedules} schedules`
-      );
+
     } catch (error) {
       console.error("❌ Error in trend generation:", error);
     }
   });
-
-  console.log("⏰ Enhanced trend generation started - running daily at 1 AM");
 }
 
 /**
@@ -431,11 +314,6 @@ export function startHealthCheck() {
     const memUsage = process.memoryUsage();
     const cpuUsage = process.cpuUsage();
 
-    console.log(
-      `🏥 Health Check - Memory: ${Math.round(
-        memUsage.heapUsed / 1024 / 1024
-      )}MB, CPU: ${cpuUsage.user + cpuUsage.system}ms`
-    );
 
     if (lastExecution) {
       const timeSinceLastExecution = Date.now() - lastExecution.getTime();
@@ -450,8 +328,6 @@ export function startHealthCheck() {
       console.warn("⚠️ Cron job appears to be stuck in processing state");
     }
   });
-
-  console.log("⏰ Health check started - running every 5 minutes");
 }
 
 // Export all cron jobs
@@ -461,5 +337,4 @@ export function startAllCronJobs() {
   startTrendGeneration();
   startHealthCheck();
 
-  console.log("🚀 All enhanced cron jobs started successfully");
 }
