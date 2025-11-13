@@ -28,6 +28,7 @@ import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
 import { startHeyGenAvatarSyncCron } from "./cron/syncHeyGenAvatars";
+import { startElevenLabsVoicesSyncCron } from "./cron/fetchElevenLabsVoices";
 import "./queues/photoAvatarWorker";
 import { connectMongo } from "./config/mongoose";
 import { notificationService } from "./services/notification.service";
@@ -229,7 +230,7 @@ cron.schedule("*/2 * * * *", async () => {
   await checkPendingAvatarsAndUpdate();
 });
 
-// Start HeyGen avatar sync cron job (runs every 5 minutes)
+// Start HeyGen avatar sync cron job (runs every 12 hours)
 startHeyGenAvatarSyncCron();
 
 // Start scheduled video processing cron jobs
@@ -238,6 +239,10 @@ startAllCronJobs();
 // Start subscription sync cron job (syncs subscriptions from Stripe hourly)
 // This handles recurring payments automatically processed by Stripe
 startSubscriptionSync();
+
+// Start ElevenLabs voices sync cron job (runs at 11:03 AM and 11:03 PM - every 12 hours)
+// Fetches voices from API, adds new ones, updates existing ones, and removes deleted ones (except cloned)
+startElevenLabsVoicesSyncCron();
 
 // cron.schedule('0 23 * * 6', async () => {
 //   console.log('Updating trend topics...');

@@ -166,12 +166,58 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
       return;
     }
 
-    console.log(`📥 Fetched ${voices.length} voices from ElevenLabs API`);
+    // Filter out voices with category "cloned" (case-insensitive) - don't add them to DB
+    const filteredVoices = voices.filter(
+      (voice) => voice.category?.toLowerCase().trim() !== "cloned"
+    );
+
+    const clonedCount = voices.length - filteredVoices.length;
+    if (clonedCount > 0) {
+      console.log(
+        `🚫 Ignored ${clonedCount} cloned voices from ElevenLabs API (not adding to DB)`
+      );
+    }
+
+    if (filteredVoices.length === 0) {
+      console.log("⚠️ No voices to sync after filtering out cloned voices");
+      return;
+    }
+
+    console.log(
+      `📥 Fetched ${voices.length} voices from ElevenLabs API, processing ${filteredVoices.length} (excluding cloned)`
+    );
+
+    // Get all voice_ids from filtered API response (excluding cloned)
+    const apiVoiceIds = new Set(filteredVoices.map((v) => v.voice_id));
+
+    // Find voices in DB that are not in API response (and not cloned - case insensitive)
+    // Use $and to combine conditions: voice_id not in API list AND category is not "cloned" (case insensitive)
+    const voicesToDelete = await ElevenLabsVoice.find({
+      $and: [
+        { voice_id: { $nin: Array.from(apiVoiceIds) } },
+        { category: { $not: /^cloned$/i } }, // Don't delete cloned voices (case insensitive)
+      ],
+    });
+
+    let deletedCount = 0;
+    if (voicesToDelete.length > 0) {
+      const deleteResult = await ElevenLabsVoice.deleteMany({
+        $and: [
+          { voice_id: { $nin: Array.from(apiVoiceIds) } },
+          { category: { $not: /^cloned$/i } }, // Don't delete cloned voices (case insensitive)
+        ],
+      });
+      deletedCount = deleteResult.deletedCount || 0;
+      console.log(
+        `🗑️ Deleted ${deletedCount} voices that no longer exist in API (excluding cloned voices)`
+      );
+    }
 
     let savedCount = 0;
     let updatedCount = 0;
 
-    for (const voice of voices) {
+    // Process only filtered voices (excluding cloned)
+    for (const voice of filteredVoices) {
       const verifiedLanguageEs = voice.verified_languages?.find(
         (lang) => lang.language === "es"
       );
@@ -270,7 +316,7 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
     }
 
     console.log(
-      `✅ ElevenLabs voices sync complete. Saved: ${savedCount}, Updated: ${updatedCount}`
+      `✅ ElevenLabs voices sync complete. Saved: ${savedCount}, Updated: ${updatedCount}, Deleted: ${deletedCount}`
     );
   } catch (error: any) {
     console.error("❌ Error fetching ElevenLabs voices:", error.message);
