@@ -1,39 +1,84 @@
-import { Request, Response } from 'express';
-import webhookService from '../services/webhooksocialbu.service';
+import { Request, Response } from "express";
+import webhookService from "../services/webhooksocialbu.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  socialBuWebhookSchema,
+  userIdQuerySchema,
+  userIdParamSchema,
+  removeSocialBuAccountSchema,
+} from "../validations/webhookSocialbu.validations";
 
+// ==================== CONSTANTS ====================
+const VALID_ACCOUNT_ACTIONS = ["added", "updated", "removed"] as const;
+
+// ==================== HELPER FUNCTIONS ====================
+/**
+ * Parse JSON body if it's a string
+ */
+function parseJsonBody(body: any): any {
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch (error) {
+      console.error("Failed to parse JSON body:", error);
+      return body;
+    }
+  }
+  return body;
+}
+
+/**
+ * Extract user ID from query parameters
+ */
+function getUserIdFromQuery(req: Request): string | undefined {
+  return req.query.user_id as string | undefined;
+}
+
+/**
+ * Get error status code based on error type
+ */
+function getErrorStatus(error: any): number {
+  if (error?.name === "ValidationError" || error?.name === "ZodError") {
+    return 400;
+  }
+  return 500;
+}
+
+/**
+ * Format webhook debug information
+ */
+function formatWebhookDebug(req: Request, parsedBody?: any) {
+  return {
+    requestMethod: req.method,
+    requestUrl: req.url,
+    hasBody: !!req.body,
+    bodyType: typeof req.body,
+    parsedBody: parsedBody || req.body,
+  };
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Test webhook endpoint
  */
 export const testWebhook = async (req: Request, res: Response) => {
   try {
-    // Try to parse body if it's a string
-    let parsedBody = req.body;
-    if (typeof req.body === 'string') {
-      try {
-        parsedBody = JSON.parse(req.body);
-      } catch (e) {
-        console.error('Failed to parse JSON body:', e);
-      }
-    }
+    const parsedBody = parseJsonBody(req.body);
 
-    res.status(200).json({
-      success: true,
-      message: 'Webhook test successful',
-      data: {
-        originalBody: req.body,
-        parsedBody: parsedBody,
-        hasBody: !!req.body,
-        bodyType: typeof req.body,
-        headers: req.headers
-      }
+    return ResponseHelper.success(res, "Webhook test successful", {
+      originalBody: req.body,
+      parsedBody: parsedBody,
+      hasBody: !!req.body,
+      bodyType: typeof req.body,
+      headers: req.headers,
     });
-  } catch (error) {
-
-    res.status(500).json({
-      success: false,
-      message: 'Test webhook failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+  } catch (error: any) {
+    console.error("Error in testWebhook:", error);
+    return ResponseHelper.serverError(
+      res,
+      "Test webhook failed",
+      error instanceof Error ? error.message : "Unknown error"
+    );
   }
 };
 
@@ -42,74 +87,69 @@ export const testWebhook = async (req: Request, res: Response) => {
  */
 export const handleSocialBuWebhook = async (req: Request, res: Response) => {
   try {
-  
-    // Try to parse body if it's a string
-    let webhookData = req.body;
-    if (typeof req.body === 'string') {
-      try {
-        webhookData = JSON.parse(req.body);
-    
-      } catch (e) {
-        console.error('Failed to parse JSON body:', e);
-        console.error('Raw body that failed to parse:', req.body);
-      }
+    // Parse body if it's a string
+    const webhookData = parseJsonBody(req.body);
+
+    // Validate webhook payload
+    const validationResult = socialBuWebhookSchema.safeParse(webhookData);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Invalid webhook payload",
+        validationResult.error.errors
+      );
     }
 
-    const { account_action, account_id, account_type, account_name } = webhookData || {};
-    const userId = req.query.user_id as string; // Extract user ID from query parameters
+    const validatedData = validationResult.data;
 
-
-    // Validate required fields
-    if (!account_action || !account_id || !account_type || !account_name) {
- 
-      
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: account_action, account_id, account_type, account_name',
-        debug: {
-          received: {
-            account_action,
-            account_id,
-            account_type,
-            account_name
-          }
-        }
-      });
+    // Validate and extract user_id from query (optional)
+    const queryValidation = userIdQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Invalid query parameters",
+        queryValidation.error.errors
+      );
     }
+
+    const userId = getUserIdFromQuery(req);
 
     // Process the webhook with user ID
-    const result = await webhookService.handleSocialBuAccountWebhook({
-      account_action,
-      account_id,
-      account_type,
-      account_name
-    }, userId);
+    const result = await webhookService.handleSocialBuAccountWebhook(
+      {
+        account_action: validatedData.account_action,
+        account_id: validatedData.account_id,
+        account_type: validatedData.account_type,
+        account_name: validatedData.account_name,
+      },
+      userId
+    );
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message
-      });
+      return ResponseHelper.badRequest(res, result.message || "Failed to process webhook");
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data
-    });
-  } catch (error) {
+    return ResponseHelper.success(res, result.message || "Webhook processed successfully", result.data);
+  } catch (error: any) {
+    console.error("Error in handleSocialBuWebhook:", error);
+    const statusCode = getErrorStatus(error);
     
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process webhook',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      debug: {
-        requestMethod: req.method,
-        requestUrl: req.url,
-        hasBody: !!req.body,
-        bodyType: typeof req.body
+    if (statusCode === 400) {
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to process webhook",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+
+    return ResponseHelper.serverError(
+      res,
+      "Failed to process webhook",
+      {
+        error: error instanceof Error ? error.message : "Unknown error",
+        debug: formatWebhookDebug(req),
       }
-    });
+    );
   }
 };
 
@@ -118,36 +158,49 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
  */
 export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required'
-      });
+    // Validate userId parameter
+    const paramValidation = userIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Invalid user ID parameter",
+        paramValidation.error.errors
+      );
     }
+
+    const { userId } = paramValidation.data;
 
     const result = await webhookService.getUserSocialBuAccounts(userId);
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message
-      });
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to get SocialBu accounts"
+      );
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data
-    });
-  } catch (error) {
+    return ResponseHelper.success(
+      res,
+      result.message || "SocialBu accounts retrieved successfully",
+      result.data
+    );
+  } catch (error: any) {
+    console.error("Error in getUserSocialBuAccounts:", error);
+    const statusCode = getErrorStatus(error);
     
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get SocialBu accounts',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+    if (statusCode === 400) {
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to get SocialBu accounts",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+
+    return ResponseHelper.serverError(
+      res,
+      "Failed to get SocialBu accounts",
+      error instanceof Error ? error.message : "Unknown error"
+    );
   }
 };
 
@@ -156,36 +209,60 @@ export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
  */
 export const removeUserSocialBuAccount = async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId;
-    const { accountId } = req.body;
-
-    if (!userId || !accountId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID and Account ID are required'
-      });
+    // Validate userId parameter
+    const paramValidation = userIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Invalid user ID parameter",
+        paramValidation.error.errors
+      );
     }
+
+    const { userId } = paramValidation.data;
+
+    // Validate request body
+    const bodyValidation = removeSocialBuAccountSchema.safeParse(req.body);
+    if (!bodyValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Invalid request body",
+        bodyValidation.error.errors
+      );
+    }
+
+    const { accountId } = bodyValidation.data;
 
     const result = await webhookService.removeUserSocialBuAccount(userId, accountId);
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message
-      });
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to remove SocialBu account"
+      );
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data
-    });
-  } catch (error) {
+    return ResponseHelper.success(
+      res,
+      result.message || "SocialBu account removed successfully",
+      result.data
+    );
+  } catch (error: any) {
+    console.error("Error in removeUserSocialBuAccount:", error);
+    const statusCode = getErrorStatus(error);
+    
+    if (statusCode === 400) {
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to remove SocialBu account",
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
 
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove SocialBu account',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
+    return ResponseHelper.serverError(
+      res,
+      "Failed to remove SocialBu account",
+      error instanceof Error ? error.message : "Unknown error"
+    );
   }
 };

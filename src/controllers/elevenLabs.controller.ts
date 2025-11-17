@@ -10,9 +10,73 @@ import {
   addCustomVoice,
 } from "../services/elevenLabsVoice.service";
 import { SubscriptionService } from "../services/subscription.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  textToSpeechSchema,
+  addCustomVoiceSchema,
+} from "../validations/elevenLabs.validations";
 
-const authService = new AuthService();
+// ==================== CONSTANTS ====================
+const ELEVEN_LABS_MODELS = [
+  "eleven_multilingual_v1",
+  "eleven_multilingual_v2",
+  "eleven_turbo_v2",
+  "eleven_turbo_v2_5",
+  "eleven_flash_v2",
+  "eleven_flash_v2_5",
+  "eleven_english_v1",
+  "eleven_english_v2",
+] as const;
 
+const MODEL_CHARACTER_LIMITS: Record<string, string> = {
+  eleven_multilingual_v1: "10,000 characters",
+  eleven_multilingual_v2: "10,000 characters",
+  eleven_turbo_v2: "30,000 characters",
+  eleven_turbo_v2_5: "40,000 characters",
+  eleven_flash_v2: "30,000 characters",
+  eleven_flash_v2_5: "40,000 characters",
+  eleven_english_v1: "10,000 characters",
+  eleven_english_v2: "10,000 characters",
+};
+
+const VALID_ENERGY_CATEGORIES = ["low", "medium", "high"] as const;
+const VALID_GENDERS = ["male", "female", "unknown"] as const;
+const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
+const DEFAULT_LANGUAGE = "en";
+
+// Voice preset configurations
+const VOICE_PRESETS = {
+  low: {
+    stability: 0.3,
+    similarity_boost: 0.75,
+    style: 0.6,
+    use_speaker_boost: true,
+    speed: 1.15,
+  },
+  medium: {
+    stability: 0.5,
+    similarity_boost: 0.75,
+    style: 0.4,
+    use_speaker_boost: true,
+    speed: 1.0,
+  },
+  mid: {
+    stability: 0.5,
+    similarity_boost: 0.75,
+    style: 0.4,
+    use_speaker_boost: true,
+    speed: 1.0,
+  },
+  high: {
+    stability: 0.7,
+    similarity_boost: 0.75,
+    style: 0.2,
+    use_speaker_boost: true,
+    speed: 0.9,
+  },
+} as const;
+
+// ==================== HELPER FUNCTIONS ====================
 /**
  * Get voice settings based on preset (case insensitive)
  */
@@ -24,209 +88,180 @@ function getVoiceSettingsByPreset(preset: string): {
   speed: number;
 } | null {
   const presetLower = preset?.toLowerCase().trim();
-  
-  if (presetLower === "low") {
+  const presetKey = presetLower as keyof typeof VOICE_PRESETS;
+  return VOICE_PRESETS[presetKey] || null;
+}
+
+/**
+ * Extract access token from request headers
+ */
+function extractAccessToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  return authHeader?.replace("Bearer ", "") || null;
+}
+
+/**
+ * Get user ID from authenticated request
+ */
+function getUserIdFromRequest(
+  req: AuthenticatedRequest | Request
+): string | undefined {
+  if ("user" in req && req.user?._id) {
+    return req.user._id.toString();
+  }
+  return (
+    (req as any).user?._id || (req as any).user?.userId || (req as any).user?.id
+  );
+}
+
+/**
+ * Build voice filter for database query
+ */
+function buildVoiceFilter(userId?: string): mongoose.FilterQuery<any> {
+  const baseFilter = {
+    $or: [{ userId: { $exists: false } }, { userId: null }],
+  };
+
+  if (userId) {
     return {
-      stability: 0.3,
-      similarity_boost: 0.75,
-      style: 0.6,
-      use_speaker_boost: true,
-      speed: 1.15,
-    };
-  } else if (presetLower === "medium" || presetLower === "mid") {
-    return {
-      stability: 0.5,
-      similarity_boost: 0.75,
-      style: 0.4,
-      use_speaker_boost: true,
-      speed: 1.0,
-    };
-  } else if (presetLower === "high") {
-    return {
-      stability: 0.7,
-      similarity_boost: 0.75,
-      style: 0.2,
-      use_speaker_boost: true,
-      speed: 0.9,
+      $or: [...baseFilter.$or, { userId: new mongoose.Types.ObjectId(userId) }],
     };
   }
-  
-  return null;
+
+  return baseFilter;
 }
+
+/**
+ * Validate and get user for cloned voice access
+ */
+async function validateClonedVoiceAccess(
+  accessToken: string,
+  authService: AuthService
+): Promise<{ user: any; voiceSettings: any } | null> {
+  try {
+    const user = await authService.getCurrentUser(accessToken);
+    if (!user) {
+      return null;
+    }
+
+    const userVideoSettings = await UserVideoSettings.findOne({
+      userId: user._id,
+    });
+
+    let voiceSettings = null;
+    if (userVideoSettings?.preset) {
+      voiceSettings = getVoiceSettingsByPreset(userVideoSettings.preset);
+    }
+
+    return { user, voiceSettings };
+  } catch (error) {
+    return null;
+  }
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
+const authService = new AuthService();
 
 /**
  * Generate text-to-speech audio using ElevenLabs API
  */
 export async function textToSpeech(req: Request, res: Response) {
   try {
+    // Validate request body
+    const validationResult = textToSpeechSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
     const { voice_id, hook, body, conclusion, output_format, model_id } =
-      req.body;
-
-    // Validate required fields
-    if (!voice_id) {
-      return res.status(400).json({
-        success: false,
-        message: "voice_id is required",
-      });
-    }
-
-    if (!hook || typeof hook !== "string" || hook.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "hook is required and must be a non-empty string",
-      });
-    }
-
-    if (!body || typeof body !== "string" || body.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "body is required and must be a non-empty string",
-      });
-    }
-
-    if (
-      !conclusion ||
-      typeof conclusion !== "string" ||
-      conclusion.trim().length === 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "conclusion is required and must be a non-empty string",
-      });
-    }
+      validationResult.data;
 
     // Validate model_id if provided
-    const validModels = [
-      "eleven_multilingual_v1",
-      "eleven_multilingual_v2",
-      "eleven_turbo_v2",
-      "eleven_turbo_v2_5",
-      "eleven_flash_v2",
-      "eleven_flash_v2_5",
-      "eleven_english_v1",
-      "eleven_english_v2",
-    ];
-
-    if (model_id && !validModels.includes(model_id)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid model_id. Valid models: ${validModels.join(", ")}`,
-        valid_models: validModels,
-        model_limits: {
-          eleven_multilingual_v1: "10,000 characters",
-          eleven_multilingual_v2: "10,000 characters",
-          eleven_turbo_v2: "30,000 characters",
-          eleven_turbo_v2_5: "40,000 characters",
-          eleven_flash_v2: "30,000 characters",
-          eleven_flash_v2_5: "40,000 characters",
-          eleven_english_v1: "10,000 characters",
-          eleven_english_v2: "10,000 characters",
-        },
-      });
+    if (model_id && !ELEVEN_LABS_MODELS.includes(model_id as any)) {
+      return ResponseHelper.badRequest(
+        res,
+        `Invalid model_id. Valid models: ${ELEVEN_LABS_MODELS.join(", ")}`,
+        {
+          valid_models: ELEVEN_LABS_MODELS,
+          model_limits: MODEL_CHARACTER_LIMITS,
+        }
+      );
     }
 
-    // Fetch voice from database to check category
+    // Fetch voice from database
     const voice = await ElevenLabsVoice.findOne({ voice_id });
     if (!voice) {
-      return res.status(404).json({
-        success: false,
-        message: "Voice not found in database",
-      });
+      return ResponseHelper.notFound(res, "Voice not found in database");
     }
 
-    // Check if voice category is "cloned" (case insensitive)
+    // Handle cloned voice authentication
     let voice_settings = null;
     const voiceCategory = voice.category?.toLowerCase().trim();
-    
+
     if (voiceCategory === "cloned") {
-      // Get user from auth token
-      const authHeader = req.headers.authorization;
-      const accessToken = authHeader?.replace("Bearer ", "");
-      
+      const accessToken = extractAccessToken(req);
       if (!accessToken) {
-        return res.status(401).json({
-          success: false,
-          message: "Authentication required for cloned voices",
-        });
+        return ResponseHelper.unauthorized(
+          res,
+          "Authentication required for cloned voices"
+        );
       }
 
-      try {
-        const user = await authService.getCurrentUser(accessToken);
-        if (!user) {
-          return res.status(401).json({
-            success: false,
-            message: "Invalid authentication token",
-          });
-        }
-
-        // Get user video settings
-        const userVideoSettings = await UserVideoSettings.findOne({
-          userId: user._id,
-        });
-
-        if (userVideoSettings) {
-          // Get preset from preset field only (case insensitive)
-          const preset = userVideoSettings.preset;
-          
-          if (preset) {
-            voice_settings = getVoiceSettingsByPreset(preset);
-          }
-        }
-      } catch (error: any) {
-        return res.status(401).json({
-          success: false,
-          message: "Failed to authenticate user",
-        });
+      const authResult = await validateClonedVoiceAccess(
+        accessToken,
+        authService
+      );
+      if (!authResult) {
+        return ResponseHelper.unauthorized(res, "Invalid authentication token");
       }
+
+      voice_settings = authResult.voiceSettings;
     }
 
-    // Generate speech for hook, body, and conclusion in parallel
+    // Generate speech
     const result = await generateSpeech({
       voice_id,
       hook: hook.trim(),
       body: body.trim(),
       conclusion: conclusion.trim(),
-      output_format: output_format || "mp3_44100_128",
-      model_id: model_id || undefined, // Pass model_id if provided
-      voice_settings: voice_settings || undefined, // Pass voice_settings if available
+      output_format: output_format || DEFAULT_OUTPUT_FORMAT,
+      model_id: model_id || undefined,
+      voice_settings: voice_settings || undefined,
     });
 
-    // Return three MP3 URLs directly
-    return res.status(200).json({
-      success: true,
-      data: {
-        hook_url: result.hook_url,
-        body_url: result.body_url,
-        conclusion_url: result.conclusion_url,
-        model_id: result.model_id, // Include the model that was used
-      },
+    return ResponseHelper.success(res, "Speech generated successfully", {
+      hook_url: result.hook_url,
+      body_url: result.body_url,
+      conclusion_url: result.conclusion_url,
+      model_id: result.model_id,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to generate speech",
-    });
+    console.error("Error in textToSpeech:", error);
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to generate speech",
+      process.env.NODE_ENV === "development" ? error.stack : undefined
+    );
   }
 }
 
 /**
  * Get all voices from database (with optional energy and gender filters)
  * Returns: Default voices (no userId) visible to everyone + User's custom/cloned voices (only visible to owner)
- * Works with or without authentication - if authenticated, includes user's custom voices
  */
 export async function getVoices(req: AuthenticatedRequest, res: Response) {
   try {
     const { energyCategory, gender } = req.query;
 
     // Get userId from request (optional authentication)
-    // Try to extract user from token if provided
-    let userId: string | undefined = req.user?._id;
+    let userId: string | undefined = getUserIdFromRequest(req);
 
     if (!userId) {
-      // If not set by middleware, try to extract from token manually
-      const authHeader = req.headers.authorization;
-      const accessToken = authHeader?.replace("Bearer ", "");
-
+      const accessToken = extractAccessToken(req);
       if (accessToken) {
         try {
           const user = await authService.getCurrentUser(accessToken);
@@ -234,77 +269,62 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
             userId = user._id.toString();
           }
         } catch (error) {
-          // Invalid token - continue without userId (will only return default voices)
+          // Invalid token - continue without userId
         }
       }
     }
 
-    // Build filter based on query parameters
-    const filter: any = {};
+    // Build filter
+    const filter = buildVoiceFilter(userId);
 
-    // Filter voices:
-    // - Default voices (no userId or userId is null) -> visible to everyone
-    // - Custom/cloned voices (with userId) -> only visible to the user who created them
-    if (userId) {
-      filter.$or = [
-        { userId: { $exists: false } }, // Default voices (no userId field)
-        { userId: null }, // Default voices (userId is null)
-        { userId: new mongoose.Types.ObjectId(userId) }, // User's custom/cloned voices
-      ];
-    } else {
-      // If not authenticated, only return default voices
-      filter.$or = [
-        { userId: { $exists: false } }, // Default voices (no userId field)
-        { userId: null }, // Default voices (userId is null)
-      ];
-    }
-
+    // Add energy category filter
     if (energyCategory) {
-      const validEnergy = ["low", "medium", "high"];
-      if (!validEnergy.includes(energyCategory as string)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid energy category. Must be 'low', 'medium', or 'high'",
-        });
+      if (!VALID_ENERGY_CATEGORIES.includes(energyCategory as any)) {
+        return ResponseHelper.badRequest(
+          res,
+          `Invalid energy category. Must be one of: ${VALID_ENERGY_CATEGORIES.join(
+            ", "
+          )}`
+        );
       }
       filter.energy = energyCategory;
     }
 
+    // Add gender filter
     if (gender) {
-      const validGenders = ["male", "female", "unknown"];
-      if (!validGenders.includes(gender as string)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid gender. Must be 'male', 'female', or 'unknown'",
-        });
+      if (!VALID_GENDERS.includes(gender as any)) {
+        return ResponseHelper.badRequest(
+          res,
+          `Invalid gender. Must be one of: ${VALID_GENDERS.join(", ")}`
+        );
       }
       filter.gender = gender;
     }
 
+    // Fetch voices
     const voices = await ElevenLabsVoice.find(filter).select(
       "voice_id name gender description energy preview_url userId"
     );
 
-    // Add isCustom flag to indicate if voice is cloned/custom (has userId)
+    // Add isCustom flag
     const voicesWithCustomFlag = voices.map((voice) => {
       const voiceObj = voice.toObject();
       return {
         ...voiceObj,
-        isCustom: !!voiceObj.userId, // true if userId exists (cloned/custom voice)
+        isCustom: !!voiceObj.userId,
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      data: voicesWithCustomFlag,
+    return ResponseHelper.success(res, "Voices retrieved successfully", {
+      voices: voicesWithCustomFlag,
       count: voicesWithCustomFlag.length,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to fetch voices",
-    });
+    console.error("Error in getVoices:", error);
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to fetch voices"
+    );
   }
 }
 
@@ -317,68 +337,52 @@ export async function getVoiceById(req: Request, res: Response) {
     const { voice_id } = req.params;
 
     if (!voice_id) {
-      return res.status(400).json({
-        success: false,
-        message: "voice_id is required",
-      });
+      return ResponseHelper.badRequest(res, "voice_id is required");
     }
 
-    // Get userId from request (if authenticated)
-    const userId =
-      (req as any).user?._id ||
-      (req as any).user?.userId ||
-      (req as any).user?.id;
+    const userId = getUserIdFromRequest(req);
 
     const voice = await ElevenLabsVoice.findOne({ voice_id }).select(
       "voice_id preview_url name energy description userId"
     );
 
     if (!voice) {
-      return res.status(404).json({
-        success: false,
-        message: "Voice not found",
-      });
+      return ResponseHelper.notFound(res, "Voice not found");
     }
 
-    // Check if voice is accessible:
-    // - Default voice (no userId) -> accessible to everyone
-    // - Custom voice (has userId) -> only accessible to owner
+    // Check access permissions
     if (voice.userId) {
       if (!userId) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "Access denied. This is a custom voice and requires authentication.",
-        });
+        return ResponseHelper.unauthorized(
+          res,
+          "Access denied. This is a custom voice and requires authentication."
+        );
       }
 
-      // Check if userId matches
       const voiceUserId = voice.userId.toString();
       const requestUserId = String(userId);
 
       if (voiceUserId !== requestUserId) {
-        return res.status(403).json({
-          success: false,
-          message: "Access denied. This voice belongs to another user.",
-        });
+        return ResponseHelper.unauthorized(
+          res,
+          "Access denied. This voice belongs to another user."
+        );
       }
     }
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        voice_id: voice.voice_id,
-        preview_url: voice.preview_url,
-        name: voice.name,
-        energy: voice.energy,
-        description: voice.description,
-      },
+    return ResponseHelper.success(res, "Voice retrieved successfully", {
+      voice_id: voice.voice_id,
+      preview_url: voice.preview_url,
+      name: voice.name,
+      energy: voice.energy,
+      description: voice.description,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to fetch voice",
-    });
+    console.error("Error in getVoiceById:", error);
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to fetch voice"
+    );
   }
 }
 
@@ -388,102 +392,99 @@ export async function getVoiceById(req: Request, res: Response) {
 export async function syncVoices(req: Request, res: Response) {
   try {
     // Run sync in background (don't wait for completion)
-    fetchAndSyncElevenLabsVoices().catch(() => {
-      // Error handled silently
+    fetchAndSyncElevenLabsVoices().catch((error) => {
+      console.error("Error in background voices sync:", error);
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "ElevenLabs voices sync started successfully",
-    });
+    return ResponseHelper.success(
+      res,
+      "ElevenLabs voices sync started successfully"
+    );
   } catch (error: any) {
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to start voices sync",
-    });
+    console.error("Error in syncVoices:", error);
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to start voices sync"
+    );
   }
 }
 
 /**
  * Add custom voice to ElevenLabs and store in database
- * Flow:
- * 1. POST /v1/voices/add - Add voice with file and name
- * 2. POST /v1/voices/{voice_id}/edit - Edit voice with description and labels
- * 3. GET /v1/voices/{voice_id} - Get full voice details
- * 4. Store in database with userId
+ * Supports single file or array of files for better voice cloning
  */
 export async function addCustomVoiceEndpoint(
-  req: AuthenticatedRequest & { file?: Express.Multer.File },
+  req: AuthenticatedRequest & { files?: Express.Multer.File[] },
   res: Response
 ) {
   try {
-    const file = req.file;
-    const { name, description, language, gender } = req.body;
-
-    // Get userId from request (from auth token - req.user._id)
-    const userId = req.user?._id;
+    const files = req.files as Express.Multer.File[] | undefined;
+    const userId = getUserIdFromRequest(req);
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required. User ID not found in request.",
-      });
+      return ResponseHelper.unauthorized(
+        res,
+        "Authentication required. User ID not found in request."
+      );
     }
+
+    // Validate request body
+    const validationResult = addCustomVoiceSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
+    const { name, description, language, gender } = validationResult.data;
+
+    // Validate files - support both single file and array
+    if (!files || (Array.isArray(files) && files.length === 0)) {
+      return ResponseHelper.badRequest(res, "At least one audio file is required");
+    }
+
+    // Ensure files is an array
+    const filesArray = Array.isArray(files) ? files : [files];
 
     // Check for active subscription
     const subscriptionService = new SubscriptionService();
     const subscription = await subscriptionService.getActiveSubscription(
-      userId.toString()
+      userId
     );
+
     if (!subscription) {
-      return res.status(403).json({
-        success: false,
-        message: "Active subscription required to create custom voices",
-      });
+      return ResponseHelper.unauthorized(
+        res,
+        "Active subscription required to create custom voices"
+      );
     }
 
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        message: "Audio file is required",
-      });
-    }
-
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Name is required and must be a non-empty string",
-      });
-    }
-
-    // Call service to add custom voice
+    // Add custom voice
     const voice = await addCustomVoice({
-      file,
+      files: filesArray,
       name: name.trim(),
       description: description?.trim(),
-      language: language || "en",
+      language: language || DEFAULT_LANGUAGE,
       gender: gender?.trim(),
-      userId: String(userId),
+      userId,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Custom voice added successfully",
-      data: {
-        voice_id: voice.voice_id,
-        name: voice.name,
-        description: voice.description,
-        gender: voice.gender,
-        category: voice.category,
-        energy: voice.energy,
-        preview_url: voice.preview_url,
-      },
+    return ResponseHelper.created(res, "Custom voice added successfully", {
+      voice_id: voice.voice_id,
+      name: voice.name,
+      description: voice.description,
+      gender: voice.gender,
+      category: voice.category,
+      energy: voice.energy,
+      preview_url: voice.preview_url,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to add custom voice",
-    });
+    console.error("Error in addCustomVoiceEndpoint:", error);
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to add custom voice"
+    );
   }
 }

@@ -4,14 +4,21 @@ import {
   WebhookResult,
   WebhookRequest,
   WebhookResponse,
-  VideoAvatarCallbackPayload,
 } from "../types";
 import VideoScheduleService from "./videoSchedule.service";
 import AutoSocialPostingService from "./autoSocialPosting.service";
 import PostWebhookDynamicGenerationService from "./postWebhookDynamicGeneration.service";
 import VideoWebhookStatus from "../models/VideoWebhookStatus";
 import { generateFromDescription } from "./trends.service";
-import * as crypto from "crypto";
+import {
+  buildWebhookPayload,
+  buildWebhookHeaders,
+  buildSuccessWebhookResponse,
+  buildErrorWebhookResponse,
+  buildWebhookResult,
+  validateVideoId,
+  verifyWebhookSignature as verifySignature,
+} from "../utils/webhookHelpers";
 
 export class WebhookService {
   private videoService: VideoService;
@@ -36,33 +43,12 @@ export class WebhookService {
     user?: any
   ): Promise<WebhookResponse> {
     try {
-      const webhookPayload: VideoAvatarCallbackPayload = {
-        avatar_id: payload.avatar_id,
-        status: payload.status,
-        avatar_group_id: payload.avatar_group_id,
-        callback_id: payload.callback_id,
-        user_id: payload.user_id,
-      };
-
-      // Add user information if available
-      if (user) {
-        webhookPayload.user = {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-        };
-      }
-
-
+      const webhookPayload = buildWebhookPayload(payload, user);
+      const headers = buildWebhookHeaders(webhookPayload);
 
       const response = await fetch(webhookUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "VideoAvatar-Webhook/1.0",
-          "X-Webhook-Signature": this.generateWebhookSignature(webhookPayload),
-        },
+        headers,
         body: JSON.stringify(webhookPayload),
       });
 
@@ -73,54 +59,23 @@ export class WebhookService {
       }
 
       const responseData = await response.json().catch(() => ({}));
-
-      return {
-        success: true,
-        message: "Webhook sent successfully",
-        data: responseData,
-      };
+      return buildSuccessWebhookResponse(responseData);
     } catch (error: any) {
-      return {
-        success: false,
-        message: `Webhook failed: ${error.message}`,
-        data: null,
-      };
+      return buildErrorWebhookResponse(error);
     }
   }
 
   /**
-   * Generate webhook signature for security
-   */
-  private generateWebhookSignature(payload: any): string {
-    const secret = process.env.WEBHOOK_SECRET || "default-webhook-secret";
-    const payloadString = JSON.stringify(payload);
-    return crypto
-      .createHmac("sha256", secret)
-      .update(payloadString)
-      .digest("hex");
-  }
-
-  /**
-   * Verify webhook signature
+   * Verify webhook signature (delegates to helper function)
    */
   verifyWebhookSignature(payload: any, signature: string): boolean {
-    try {
-      const expectedSignature = this.generateWebhookSignature(payload);
-      return crypto.timingSafeEqual(
-        Buffer.from(signature, "hex"),
-        Buffer.from(expectedSignature, "hex")
-      );
-    } catch (error) {
-    
-      return false;
-    }
+    return verifySignature(payload, signature);
   }
 
   /**
    * Validate user token (placeholder implementation)
    */
   private async validateUserToken(token: string): Promise<any> {
-
     return {
       id: "user123",
       email: "user@example.com",
@@ -149,12 +104,7 @@ export class WebhookService {
       // Send webhook notification
       return await this.sendWebhookNotification(webhookUrl, payload, user);
     } catch (error: any) {
-  
-      return {
-        success: false,
-        message: `Webhook processing failed: ${error.message}`,
-        data: null,
-      };
+      return buildErrorWebhookResponse(error);
     }
   }
 
@@ -168,7 +118,6 @@ export class WebhookService {
     title: string
   ): Promise<void> {
     try {
- 
       // Find or create webhook status record
       let webhookStatus = await VideoWebhookStatus.findOne({ videoId });
 
@@ -208,8 +157,6 @@ export class WebhookService {
 
         // Call trends API to generate keypoints from description (video title)
         try {
-     
-
           // Get city from UserVideoSettings using email
           const UserVideoSettings =
             require("../models/UserVideoSettings").default;
@@ -219,9 +166,7 @@ export class WebhookService {
           const videoCity = userSettings?.city || null;
 
           if (videoCity) {
-         
           } else {
-       
           }
 
           // Call generateFromDescription API with video title as description
@@ -231,7 +176,6 @@ export class WebhookService {
           );
 
           if (keypointsResult && keypointsResult.keypoints) {
-        
             // Update PendingCaptions with generated keypoints
             const PendingCaptions =
               require("../models/PendingCaptions").default;
@@ -246,21 +190,14 @@ export class WebhookService {
               },
               { upsert: true, new: true }
             );
-
-           
           }
         } catch (keypointsError: any) {
-        
           // Don't fail the webhook if keypoints generation fails
         }
       }
 
       await webhookStatus.save();
-
-    
-    } catch (error: any) {
-     
-    }
+    } catch (error: any) {}
   }
 
   /**
@@ -278,13 +215,10 @@ export class WebhookService {
           videoId,
           status as "processing" | "ready" | "failed"
         );
-
       }
 
       // Handle scheduled video completion
       if (scheduleId && trendIndex !== undefined) {
-   
-
         // Update schedule status
         await this.videoScheduleService.updateVideoStatus(
           scheduleId,
@@ -303,8 +237,6 @@ export class WebhookService {
             if (schedule && schedule.generatedTrends[trendIndex]) {
               const trend = schedule.generatedTrends[trendIndex];
 
-              
-
               // Store captions from schedule in video record
               const captionsFromSchedule = {
                 instagram_caption: trend.instagram_caption,
@@ -319,12 +251,9 @@ export class WebhookService {
                 videoId,
                 captionsFromSchedule
               );
-         
 
               // Auto post to social media platforms
               try {
-           
-
                 const postingResults =
                   await this.autoSocialPostingService.postVideoToSocialMedia({
                     userId: schedule.userId.toString(),
@@ -334,26 +263,20 @@ export class WebhookService {
                     videoTitle: trend.description,
                   });
 
-  
-
                 // Log posting results
                 const successfulPosts = postingResults.filter((r) => r.success);
                 const failedPosts = postingResults.filter((r) => !r.success);
 
                 if (successfulPosts.length > 0) {
-                  
                 }
 
                 if (failedPosts.length > 0) {
-               
                 }
               } catch (postingError) {
-             
                 // Don't fail the webhook if social posting fails
               }
             }
           } catch (captionError) {
-          
             // Don't fail the webhook if caption storage fails
           }
         }
@@ -364,8 +287,6 @@ export class WebhookService {
       // This happens regardless of video status (processing/ready) - captions generate in background
       if (updatedVideo && !scheduleId) {
         try {
-    
-          
           // Only track if video is ready (for webhook tracking system)
           if (finalStatus === "ready") {
             await this.trackWebhookCompletion(
@@ -376,7 +297,6 @@ export class WebhookService {
             );
           }
         } catch (trackingError) {
-    
           // Don't fail the webhook if tracking fails
         }
 
@@ -384,37 +304,33 @@ export class WebhookService {
         // This happens after n8n webhook completes (second hook), even if video is still processing
         (async () => {
           try {
-       
             await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
               videoId,
               updatedVideo.email,
               updatedVideo.title
             );
-         
           } catch (captionError) {
-        
             // Don't fail the webhook response if caption generation fails
           }
         })();
       }
 
-      return {
-        success: true,
-        message: "Video completion processed successfully",
-        data: {
+      return buildWebhookResult(
+        true,
+        "Video completion processed successfully",
+        {
           videoId,
           status: finalStatus,
           scheduleId,
           trendIndex,
-        },
-      };
+        }
+      );
     } catch (error: any) {
-
-      return {
-        success: false,
-        message: `Video completion processing failed: ${error.message}`,
-        data: null,
-      };
+      return buildWebhookResult(
+        false,
+        `Video completion processing failed: ${error.message}`,
+        null
+      );
     }
   }
 
@@ -430,30 +346,26 @@ export class WebhookService {
     const { videoId, status, email, title } = data;
 
     try {
-
-
       // If email and title are provided, track caption webhook completion
       if (email && title) {
         await this.trackWebhookCompletion(videoId, "caption", email, title);
       } else {
-    
       }
 
-      return {
-        success: true,
-        message: "Caption completion processed successfully",
-        data: {
+      return buildWebhookResult(
+        true,
+        "Caption completion processed successfully",
+        {
           videoId,
           status,
-        },
-      };
+        }
+      );
     } catch (error: any) {
- 
-      return {
-        success: false,
-        message: `Caption completion processing failed: ${error.message}`,
-        data: null,
-      };
+      return buildWebhookResult(
+        false,
+        `Caption completion processing failed: ${error.message}`,
+        null
+      );
     }
   }
 
@@ -464,9 +376,7 @@ export class WebhookService {
     try {
       const { videoId, status = "ready", s3Key, metadata, error } = data;
 
-      if (!videoId) {
-        throw new Error("Video ID is required");
-      }
+      validateVideoId(videoId);
 
       // If there's an error, mark video as failed
       const finalStatus = error ? "failed" : status;
@@ -485,23 +395,22 @@ export class WebhookService {
         await this.videoService.updateVideoMetadata(videoId, metadata);
       }
 
-      return {
-        success: true,
-        message: `Video ${
+      return buildWebhookResult(
+        true,
+        `Video ${
           finalStatus === "ready" ? "completed" : "failed"
         } successfully`,
-        data: {
+        {
           videoId,
           status: finalStatus,
-        },
-      };
+        }
+      );
     } catch (error: any) {
-
-      return {
-        success: false,
-        message: `Video completion processing failed: ${error.message}`,
-        data: null,
-      };
+      return buildWebhookResult(
+        false,
+        `Video completion processing failed: ${error.message}`,
+        null
+      );
     }
   }
 }

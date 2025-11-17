@@ -1,0 +1,119 @@
+/**
+ * Prompts for dynamic post generation service
+ */
+
+import {
+  TopicAnalysis,
+  UserContext,
+} from "../types/services/dynamicPostGeneration.types";
+import { PostPatterns } from "../types/services/dynamicPostGeneration.types";
+import { HIGH_SIMILARITY_THRESHOLD } from "../constants/dynamicPostGeneration.constants";
+
+/**
+ * Build enhanced memory context for AI generation
+ */
+export function buildEnhancedMemoryContext(
+  topicAnalysis: TopicAnalysis,
+  userContext: UserContext,
+  patterns: PostPatterns
+): string {
+  let memoryContext = `SMART MEMORY SYSTEM - AVOID THESE RECENT PATTERNS:
+- Recent opening sentences: ${
+    patterns.recentOpeningSentences.slice(0, 3).join(", ") || "None"
+  }
+- Recent hook types: ${
+    patterns.recentHookTypes.slice(0, 3).join(", ") || "None"
+  }
+- Recent tones: ${patterns.recentTones.slice(0, 3).join(", ") || "None"}
+- Recent CTA types: ${patterns.recentCtaTypes.slice(0, 3).join(", ") || "None"}
+- Content similarity score: ${patterns.contentSimilarity.toFixed(
+    2
+  )} (lower is better)
+
+ANTI-REPETITION RULES:
+- Don't repeat opening sentences from recent posts
+- Vary your hook types and CTA approaches
+- Mix up your tone and structure
+- Ensure each post feels unique and authentic
+- Avoid similar content patterns`;
+
+  if (patterns.contentSimilarity > HIGH_SIMILARITY_THRESHOLD) {
+    memoryContext += `\n\n⚠️ HIGH SIMILARITY DETECTED: Recent posts are too similar. Create something completely different!`;
+  }
+
+  memoryContext += `\n\nUSER PROFILE:
+- Specializes in: ${userContext.position}
+- Based in: ${userContext.city}
+- Company: ${userContext.companyName}
+- Social: ${userContext.socialHandles}
+
+TOPIC CONTEXT:
+- This is a ${topicAnalysis.topicType} post
+- Sentiment: ${topicAnalysis.sentiment}
+- Key focus areas: ${topicAnalysis.keyPoints.join(", ")}`;
+
+  return memoryContext;
+}
+
+/**
+ * Build main generation prompt
+ */
+export function buildGenerationPrompt(
+  platform: string,
+  topicAnalysis: TopicAnalysis,
+  userContext: UserContext,
+  templateStructure: string,
+  templateVariant: number,
+  tone: string,
+  hookType: string,
+  ctaType: string,
+  memoryContext: string,
+  platformGuidelines: string
+): string {
+  return `You are an expert social media copywriter specializing in real estate content for ${platform}.
+
+VIDEO CONTEXT:
+- Topic: ${topicAnalysis.topic}
+- Script Hook: ${topicAnalysis.keyPoints[0] || topicAnalysis.topic}
+- Script Summary: ${topicAnalysis.keyPoints.join(", ")}
+- Agent: ${userContext.name} serving ${userContext.city}
+- Specialty: ${userContext.position}
+
+TEMPLATE TO USE:
+${templateStructure}
+
+VARIATION REQUIREMENTS (CRITICAL - MUST FOLLOW):
+- Template Variant: #${templateVariant} of 5
+- Topic Category: ${topicAnalysis.topicType}
+- Tone: ${tone}
+- Opening Hook Type: ${hookType}
+- CTA Type: ${ctaType}
+
+${memoryContext}
+
+CRITICAL INSTRUCTIONS:
+1. Write in ${tone} tone appropriate for ${platform}
+2. Use ${hookType} style for opening (question, bold statement, story, data, or provocative)
+3. Vary sentence structure and rhythm from recent posts
+4. CTA must be ${ctaType}-style and feel fresh
+5. Make it authentic to ${platform} culture, not templated or robotic
+6. Reference ${topicAnalysis.topic} naturally throughout
+7. Keep it natural and conversational - this should sound human
+8. CRITICAL: Write as ONE FLOWING PARAGRAPH - do NOT use separate sections like [HASHTAGS] or [CONCLUSION]
+9. Integrate hashtags naturally within the text flow, not at the end
+10. Weave the call-to-action naturally into the content, not as a separate section
+11. IMPORTANT: Do NOT include quotation marks ("") in your content. Write clean, natural text without any quotation marks.
+
+Platform-Specific Guidelines:
+${platformGuidelines}
+
+Generate the post now, following the template structure and variation requirements.`;
+}
+
+/**
+ * Build system message for OpenAI
+ */
+export function buildSystemMessage(platform: string): string {
+  return `You are an expert social media copywriter specializing in real estate content for ${platform}. You write authentic, engaging posts that follow platform best practices and avoid repetitive patterns.`;
+}
+

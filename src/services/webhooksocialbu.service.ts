@@ -1,19 +1,17 @@
 import User from '../models/User';
 import { connectMongo } from '../config/mongoose';
-
-interface SocialBuWebhookData {
-  account_action: string;
-  account_id: number;
-  account_type: string;
-  account_name: string;
-}
-
-interface WebhookResponse {
-  success: boolean;
-  message: string;
-  data?: any;
-  error?: string;
-}
+import { SocialBuWebhookData, WebhookResponse } from '../types/services/webhookSocialbu.types';
+import {
+  buildUserUpdateQuery,
+  buildAccountAddedResponse,
+  buildAccountRemovedResponse,
+  buildUnknownActionResponse,
+  buildErrorWebhookResponse,
+  buildSuccessWebhookResponse,
+  buildUserAccountCheckResponse,
+  validateWebhookData,
+  userHasAccount,
+} from '../utils/webhookSocialbuHelpers';
 
 class WebhookService {
   private static instance: WebhookService;
@@ -34,15 +32,20 @@ class WebhookService {
     try {
       await connectMongo();
 
-  
+      // Validate webhook data
+      const validation = validateWebhookData(webhookData);
+      if (!validation.valid) {
+        return buildErrorWebhookResponse(
+          'Invalid webhook data',
+          validation.error
+        );
+      }
 
       const { account_action, account_id, account_type, account_name } = webhookData;
 
       if (account_action === 'added' || account_action === 'updated') {
         // Add account_id to specific user if userId is provided, otherwise add to all users
-        const updateQuery = userId 
-          ? { _id: userId }
-          : {}; // Update all users if no specific user ID
+        const updateQuery = buildUserUpdateQuery(userId);
 
         const result = await User.updateMany(
           updateQuery,
@@ -53,23 +56,17 @@ class WebhookService {
           }
         );
 
-
-        return {
-          success: true,
-          message: `Account ${account_id} (${account_name}) ${account_action === 'updated' ? 'updated' : 'added'} successfully${userId ? ` to user ${userId}` : ' to all users'}`,
-          data: {
-            account_id,
-            account_name,
-            account_type,
-            users_updated: result.modifiedCount,
-            target_user: userId || 'all_users'
-          }
-        };
+        return buildAccountAddedResponse(
+          account_id,
+          account_name,
+          account_type,
+          result.modifiedCount,
+          userId,
+          account_action === 'updated'
+        );
       } else if (account_action === 'removed') {
         // Remove account_id from specific user if userId is provided, otherwise remove from all users
-        const updateQuery = userId 
-          ? { _id: userId }
-          : {}; // Update all users if no specific user ID
+        const updateQuery = buildUserUpdateQuery(userId);
 
         const result = await User.updateMany(
           updateQuery,
@@ -80,30 +77,21 @@ class WebhookService {
           }
         );
 
-
-        return {
-          success: true,
-          message: `Account ${account_id} (${account_name}) removed successfully${userId ? ` from user ${userId}` : ' from all users'}`,
-          data: {
-            account_id,
-            account_name,
-            account_type,
-            users_updated: result.modifiedCount,
-            target_user: userId || 'all_users'
-          }
-        };
+        return buildAccountRemovedResponse(
+          account_id,
+          account_name,
+          account_type,
+          result.modifiedCount,
+          userId
+        );
       } else {
-        return {
-          success: false,
-          message: `Unknown account action: ${account_action}`
-        };
+        return buildUnknownActionResponse(account_action);
       }
     } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to process webhook',
-        data: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return buildErrorWebhookResponse(
+        'Failed to process webhook',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -117,25 +105,20 @@ class WebhookService {
       const user = await User.findById(userId).select('socialbu_account_ids');
       
       if (!user) {
-        return {
-          success: false,
-          message: 'User not found'
-        };
+        return buildErrorWebhookResponse('User not found');
       }
 
-      return {
-        success: true,
-        message: 'SocialBu accounts retrieved successfully',
-        data: {
+      return buildSuccessWebhookResponse(
+        'SocialBu accounts retrieved successfully',
+        {
           socialbu_account_ids: user.socialbu_account_ids || []
         }
-      };
+      );
     } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to get SocialBu accounts',
-        data: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return buildErrorWebhookResponse(
+        'Failed to get SocialBu accounts',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -157,25 +140,20 @@ class WebhookService {
       );
 
       if (!result) {
-        return {
-          success: false,
-          message: 'User not found'
-        };
+        return buildErrorWebhookResponse('User not found');
       }
 
-    return {
-      success: true,
-        message: `Account ${accountId} removed successfully`,
-      data: {
+      return buildSuccessWebhookResponse(
+        `Account ${accountId} removed successfully`,
+        {
           socialbu_account_ids: result.socialbu_account_ids || []
         }
-      };
+      );
     } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to remove SocialBu account',
-        data: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return buildErrorWebhookResponse(
+        'Failed to remove SocialBu account',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 
@@ -186,34 +164,24 @@ class WebhookService {
     try {
       await connectMongo();
 
-
       const user = await User.findById(userId);
       if (!user) {
-        return {
-          success: false,
-          message: 'User not found',
-          error: 'User not found'
-        };
+        return buildErrorWebhookResponse('User not found', 'User not found');
       }
 
-      const hasAccount = user.socialbu_account_ids && user.socialbu_account_ids.includes(accountId);
+      const hasAccount = userHasAccount(user.socialbu_account_ids, accountId);
 
-      return {
-        success: true,
-        message: hasAccount ? 'User has this account' : 'User does not have this account',
-        data: {
-          userId,
-          accountId,
-          hasAccount,
-          userAccounts: user.socialbu_account_ids || []
-        }
-      };
+      return buildUserAccountCheckResponse(
+        userId,
+        accountId,
+        hasAccount,
+        user.socialbu_account_ids || []
+      );
     } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to check user account',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return buildErrorWebhookResponse(
+        'Failed to check user account',
+        error instanceof Error ? error : undefined
+      );
     }
   }
 }

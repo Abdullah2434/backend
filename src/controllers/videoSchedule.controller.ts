@@ -1,132 +1,193 @@
-import { Request, Response } from "express";
+import { Response } from "express";
+import { AuthenticatedRequest } from "../types";
 import VideoScheduleService, {
   ScheduleData,
 } from "../services/videoSchedule.service";
 import UserVideoSettings from "../models/UserVideoSettings";
-import { AuthService } from "../modules/auth/services/auth.service";
 import TimezoneService from "../utils/timezone";
 import { SubscriptionService } from "../services/subscription.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  createScheduleSchema,
+  scheduleIdParamSchema,
+  updateScheduleSchema,
+} from "../validations/videoSchedule.validations";
 
+// ==================== CONSTANTS ====================
+const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_DURATION = "1 month";
+
+// Video statuses
+const VIDEO_STATUSES = {
+  COMPLETED: "completed",
+  PENDING: "pending",
+  PROCESSING: "processing",
+  FAILED: "failed",
+} as const;
+
+// ==================== SERVICE INSTANCE ====================
 const videoScheduleService = new VideoScheduleService();
-const authService = new AuthService();
 
-function requireAuth(req: Request) {
-  const token = (req.headers.authorization || "").replace("Bearer ", "");
-  if (!token) {
-    throw new Error("Access token is required");
+// ==================== HELPER FUNCTIONS ====================
+/**
+ * Get user ID from authenticated request
+ */
+function getUserIdFromRequest(req: AuthenticatedRequest): string {
+  if (!req.user?._id) {
+    throw new Error("User not authenticated");
   }
+  return req.user._id.toString();
+}
 
-  try {
-    // Verify JWT token and extract user information
-    const payload = authService.verifyToken(token);
-
-    if (!payload || !payload.userId) {
-      throw new Error("Invalid token: missing user information");
-    }
-
-    // Validate that userId is a valid ObjectId format
-    if (!/^[0-9a-fA-F]{24}$/.test(payload.userId)) {
-      throw new Error("Invalid user ID format in token");
-    }
-
-    return { userId: payload.userId };
-  } catch (error: any) {
-    if (error.name === "JsonWebTokenError") {
-      throw new Error("Invalid token format");
-    } else if (error.name === "TokenExpiredError") {
-      throw new Error("Token has expired");
+/**
+ * Convert date from user's timezone to UTC
+ */
+function convertDateToUTC(
+  date: string | Date,
+  timezone: string,
+  isEndDate: boolean = false
+): Date {
+  if (typeof date === "string") {
+    // If date is just a date (YYYY-MM-DD), treat it as start/end of day in user's timezone
+    if (date.match(DATE_ONLY_REGEX)) {
+      const time = isEndDate ? "23:59:59" : "00:00:00";
+      return TimezoneService.ensureUTCDate(`${date} ${time}`, timezone);
     } else {
-      throw new Error(`Token verification failed: ${error.message}`);
+      // If it includes time, use as is
+      return TimezoneService.ensureUTCDate(date, timezone);
     }
+  } else {
+    return new Date(date);
   }
 }
 
 /**
- * Create a new video schedule
+ * Format schedule response data
  */
-export async function createSchedule(req: Request, res: Response) {
+function formatScheduleResponse(schedule: any) {
+  return {
+    scheduleId: schedule._id.toString(),
+    frequency: schedule.frequency,
+    schedule: schedule.schedule,
+    days: schedule.schedule?.days || [],
+    times: schedule.schedule?.times || [],
+    startDate: schedule.startDate,
+    endDate: schedule.endDate,
+    isActive: schedule.isActive,
+    totalVideos: schedule.generatedTrends?.length || 0,
+    completedVideos:
+      schedule.generatedTrends?.filter(
+        (t: any) => t.status === VIDEO_STATUSES.COMPLETED
+      ).length || 0,
+    pendingVideos:
+      schedule.generatedTrends?.filter(
+        (t: any) => t.status === VIDEO_STATUSES.PENDING
+      ).length || 0,
+    processingVideos:
+      schedule.generatedTrends?.filter(
+        (t: any) => t.status === VIDEO_STATUSES.PROCESSING
+      ).length || 0,
+    failedVideos:
+      schedule.generatedTrends?.filter(
+        (t: any) => t.status === VIDEO_STATUSES.FAILED
+      ).length || 0,
+  };
+}
+
+/**
+ * Format video trend data
+ */
+function formatVideoTrend(trend: any, index: number) {
+  return {
+    index,
+    description: trend.description,
+    keypoints: trend.keypoints,
+    scheduledFor: trend.scheduledFor,
+    status: trend.status,
+    videoId: trend.videoId,
+    caption_status: trend.caption_status || "ready",
+    enhanced_with_dynamic_posts: trend.enhanced_with_dynamic_posts || false,
+    caption_processed_at: trend.caption_processed_at,
+    caption_error: trend.caption_error,
+    socialCaptions: {
+      instagram: trend.instagram_caption,
+      facebook: trend.facebook_caption,
+      linkedin: trend.linkedin_caption,
+      twitter: trend.twitter_caption,
+      tiktok: trend.tiktok_caption,
+      youtube: trend.youtube_caption,
+    },
+  };
+}
+
+/**
+ * Calculate completion rate
+ */
+function calculateCompletionRate(
+  total: number,
+  completed: number
+): number {
+  if (total === 0) return 0;
+  return Math.round((completed / total) * 100 * 100) / 100;
+}
+
+/**
+ * Determine HTTP status code based on error message
+ */
+function getErrorStatus(error: Error): number {
+  const message = error.message.toLowerCase();
+
+  if (
+    message.includes("token") ||
+    message.includes("not authenticated") ||
+    message.includes("unauthorized")
+  ) {
+    return 401;
+  }
+  if (message.includes("subscription")) {
+    return 403;
+  }
+  if (message.includes("not found")) {
+    return 404;
+  }
+  if (message.includes("already exists")) {
+    return 409;
+  }
+  if (message.includes("invalid") || message.includes("required")) {
+    return 400;
+  }
+  return 500;
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
+/**
+ * Create a new video schedule
+ * POST /api/video-schedule
+ */
+export async function createSchedule(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-
-    const payload = requireAuth(req);
-    const { frequency, schedule, startDate, endDate } = req.body;
-
-    // Detect timezone from request
+    const userId = getUserIdFromRequest(req);
     const timezone = TimezoneService.detectTimezone(req);
-  
 
-    // Validate required fields (endDate is optional - will be set to one month from startDate)
-    if (!frequency || !schedule || !startDate) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Missing required fields: frequency, schedule, startDate (endDate is optional - will be set to one month from startDate)",
-      });
+    // Validate request body
+    const validationResult = createScheduleSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    // Convert schedule objects to arrays if needed
-    let processedSchedule = schedule;
-    if (
-      schedule.days &&
-      typeof schedule.days === "object" &&
-      !Array.isArray(schedule.days)
-    ) {
-      processedSchedule.days = Object.values(schedule.days);
-    }
-    if (
-      schedule.times &&
-      typeof schedule.times === "object" &&
-      !Array.isArray(schedule.times)
-    ) {
-      processedSchedule.times = Object.values(schedule.times);
-    }
+    const { frequency, schedule, startDate, endDate, email: bodyEmail } =
+      validationResult.data;
 
-    // Normalize day names (capitalize first letter, lowercase rest)
-    if (processedSchedule.days && Array.isArray(processedSchedule.days)) {
-      processedSchedule.days = processedSchedule.days.map((day: string) => {
-        const trimmed = day.trim();
-        return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-      });
-    }
-
-    // Validate day names
-    const validDays = [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-      "Sunday",
-    ];
-    if (processedSchedule.days && Array.isArray(processedSchedule.days)) {
-      const invalidDays = processedSchedule.days.filter(
-        (day: string) => !validDays.includes(day)
-      );
-      if (invalidDays.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid day names: ${invalidDays.join(
-            ", "
-          )}. Valid days are: ${validDays.join(", ")}`,
-        });
-      }
-    }
-
-    // Validate frequency
-    const validFrequencies = ["once_week", "twice_week", "three_week", "daily"];
-    if (!validFrequencies.includes(frequency)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid frequency. Must be one of: once_week, twice_week, three_week, daily",
-      });
-    }
-
-    // Check for active subscription before allowing schedule creation
+    // Check for active subscription
     const subscriptionService = new SubscriptionService();
-    const subscription = await subscriptionService.getActiveSubscription(
-      payload.userId
-    );
+    const subscription = await subscriptionService.getActiveSubscription(userId);
     if (!subscription) {
       return res.status(403).json({
         success: false,
@@ -135,352 +196,323 @@ export async function createSchedule(req: Request, res: Response) {
     }
 
     // Get user email from request or user settings
-    let email = req.body.email;
+    let email: string = bodyEmail || "";
     if (!email) {
-      const userSettings = await UserVideoSettings.findOne({
-        userId: payload.userId,
-      });
+      const userSettings = await UserVideoSettings.findOne({ userId });
       if (!userSettings) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "User video settings not found. Please complete your profile first.",
-        });
+        return ResponseHelper.notFound(
+          res,
+          "User video settings not found. Please complete your profile first."
+        );
       }
       email = userSettings.email;
     }
 
-    // Convert startDate from user's timezone to UTC (avoid double conversion if already UTC/ISO with zone)
-    let startDateUTC: Date;
-    if (typeof startDate === "string") {
-      // If startDate is just a date (YYYY-MM-DD), treat it as start of day in user's timezone
-      if (startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        startDateUTC = TimezoneService.ensureUTCDate(
-          `${startDate} 00:00:00`,
-          timezone
-        );
-      } else {
-        // If it includes time, use as is
-        startDateUTC = TimezoneService.ensureUTCDate(startDate, timezone);
-      }
-    } else {
-      startDateUTC = new Date(startDate);
+    if (!email) {
+      return ResponseHelper.badRequest(
+        res,
+        "Email is required. Please provide email in request or complete your profile."
+      );
     }
 
-    // Convert endDate from user's timezone to UTC if provided (avoid double conversion)
-    let endDateUTC: Date;
-    if (endDate) {
-      if (typeof endDate === "string") {
-        // If endDate is just a date (YYYY-MM-DD), treat it as end of day in user's timezone
-        if (endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          endDateUTC = TimezoneService.ensureUTCDate(
-            `${endDate} 23:59:59`,
-            timezone
-          );
-        } else {
-          // If it includes time, use as is
-          endDateUTC = TimezoneService.ensureUTCDate(endDate, timezone);
-        }
-      } else {
-        endDateUTC = new Date(endDate);
-      }
-    } else {
-      endDateUTC = new Date(); // Will be overridden to one month
-    }
+    // Convert dates from user's timezone to UTC
+    const startDateUTC = convertDateToUTC(startDate, timezone, false);
+    const endDateUTC = endDate
+      ? convertDateToUTC(endDate, timezone, true)
+      : new Date(); // Will be overridden to one month
 
     const scheduleData: ScheduleData = {
       frequency,
-      schedule: processedSchedule,
+      schedule,
       startDate: startDateUTC,
-      endDate: endDateUTC, // Will be overridden to one month
-      timezone, // Include timezone information
+      endDate: endDateUTC,
+      timezone,
     };
 
     const createdSchedule = await videoScheduleService.createScheduleAsync(
-      payload.userId,
+      userId,
       email,
       scheduleData
     );
 
-    return res.status(201).json({
-      success: true,
-      message: "Video schedule creation started successfully",
-      data: {
-        scheduleId: createdSchedule._id,
+    return ResponseHelper.created(
+      res,
+      "Video schedule creation started successfully",
+      {
+        scheduleId: createdSchedule._id.toString(),
         status: "processing",
         frequency: createdSchedule.frequency,
         schedule: createdSchedule.schedule,
         startDate: createdSchedule.startDate,
         endDate: createdSchedule.endDate,
-        duration: "1 month",
+        duration: DEFAULT_DURATION,
         totalVideos: createdSchedule.generatedTrends.length,
         isActive: createdSchedule.isActive,
         message:
           "Your schedule is being created in the background. You'll receive a notification when it's ready!",
-      },
-    });
-  } catch (e: any) {
-
-    // Return appropriate status code based on error type
-    const statusCode = e.message.includes("Access token")
-      ? 401
-      : e.message.includes("User ID")
-      ? 401
-      : e.message.includes("not found")
-      ? 404
-      : e.message.includes("already exists")
-      ? 409
-      : 400;
-
-    return res.status(statusCode).json({
+      }
+    );
+  } catch (error: any) {
+    console.error("Error in createSchedule:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to create video schedule",
-      error: process.env.NODE_ENV === "development" ? e.stack : undefined,
+      message: error.message || "Failed to create video schedule",
+      error:
+        process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 }
 
 /**
  * Get user's active schedule
+ * GET /api/video-schedule
  */
-export async function getSchedule(req: Request, res: Response) {
+export async function getSchedule(req: AuthenticatedRequest, res: Response) {
   try {
-    const payload = requireAuth(req);
-    const schedule = await videoScheduleService.getUserSchedule(payload.userId);
+    const userId = getUserIdFromRequest(req);
+    const schedule = await videoScheduleService.getUserSchedule(userId);
 
     if (!schedule) {
-      return res.status(404).json({
-        success: false,
-        message: "No active schedule found",
-      });
+      return ResponseHelper.notFound(res, "No active schedule found");
     }
 
-    return res.json({
-      success: true,
-      data: {
-        scheduleId: schedule._id,
-        frequency: schedule.frequency,
-        schedule: schedule.schedule,
-        days: schedule.schedule.days, // Add days field
-        times: schedule.schedule.times, // Add times field
-        startDate: schedule.startDate,
-        endDate: schedule.endDate,
-        isActive: schedule.isActive,
-        totalVideos: schedule.generatedTrends.length,
-        completedVideos: schedule.generatedTrends.filter(
-          (t) => t.status === "completed"
-        ).length,
-        pendingVideos: schedule.generatedTrends.filter(
-          (t) => t.status === "pending"
-        ).length,
-        processingVideos: schedule.generatedTrends.filter(
-          (t) => t.status === "processing"
-        ).length,
-        failedVideos: schedule.generatedTrends.filter(
-          (t) => t.status === "failed"
-        ).length,
-        upcomingVideos: schedule.generatedTrends
-          .filter(
-            (t) =>
-              t.status === "pending" && new Date(t.scheduledFor) > new Date()
-          )
-          .slice(0, 5)
-          .map((t) => ({
-            description: t.description,
-            scheduledFor: t.scheduledFor,
-            status: t.status,
-          })),
-      },
+    const scheduleData = formatScheduleResponse(schedule);
+
+    // Get upcoming videos
+    const upcomingVideos = schedule.generatedTrends
+      .filter(
+        (t: any) =>
+          t.status === VIDEO_STATUSES.PENDING &&
+          new Date(t.scheduledFor) > new Date()
+      )
+      .slice(0, 5)
+      .map((t: any) => ({
+        description: t.description,
+        scheduledFor: t.scheduledFor,
+        status: t.status,
+      }));
+
+    return ResponseHelper.success(res, "Schedule retrieved successfully", {
+      ...scheduleData,
+      upcomingVideos,
     });
-  } catch (e: any) {
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in getSchedule:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to get video schedule",
+      message: error.message || "Failed to get video schedule",
     });
   }
 }
 
 /**
  * Update schedule
+ * PUT /api/video-schedule/:scheduleId
  */
-export async function updateSchedule(req: Request, res: Response) {
+export async function updateSchedule(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const payload = requireAuth(req);
+    const userId = getUserIdFromRequest(req);
     const { scheduleId } = req.params;
-    const updateData = req.body;
+
+    // Validate scheduleId parameter
+    const scheduleIdValidation = scheduleIdParamSchema.safeParse({
+      scheduleId,
+    });
+    if (!scheduleIdValidation.success) {
+      const errors = scheduleIdValidation.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
+    // Validate request body
+    const validationResult = updateScheduleSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
+    const rawUpdateData = validationResult.data;
+    const timezone = TimezoneService.detectTimezone(req);
+
+    // Convert date strings to Date objects if provided
+    const updateData: any = { ...rawUpdateData };
+    if (updateData.startDate) {
+      updateData.startDate = convertDateToUTC(updateData.startDate, timezone, false);
+    }
+    if (updateData.endDate) {
+      updateData.endDate = convertDateToUTC(updateData.endDate, timezone, true);
+    }
 
     const updatedSchedule = await videoScheduleService.updateSchedule(
       scheduleId,
-      payload.userId,
+      userId,
       updateData
     );
 
     if (!updatedSchedule) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule not found",
-      });
+      return ResponseHelper.notFound(res, "Schedule not found");
     }
 
-    return res.json({
-      success: true,
-      message: "Schedule updated successfully",
-      data: {
-        scheduleId: updatedSchedule._id,
-        frequency: updatedSchedule.frequency,
-        schedule: updatedSchedule.schedule,
-        startDate: updatedSchedule.startDate,
-        endDate: updatedSchedule.endDate,
-        isActive: updatedSchedule.isActive,
-      },
+    return ResponseHelper.success(res, "Schedule updated successfully", {
+      scheduleId: updatedSchedule._id.toString(),
+      frequency: updatedSchedule.frequency,
+      schedule: updatedSchedule.schedule,
+      startDate: updatedSchedule.startDate,
+      endDate: updatedSchedule.endDate,
+      isActive: updatedSchedule.isActive,
     });
-  } catch (e: any) {
-  
-    return res.status(400).json({
+  } catch (error: any) {
+    console.error("Error in updateSchedule:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to update video schedule",
+      message: error.message || "Failed to update video schedule",
     });
   }
 }
 
 /**
  * Deactivate schedule
+ * PUT /api/video-schedule/:scheduleId/deactivate
  */
-export async function deactivateSchedule(req: Request, res: Response) {
+export async function deactivateSchedule(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const payload = requireAuth(req);
+    const userId = getUserIdFromRequest(req);
     const { scheduleId } = req.params;
+
+    // Validate scheduleId parameter
+    const validationResult = scheduleIdParamSchema.safeParse({ scheduleId });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
 
     const success = await videoScheduleService.deactivateSchedule(
       scheduleId,
-      payload.userId
+      userId
     );
 
     if (!success) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule not found",
-      });
+      return ResponseHelper.notFound(res, "Schedule not found");
     }
 
-    return res.json({
-      success: true,
-      message: "Schedule deactivated successfully",
-    });
-  } catch (e: any) {
-  
-    return res.status(500).json({
+    return ResponseHelper.success(res, "Schedule deactivated successfully");
+  } catch (error: any) {
+    console.error("Error in deactivateSchedule:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to deactivate video schedule",
+      message: error.message || "Failed to deactivate video schedule",
     });
   }
 }
 
 /**
  * Get schedule details with all videos
+ * GET /api/video-schedule/details
  */
-export async function getScheduleDetails(req: Request, res: Response) {
+export async function getScheduleDetails(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const payload = requireAuth(req);
-    const schedule = await videoScheduleService.getUserSchedule(payload.userId);
+    const userId = getUserIdFromRequest(req);
+    const schedule = await videoScheduleService.getUserSchedule(userId);
 
     if (!schedule) {
-      return res.status(404).json({
-        success: false,
-        message: "No active schedule found",
-      });
+      return ResponseHelper.notFound(res, "No active schedule found");
     }
 
-    return res.json({
-      success: true,
-      data: {
-        scheduleId: schedule._id,
-        frequency: schedule.frequency,
-        schedule: schedule.schedule,
-        startDate: schedule.startDate,
-        endDate: schedule.endDate,
-        isActive: schedule.isActive,
-        videos: schedule.generatedTrends.map((trend, index) => ({
-          index,
-          description: trend.description,
-          keypoints: trend.keypoints,
-          scheduledFor: trend.scheduledFor,
-          status: trend.status,
-          videoId: trend.videoId,
-          caption_status: trend.caption_status || "ready", // Show caption processing status
-          enhanced_with_dynamic_posts:
-            trend.enhanced_with_dynamic_posts || false,
-          caption_processed_at: trend.caption_processed_at,
-          caption_error: trend.caption_error,
-          socialCaptions: {
-            instagram: trend.instagram_caption,
-            facebook: trend.facebook_caption,
-            linkedin: trend.linkedin_caption,
-            twitter: trend.twitter_caption,
-            tiktok: trend.tiktok_caption,
-            youtube: trend.youtube_caption,
-          },
-        })),
-      },
+    const scheduleData = formatScheduleResponse(schedule);
+
+    return ResponseHelper.success(res, "Schedule details retrieved successfully", {
+      ...scheduleData,
+      videos: schedule.generatedTrends.map((trend: any, index: number) =>
+        formatVideoTrend(trend, index)
+      ),
     });
-  } catch (e: any) {
-  
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in getScheduleDetails:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to get schedule details",
+      message: error.message || "Failed to get schedule details",
     });
   }
 }
 
 /**
  * Get schedule statistics
+ * GET /api/video-schedule/stats
  */
-export async function getScheduleStats(req: Request, res: Response) {
+export async function getScheduleStats(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    const payload = requireAuth(req);
-    const schedule = await videoScheduleService.getUserSchedule(payload.userId);
+    const userId = getUserIdFromRequest(req);
+    const schedule = await videoScheduleService.getUserSchedule(userId);
 
     if (!schedule) {
-      return res.status(404).json({
-        success: false,
-        message: "No active schedule found",
-      });
+      return ResponseHelper.notFound(res, "No active schedule found");
     }
 
+    const total = schedule.generatedTrends.length;
+    const completed = schedule.generatedTrends.filter(
+      (t: any) => t.status === VIDEO_STATUSES.COMPLETED
+    ).length;
+    const pending = schedule.generatedTrends.filter(
+      (t: any) => t.status === VIDEO_STATUSES.PENDING
+    ).length;
+    const processing = schedule.generatedTrends.filter(
+      (t: any) => t.status === VIDEO_STATUSES.PROCESSING
+    ).length;
+    const failed = schedule.generatedTrends.filter(
+      (t: any) => t.status === VIDEO_STATUSES.FAILED
+    ).length;
+
     const stats = {
-      total: schedule.generatedTrends.length,
-      completed: schedule.generatedTrends.filter(
-        (t) => t.status === "completed"
-      ).length,
-      pending: schedule.generatedTrends.filter((t) => t.status === "pending")
-        .length,
-      processing: schedule.generatedTrends.filter(
-        (t) => t.status === "processing"
-      ).length,
-      failed: schedule.generatedTrends.filter((t) => t.status === "failed")
-        .length,
+      total,
+      completed,
+      pending,
+      processing,
+      failed,
     };
 
-    const completionRate =
-      stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
+    const completionRate = calculateCompletionRate(total, completed);
 
-    return res.json({
-      success: true,
-      data: {
-        stats,
-        completionRate: Math.round(completionRate * 100) / 100,
-        scheduleInfo: {
-          frequency: schedule.frequency,
-          startDate: schedule.startDate,
-          endDate: schedule.endDate,
-          isActive: schedule.isActive,
-        },
+    return ResponseHelper.success(res, "Schedule statistics retrieved successfully", {
+      stats,
+      completionRate,
+      scheduleInfo: {
+        frequency: schedule.frequency,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+        isActive: schedule.isActive,
       },
     });
-  } catch (e: any) {
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in getScheduleStats:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to get schedule statistics",
+      message: error.message || "Failed to get schedule statistics",
     });
   }
 }

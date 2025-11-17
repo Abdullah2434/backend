@@ -208,10 +208,6 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
 
     // Process only filtered voices (excluding cloned)
     for (const voice of filteredVoices) {
-      const verifiedLanguageEs = voice.verified_languages?.find(
-        (lang) => lang.language === "es"
-      );
-
       // Find English language - first try verified_languages with eleven_multilingual_v2
       let verifiedLanguageEn = voice.verified_languages?.find(
         (lang) =>
@@ -267,8 +263,8 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
         use_case: voice.labels?.use_case || undefined,
         energy: energyResult.energy,
         energy_conclusion: energyResult.conclusion,
-        verified_language_es: verifiedLanguageEs || undefined,
         verified_language_en: verifiedLanguageEn || undefined,
+        // Only store English language, not Spanish
       };
 
       try {
@@ -311,13 +307,15 @@ export async function fetchAndSyncElevenLabsVoices(): Promise<void> {
 /**
  * Add custom voice to ElevenLabs and store in database
  * Flow:
- * 1. POST /v1/voices/add - Add voice with file and name
+ * 1. POST /v1/voices/add - Add voice with file(s) and name
  * 2. PATCH /v1/voices/{voice_id}/edit - Edit voice with description and labels
  * 3. GET /v1/voices/{voice_id} - Get full voice details
  * 4. Store in database with userId
+ * 
+ * Supports multiple audio files for better voice cloning quality
  */
 export async function addCustomVoice(params: {
-  file: Express.Multer.File;
+  files: Express.Multer.File[];
   name: string;
   description?: string;
   language?: string;
@@ -329,16 +327,23 @@ export async function addCustomVoice(params: {
       throw new Error("ELEVENLABS_API_KEY environment variable is required");
     }
 
-    const { file, name, description, language = "en", gender, userId } = params;
+    const { files, name, description, language = "en", gender, userId } = params;
 
+    if (!files || files.length === 0) {
+      throw new Error("At least one audio file is required");
+    }
 
     const FormData = require("form-data");
     const fs = require("fs");
     const formData = new FormData();
     formData.append("name", name);
-    formData.append("files", fs.createReadStream(file.path), {
-      filename: file.originalname,
-      contentType: file.mimetype || "audio/mpeg",
+    
+    // Append all files to FormData (ElevenLabs API supports multiple files)
+    files.forEach((file) => {
+      formData.append("files", fs.createReadStream(file.path), {
+        filename: file.originalname,
+        contentType: file.mimetype || "audio/mpeg",
+      });
     });
 
     const addResponse = await axios.post(
@@ -403,7 +408,7 @@ export async function addCustomVoice(params: {
     const voiceData = getResponse.data;
 
     
-    // Extract verified languages from voice data
+    // Extract verified languages from voice data (only English)
     const verified_language_en = voiceData.verified_language_en
       ? {
           language: voiceData.verified_language_en.language || "en",
@@ -411,16 +416,6 @@ export async function addCustomVoice(params: {
           accent: voiceData.verified_language_en.accent || "",
           locale: voiceData.verified_language_en.locale || "",
           preview_url: voiceData.verified_language_en.preview_url || "",
-        }
-      : undefined;
-
-    const verified_language_es = voiceData.verified_language_es
-      ? {
-          language: voiceData.verified_language_es.language || "es",
-          model_id: voiceData.verified_language_es.model_id || "eleven_multilingual_v2",
-          accent: voiceData.verified_language_es.accent || "",
-          locale: voiceData.verified_language_es.locale || "",
-          preview_url: voiceData.verified_language_es.preview_url || "",
         }
       : undefined;
 
@@ -451,7 +446,7 @@ export async function addCustomVoice(params: {
       energy: energyResult.energy,
       energy_conclusion: energyResult.conclusion,
       verified_language_en,
-      verified_language_es,
+      // Only store English language, not Spanish
       userId: new mongoose.Types.ObjectId(userId),
     };
 
@@ -468,13 +463,15 @@ export async function addCustomVoice(params: {
 
     }
 
-    // Clean up temporary file
+    // Clean up temporary files
     try {
-      fs.unlink(file.path, (err: any) => {
-        if (err) console.error("Error deleting temp file:", err);
+      files.forEach((file) => {
+        fs.unlink(file.path, (err: any) => {
+          if (err) console.error(`Error deleting temp file ${file.path}:`, err);
+        });
       });
     } catch (cleanupError) {
-      
+      console.error("Error during file cleanup:", cleanupError);
     }
 
     return savedVoice;

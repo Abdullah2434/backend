@@ -258,7 +258,11 @@ export async function createPaymentIntent(req: Request, res: Response) {
       );
 
     if (existingSubs.hasPending || existingSubs.hasIncomplete) {
-    
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending or incomplete subscription for this plan",
+        data: existingSubs
+      });
     }
 
     // Create payment intent (service handles all validation and cleanup automatically)
@@ -364,7 +368,7 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
           },
         });
       } catch (syncError: any) {
-
+        console.error("Failed to auto-sync subscription:", syncError);
         // Still return payment intent status even if sync fails
       }
     }

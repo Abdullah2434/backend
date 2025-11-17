@@ -24,7 +24,7 @@ import {
   fetchAndStoreDefaultAvatars,
   fetchAndStoreDefaultVoices,
 } from "./cron/fetchDefaultAvatars";
-import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
+import { startAvatarStatusCheckCron } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
 import { startHeyGenAvatarSyncCron } from "./cron/syncHeyGenAvatars";
@@ -214,11 +214,8 @@ app.use(
 
 
 
-// Schedule avatar status check every 5 minutes
-cron.schedule("*/2 * * * *", async () => {
- 
-  await checkPendingAvatarsAndUpdate();
-});
+// Start avatar status check cron job (runs every 5 minutes)
+startAvatarStatusCheckCron();
 
 // Start HeyGen avatar sync cron job (runs every 12 hours)
 startHeyGenAvatarSyncCron();
