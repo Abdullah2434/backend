@@ -50,6 +50,8 @@ const AUTH_ROUTES = {
     "/video-schedule/schedule/:scheduleId",
     "/schedule",
     "/api/schedule",
+    "/payment-methods",
+    "/api/payment-methods",
     "/v2/video_avatar",
     "/api/v2/video_avatar",
     "/elevenlabs/voices/add",
