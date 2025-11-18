@@ -134,7 +134,7 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
       // Remove any backticks that might be in the content
       cleanedContent = cleanedContent.replace(/`/g, "");
 
-      console.log("Cleaned OpenAI response:", cleanedContent);
+   
 
       // Parse JSON response
       const captions = JSON.parse(cleanedContent) as SocialMediaCaptions;
@@ -167,9 +167,7 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
 
       return cleanedCaptions;
     } catch (error: any) {
-      console.error("Error generating captions:", error);
-
-      // Return fallback captions if OpenAI fails
+ 
       return {
         instagram_caption: `🏠 ${topic} - ${keyPoints} #RealEstate #Property #Home`,
         facebook_caption: `${topic}: ${keyPoints}. Contact us for more information about real estate opportunities.`,

@@ -32,7 +32,7 @@ router.get("/voices", getVoices);
 router.get("/voices/:voice_id", getVoiceById);
 router.post("/text-to-speech", textToSpeech);
 router.post("/sync-voices", syncVoices);
-router.post("/voices/add", upload.single("files") as any, addCustomVoiceEndpoint);
+router.post("/voices/add", upload.array("files") as any, addCustomVoiceEndpoint);
 
 export default router;
 

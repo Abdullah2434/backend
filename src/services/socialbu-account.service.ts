@@ -52,7 +52,7 @@ export class SocialBuAccountService {
         data: accountsWithUserId,
       };
     } catch (error) {
-      console.error("Error getting user accounts", error);
+
       return {
         success: false,
         message: "Failed to retrieve user accounts",

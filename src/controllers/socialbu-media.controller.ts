@@ -1,36 +1,175 @@
-import { Request, Response } from "express";
+import { Response } from "express";
+import { AuthenticatedRequest } from "../types";
 import socialBuMediaService from "../services/socialbu-media.service";
 import socialBuService from "../services/socialbu.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  uploadMediaSchema,
+  mediaIdParamSchema,
+  updateMediaStatusSchema,
+  createSocialPostSchema,
+} from "../validations/socialbuMedia.validations";
+
+// ==================== CONSTANTS ====================
+const VALID_MEDIA_STATUSES = ["uploaded", "failed"] as const;
+const UPLOAD_STATUS_CHECK_DELAY_MS = 2000;
+const POST_CREATION_DELAY_MS = 1000;
+
+// Account type mappings for captions
+const ACCOUNT_TYPE_CAPTION_MAP: Record<string, string> = {
+  "instagram.api": "instagram_caption",
+  "facebook.profile": "facebook_caption",
+  "facebook.page": "facebook_caption",
+  "linkedin.profile": "linkedin_caption",
+  "twitter.profile": "twitter_caption",
+  "tiktok.profile": "tiktok_caption",
+  "google.youtube": "youtube_caption",
+};
+
+// ==================== HELPER FUNCTIONS ====================
+/**
+ * Get user ID from authenticated request
+ */
+function getUserIdFromRequest(req: AuthenticatedRequest): string {
+  if (!req.user?._id) {
+    throw new Error("User not authenticated");
+  }
+  return req.user._id.toString();
+}
 
 /**
- * Upload media to SocialBu
+ * Normalize accountIds to array format
  */
-export const uploadMedia = async (req: Request, res: Response) => {
+function normalizeAccountIds(accountIds: any): number[] {
+  if (typeof accountIds === "string") {
+    try {
+      const parsed = JSON.parse(accountIds);
+      return Array.isArray(parsed) ? parsed : [parseInt(accountIds)];
+    } catch (e) {
+      return [parseInt(accountIds)];
+    }
+  } else if (typeof accountIds === "number") {
+    return [accountIds];
+  } else if (
+    typeof accountIds === "object" &&
+    accountIds !== null &&
+    !Array.isArray(accountIds)
+  ) {
+    return Object.values(accountIds).filter(
+      (val) => typeof val === "number"
+    ) as number[];
+  }
+  return Array.isArray(accountIds) ? accountIds : [];
+}
+
+/**
+ * Normalize selectedAccounts to array format
+ */
+function normalizeSelectedAccounts(selectedAccounts: any): any[] {
+  if (
+    selectedAccounts &&
+    typeof selectedAccounts === "object" &&
+    !Array.isArray(selectedAccounts)
+  ) {
+    return Object.values(selectedAccounts);
+  }
+  return Array.isArray(selectedAccounts) ? selectedAccounts : [];
+}
+
+/**
+ * Get appropriate caption for account type
+ */
+function getAccountCaption(
+  account: any,
+  captions: {
+    caption?: string;
+    instagram_caption?: string;
+    facebook_caption?: string;
+    linkedin_caption?: string;
+    twitter_caption?: string;
+    tiktok_caption?: string;
+    youtube_caption?: string;
+  }
+): string {
+  const accountType = account.type;
+  const captionKey = ACCOUNT_TYPE_CAPTION_MAP[accountType];
+
+  // Check for specific account type caption
+  if (captionKey && captions[captionKey as keyof typeof captions]) {
+    return (
+      captions[captionKey as keyof typeof captions] || captions.caption || ""
+    );
+  }
+
+  // Check for facebook.* pattern
+  if (accountType?.startsWith("facebook.") && captions.facebook_caption) {
+    return captions.facebook_caption;
+  }
+
+  // Default to main caption
+  return captions.caption || "";
+}
+
+/**
+ * Format media response data
+ */
+function formatMediaResponse(data: any) {
+  return {
+    id: data?._id,
+    userId: data?.userId,
+    name: data?.name,
+    mime_type: data?.mime_type,
+    socialbuResponse: data?.socialbuResponse,
+    uploadScript: data?.uploadScript,
+    status: data?.status,
+    errorMessage: data?.errorMessage,
+    createdAt: data?.createdAt,
+    updatedAt: data?.updatedAt,
+  };
+}
+
+/**
+ * Determine HTTP status code based on error message
+ */
+function getErrorStatus(error: Error): number {
+  const message = error.message.toLowerCase();
+
+  if (
+    message.includes("token") ||
+    message.includes("not authenticated") ||
+    message.includes("user not found")
+  ) {
+    return 401;
+  }
+  if (message.includes("not found")) {
+    return 404;
+  }
+  if (message.includes("invalid") || message.includes("required")) {
+    return 400;
+  }
+  return 500;
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
+/**
+ * Upload media to SocialBu
+ * POST /api/socialbu-media/upload
+ */
+export const uploadMedia = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    // change id to _id
-    // For testing purposes, use a hardcoded user ID
-    const userId = req.user?._id || "68b19f13b732018f898d7046";
-    const { name, mime_type, videoUrl } = req.body;
+    const userId = getUserIdFromRequest(req);
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "User authentication required",
-      });
+    // Validate request body
+    const validationResult = uploadMediaSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    if (!name || !mime_type) {
-      return res.status(400).json({
-        success: false,
-        message: "Name and mime_type are required",
-      });
-    }
-
-    console.log("Starting complete media upload workflow for user:", userId, {
-      name,
-      mime_type,
-      videoUrl,
-    });
+    const { name, mime_type, videoUrl } = validationResult.data;
 
     const result = await socialBuMediaService.uploadMedia(userId, {
       name,
@@ -39,44 +178,18 @@ export const uploadMedia = async (req: Request, res: Response) => {
     });
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message,
-        error: result.error,
-      });
+      return ResponseHelper.badRequest(res, result.message, result.error);
     }
 
-    // Return complete workflow data
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: {
-        id: result.data?._id,
-        userId: result.data?.userId,
-        name: result.data?.name,
-        mime_type: result.data?.mime_type,
-
-        // SocialBu API Response
-        socialbuResponse: result.data?.socialbuResponse,
-
-        // Upload Script Execution Data
-        uploadScript: result.data?.uploadScript,
-
-        // Overall Status
-        status: result.data?.status,
-        errorMessage: result.data?.errorMessage,
-
-        // Timestamps
-        createdAt: result.data?.createdAt,
-        updatedAt: result.data?.updatedAt,
-      },
+    return ResponseHelper.success(res, result.message, {
+      ...formatMediaResponse(result.data),
     });
-  } catch (error) {
-    console.error("Error in media upload workflow:", error);
-
-    res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in uploadMedia:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: "Failed to complete media upload workflow",
+      message: error.message || "Failed to complete media upload workflow",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -84,41 +197,28 @@ export const uploadMedia = async (req: Request, res: Response) => {
 
 /**
  * Get user's media uploads
+ * GET /api/socialbu-media
  */
-export const getUserMedia = async (req: Request, res: Response) => {
+export const getUserMedia = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
-    const userId = req.user?._id; // Get user ID from authenticated request
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "User authentication required",
-      });
-    }
-
-    console.log("Getting media for user:", userId);
+    const userId = getUserIdFromRequest(req);
 
     const result = await socialBuMediaService.getUserMedia(userId);
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message,
-        error: result.error,
-      });
+      return ResponseHelper.badRequest(res, result.message, result.error);
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("Error getting user media:", error);
-
-    res.status(500).json({
+    return ResponseHelper.success(res, result.message, result.data);
+  } catch (error: any) {
+    console.error("Error in getUserMedia:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: "Failed to get user media",
+      message: error.message || "Failed to get user media",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -126,49 +226,39 @@ export const getUserMedia = async (req: Request, res: Response) => {
 
 /**
  * Get media by ID
+ * GET /api/socialbu-media/:mediaId
  */
-export const getMediaById = async (req: Request, res: Response) => {
+export const getMediaById = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
+    const userId = getUserIdFromRequest(req);
     const { mediaId } = req.params;
-    const userId = req.user?._id; // Get user ID from authenticated request
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "User authentication required",
-      });
+    // Validate mediaId parameter
+    const validationResult = mediaIdParamSchema.safeParse({ mediaId });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
-
-    if (!mediaId) {
-      return res.status(400).json({
-        success: false,
-        message: "Media ID is required",
-      });
-    }
-
-    console.log("Getting media by ID:", mediaId, "for user:", userId);
 
     const result = await socialBuMediaService.getMediaById(mediaId);
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message,
-        error: result.error,
-      });
+      return ResponseHelper.badRequest(res, result.message, result.error);
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("Error getting media by ID:", error);
-
-    res.status(500).json({
+    return ResponseHelper.success(res, result.message, result.data);
+  } catch (error: any) {
+    console.error("Error in getMediaById:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: "Failed to get media",
+      message: error.message || "Failed to get media",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -176,27 +266,36 @@ export const getMediaById = async (req: Request, res: Response) => {
 
 /**
  * Update media status (for webhook or manual updates)
+ * PUT /api/socialbu-media/:mediaId/status
  */
-export const updateMediaStatus = async (req: Request, res: Response) => {
+export const updateMediaStatus = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
     const { mediaId } = req.params;
-    const { status, errorMessage } = req.body;
 
-    if (!mediaId) {
-      return res.status(400).json({
-        success: false,
-        message: "Media ID is required",
-      });
+    // Validate mediaId parameter
+    const mediaIdValidation = mediaIdParamSchema.safeParse({ mediaId });
+    if (!mediaIdValidation.success) {
+      const errors = mediaIdValidation.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    if (!status || !["uploaded", "failed"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status must be either "uploaded" or "failed"',
-      });
+    // Validate request body
+    const validationResult = updateMediaStatusSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    console.log("Updating media status:", mediaId, "to", status);
+    const { status, errorMessage } = validationResult.data;
 
     const result = await socialBuMediaService.updateMediaStatus(
       mediaId,
@@ -205,24 +304,16 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
     );
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message,
-        error: result.error,
-      });
+      return ResponseHelper.badRequest(res, result.message, result.error);
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data,
-    });
-  } catch (error) {
-    console.error("Error updating media status:", error);
-
-    res.status(500).json({
+    return ResponseHelper.success(res, result.message, result.data);
+  } catch (error: any) {
+    console.error("Error in updateMediaStatus:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: "Failed to update media status",
+      message: error.message || "Failed to update media status",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }
@@ -230,13 +321,32 @@ export const updateMediaStatus = async (req: Request, res: Response) => {
 
 /**
  * Create social media post with complete workflow
+ * POST /api/socialbu-media/posts
  */
-export const createSocialPost = async (req: Request, res: Response) => {
+export const createSocialPost = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
+    const userId = getUserIdFromRequest(req);
+
+    // Validate request body
+    const validationResult = createSocialPostSchema.safeParse({
+      ...req.body,
+      userId, // Add userId from auth
+    });
+
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
     const {
       accountIds,
       name,
-      userId,
       videoUrl,
       date,
       time,
@@ -248,98 +358,14 @@ export const createSocialPost = async (req: Request, res: Response) => {
       twitter_caption,
       tiktok_caption,
       youtube_caption,
-    } = req.body;
+    } = validationResult.data;
 
-    // Normalize accountIds to array format
-    let normalizedAccountIds = accountIds;
-    if (typeof accountIds === "string") {
-      try {
-        normalizedAccountIds = JSON.parse(accountIds);
-      } catch (e) {
-        // If it's a single number as string, convert to array
-        normalizedAccountIds = [parseInt(accountIds)];
-      }
-    } else if (typeof accountIds === "number") {
-      normalizedAccountIds = [accountIds];
-    } else if (
-      typeof accountIds === "object" &&
-      accountIds !== null &&
-      !Array.isArray(accountIds)
-    ) {
-      // Handle object format like { '0': 148311, '1': 148312 }
-      normalizedAccountIds = Object.values(accountIds).filter(
-        (val) => typeof val === "number"
-      );
-    }
+    // Normalize accountIds and selectedAccounts
+    const normalizedAccountIds = normalizeAccountIds(accountIds);
+    const normalizedSelectedAccounts =
+      normalizeSelectedAccounts(selectedAccounts);
 
-    // Validate required fields
-    if (
-      !normalizedAccountIds ||
-      !Array.isArray(normalizedAccountIds) ||
-      normalizedAccountIds.length === 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Account IDs array is required",
-        debug: {
-          received: accountIds,
-          normalized: normalizedAccountIds,
-          type: typeof accountIds,
-          isArray: Array.isArray(normalizedAccountIds),
-          length: normalizedAccountIds?.length,
-        },
-      });
-    }
-
-    // Convert selectedAccounts object to array if needed
-    let normalizedSelectedAccounts = selectedAccounts;
-    if (
-      selectedAccounts &&
-      typeof selectedAccounts === "object" &&
-      !Array.isArray(selectedAccounts)
-    ) {
-      normalizedSelectedAccounts = Object.values(selectedAccounts);
-    }
-
-    // Validate selectedAccounts
-    if (
-      !normalizedSelectedAccounts ||
-      !Array.isArray(normalizedSelectedAccounts) ||
-      normalizedSelectedAccounts.length === 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Selected accounts are required and must be an array",
-        debug: {
-          received: selectedAccounts,
-          normalized: normalizedSelectedAccounts,
-          type: typeof selectedAccounts,
-          isArray: Array.isArray(normalizedSelectedAccounts),
-          length: normalizedSelectedAccounts?.length,
-        },
-      });
-    }
-
-    console.log("Selected accounts length:", normalizedSelectedAccounts.length);
-
-    if (!name || !videoUrl || !date || !time || !caption) {
-      return res.status(400).json({
-        success: false,
-        message: "Name, videoUrl, date, time, and caption are required",
-      });
-    }
-
-    console.log("Starting social media post creation workflow:", {
-      accountIds: normalizedAccountIds,
-      name,
-      videoUrl,
-      date,
-      time,
-      caption,
-    });
-
-    // Step 1: Use the working media upload logic
-    console.log("Step 1: Using working media upload logic...");
+    // Upload media first
     const uploadResult = await socialBuMediaService.uploadMedia(userId, {
       name,
       mime_type: videoUrl,
@@ -347,90 +373,72 @@ export const createSocialPost = async (req: Request, res: Response) => {
     });
 
     if (!uploadResult.success) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to upload media",
-        error: uploadResult.message,
-      });
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to upload media",
+        uploadResult.message
+      );
     }
 
     // Safely extract key from upload result
     const socialbuResponse = uploadResult.data?.socialbuResponse;
     if (!socialbuResponse || !socialbuResponse.key) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to get upload key from SocialBu response",
-        error: "Missing key in socialbuResponse",
-      });
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to get upload key from SocialBu response",
+        "Missing key in socialbuResponse"
+      );
     }
 
     const { key } = socialbuResponse;
-    console.log("Media upload completed successfully, key:", key);
 
-    // Step 2: Wait 2 seconds and check upload status
-    console.log("Step 2: Waiting 2 seconds before checking upload status...");
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Wait for upload to process
+    await new Promise((resolve) =>
+      setTimeout(resolve, UPLOAD_STATUS_CHECK_DELAY_MS)
+    );
 
+    // Check upload status
     const statusResponse = await socialBuService.makeAuthenticatedRequest(
       "GET",
       `/upload_media/status?key=${encodeURIComponent(key)}`
     );
 
-    console.log("Status response:", statusResponse);
-
     if (!statusResponse.success) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to check upload status",
-        error: statusResponse.message,
-      });
+      return ResponseHelper.badRequest(
+        res,
+        "Failed to check upload status",
+        statusResponse.message
+      );
     }
 
     const { upload_token } = statusResponse.data;
-    console.log(
-      "Upload status checked successfully, upload_token:",
-      upload_token
-    );
-
-    // Step 3: Create social media posts for each selected account
-    console.log("Step 3: Creating social media posts for each account...");
 
     // Format date and time for publish_at
     const publishAt = `${date} ${time}`;
 
-    const results = [];
-    const errors = [];
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    // Prepare captions object
+    const captions = {
+      caption,
+      instagram_caption,
+      facebook_caption,
+      linkedin_caption,
+      twitter_caption,
+      tiktok_caption,
+      youtube_caption,
+    };
 
     // Loop through each selected account
     try {
       for (const account of normalizedSelectedAccounts) {
         try {
-          console.log(`Processing account: ${account.name} (${account.type})`);
-
-          // Determine the appropriate caption based on account type
-          let accountCaption = caption; // Default to main caption
-
-          if (account.type === "instagram.api" && instagram_caption) {
-            accountCaption = instagram_caption;
-          } else if (
-            (account.type === "facebook.profile" ||
-              account.type === "facebook.page" ||
-              account.type?.startsWith("facebook.")) &&
-            facebook_caption
-          ) {
-            accountCaption = facebook_caption;
-          } else if (account.type === "linkedin.profile" && linkedin_caption) {
-            accountCaption = linkedin_caption;
-          } else if (account.type === "twitter.profile" && twitter_caption) {
-            accountCaption = twitter_caption;
-          } else if (account.type === "tiktok.profile" && tiktok_caption) {
-            accountCaption = tiktok_caption;
-          } else if (account.type === "google.youtube" && youtube_caption) {
-            accountCaption = youtube_caption;
-          }
+          // Get appropriate caption for account type
+          const accountCaption = getAccountCaption(account, captions);
 
           const postData = {
-            accounts: [account.id], // Single account per post
+            accounts: [account.id],
             publish_at: publishAt,
             content: accountCaption,
             existing_attachments: [
@@ -447,7 +455,6 @@ export const createSocialPost = async (req: Request, res: Response) => {
           );
 
           if (postResponse.success) {
-            console.log(`Post created successfully for ${account.name}`);
             results.push({
               account: account.name,
               accountId: account.id,
@@ -456,10 +463,6 @@ export const createSocialPost = async (req: Request, res: Response) => {
               data: postResponse.data,
             });
           } else {
-            console.error(
-              `Failed to create post for ${account.name}:`,
-              postResponse.message
-            );
             errors.push({
               account: account.name,
               accountId: account.id,
@@ -468,10 +471,15 @@ export const createSocialPost = async (req: Request, res: Response) => {
             });
           }
 
-          // Add a small delay between posts to avoid rate limiting
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Add delay between posts to avoid rate limiting
+          await new Promise((resolve) =>
+            setTimeout(resolve, POST_CREATION_DELAY_MS)
+          );
         } catch (error) {
-          console.error(`Error creating post for ${account.name}:`, error);
+          console.error(
+            `Error creating post for account ${account.id}:`,
+            error
+          );
           errors.push({
             account: account.name,
             accountId: account.id,
@@ -482,38 +490,34 @@ export const createSocialPost = async (req: Request, res: Response) => {
       }
     } catch (loopError) {
       console.error("Error in account processing loop:", loopError);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to process selected accounts",
-        error: loopError instanceof Error ? loopError.message : "Unknown error",
-      });
+      return ResponseHelper.serverError(
+        res,
+        "Failed to process selected accounts",
+        loopError instanceof Error ? loopError.message : "Unknown error"
+      );
     }
 
-    console.log(
-      `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`
-    );
-
-    res.status(200).json({
-      success: true,
-      message: `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`,
-      data: {
+    return ResponseHelper.success(
+      res,
+      `Social media posts processing completed. Success: ${results.length}, Errors: ${errors.length}`,
+      {
         upload: uploadResult.data,
         status: statusResponse.data,
-        results: results,
-        errors: errors,
+        results,
+        errors,
         summary: {
           total: normalizedSelectedAccounts.length,
           successful: results.length,
           failed: errors.length,
         },
-      },
-    });
-  } catch (error) {
-    console.error("Error in social media post creation workflow:", error);
-
-    res.status(500).json({
+      }
+    );
+  } catch (error: any) {
+    console.error("Error in createSocialPost:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: "Failed to create social media post",
+      message: error.message || "Failed to create social media post",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

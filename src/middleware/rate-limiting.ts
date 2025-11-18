@@ -59,13 +59,11 @@ export class ServerRateLimiter {
     return (req: Request, res: Response, next: NextFunction) => {
       // Skip rate limiting for video avatar endpoint (permanently disabled)
       if (req.path.includes("/video_avatar")) {
-        console.log("🚀 Skipping rate limit for video avatar request");
         return next();
       }
 
       // Skip rate limiting for login attempts if user is already authenticated
       if (req.path.includes("/login") && req.headers.authorization) {
-        console.log("🚀 Skipping rate limit for authenticated login request");
         return next();
       }
 
@@ -81,9 +79,7 @@ export class ServerRateLimiter {
           ? Math.ceil((data.resetTime - Date.now()) / 1000)
           : 60;
 
-        console.log(
-          `🔒 Rate limited: ${req.method} ${req.path} from ${clientIP}`
-        );
+  
 
         return res.status(429).json({
           success: false,

@@ -168,6 +168,117 @@ export class CronMonitoringService {
       this.stats.clear();
     }
   }
+
+  /**
+   * Detect and auto-recover stuck jobs
+   * Automatically resets jobs that have been running for too long
+   * @param stuckThresholdMs Threshold in milliseconds to consider a job stuck (default: 20 minutes)
+   * @returns Array of job names that were recovered
+   */
+  autoRecoverStuckJobs(stuckThresholdMs: number = 20 * 60 * 1000): string[] {
+    const recoveredJobs: string[] = [];
+    const stats = this.getAllStats();
+
+    for (const stat of stats) {
+      if (stat.isRunning && stat.lastExecution) {
+        const timeSinceLastExecution =
+          Date.now() - stat.lastExecution.getTime();
+        
+        if (timeSinceLastExecution > stuckThresholdMs) {
+          console.warn(
+            `⚠️ Auto-recovering stuck job: ${stat.name} (running for ${Math.round(
+              timeSinceLastExecution / 60000
+            )} minutes)`
+          );
+          
+          // Force reset the stuck job
+          this.forceResetJob(stat.name);
+          recoveredJobs.push(stat.name);
+        }
+      }
+    }
+
+    return recoveredJobs;
+  }
+
+  /**
+   * Force reset a stuck job state
+   * This should be used when a job is confirmed to be stuck
+   * @param jobName Name of the job to reset
+   */
+  forceResetJob(jobName: string): void {
+    const stats = this.stats.get(jobName);
+    if (stats) {
+      stats.isRunning = false;
+      stats.lastError = `Force reset at ${new Date().toISOString()}`;
+      console.log(`🔄 Force reset job: ${jobName}`);
+    } else {
+      console.warn(`⚠️ Job ${jobName} not found for force reset`);
+    }
+  }
+
+  /**
+   * Get execution time tracking for a job
+   * Returns detailed timing information
+   */
+  getExecutionTimeTracking(jobName: string): {
+    lastExecution: Date | null;
+    averageDuration: number;
+    isRunning: boolean;
+    runningSince: Date | null;
+    estimatedTimeRemaining: number | null;
+  } {
+    const stats = this.stats.get(jobName);
+    if (!stats) {
+      return {
+        lastExecution: null,
+        averageDuration: 0,
+        isRunning: false,
+        runningSince: null,
+        estimatedTimeRemaining: null,
+      };
+    }
+
+    let runningSince: Date | null = null;
+    let estimatedTimeRemaining: number | null = null;
+
+    if (stats.isRunning && stats.lastExecution) {
+      runningSince = stats.lastExecution;
+      // Estimate remaining time based on average duration
+      const elapsed = Date.now() - stats.lastExecution.getTime();
+      estimatedTimeRemaining = Math.max(0, stats.averageDuration - elapsed);
+    }
+
+    return {
+      lastExecution: stats.lastExecution,
+      averageDuration: stats.averageDuration,
+      isRunning: stats.isRunning,
+      runningSince,
+      estimatedTimeRemaining,
+    };
+  }
+
+  /**
+   * Check for stuck jobs and alert
+   * Returns list of stuck job names
+   */
+  checkForStuckJobs(thresholdMs: number = 20 * 60 * 1000): string[] {
+    const stuckJobs: string[] = [];
+    const stats = this.getAllStats();
+
+    for (const stat of stats) {
+      if (stat.isRunning && stat.lastExecution) {
+        const timeSinceLastExecution =
+          Date.now() - stat.lastExecution.getTime();
+        
+        if (timeSinceLastExecution > thresholdMs) {
+          stuckJobs.push(stat.name);
+        }
+      }
+    }
+
+    return stuckJobs;
+  }
 }
 
 export default CronMonitoringService;

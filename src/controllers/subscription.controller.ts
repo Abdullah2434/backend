@@ -82,8 +82,7 @@ export async function getCurrentSubscription(req: Request, res: Response) {
       data: { subscription },
     });
   } catch (e: any) {
-    // For any error, return as guest user instead of throwing 401
-    console.warn("Error in getCurrentSubscription:", e.message);
+
     return res.json({
       success: true,
       message: "Error retrieving subscription - guest user",
@@ -224,11 +223,6 @@ export async function createPaymentIntent(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
     const { planId } = req.body;
-
-    console.log(
-      `📝 Creating payment intent for user ${payload.userId}, plan ${planId}`
-    );
-
     if (!planId) {
       return res.status(400).json({
         success: false,
@@ -264,12 +258,11 @@ export async function createPaymentIntent(req: Request, res: Response) {
       );
 
     if (existingSubs.hasPending || existingSubs.hasIncomplete) {
-      console.log(
-        `⚠️ User ${payload.userId} already has pending/incomplete subscription for plan ${planId}`
-      );
-      console.log(
-        `⚠️ Cleaning up incomplete subscriptions before creating new one`
-      );
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending or incomplete subscription for this plan",
+        data: existingSubs
+      });
     }
 
     // Create payment intent (service handles all validation and cleanup automatically)
@@ -279,11 +272,6 @@ export async function createPaymentIntent(req: Request, res: Response) {
       customerEmail: user.email,
       customerName: `${user.firstName} ${user.lastName}`,
     });
-
-    console.log(
-      `✅ Payment intent created: ${result.paymentIntent.id}, subscription: ${result.subscription.stripeSubscriptionId}`
-    );
-
     return res.json({
       success: true,
       message: "Payment intent and subscription created successfully",
@@ -296,8 +284,6 @@ export async function createPaymentIntent(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error(`❌ Error creating payment intent:`, e.message);
-    console.error(`❌ Stack:`, e.stack);
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
@@ -363,9 +349,7 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
 
     // If payment succeeded and autoSync is enabled, automatically sync subscription
     if (paymentIntent.status === "succeeded" && autoSync === "true") {
-      console.log(
-        `🔄 Payment succeeded, auto-syncing subscription for payment intent ${id}`
-      );
+  
       try {
         const subscription =
           await subscriptionService.syncSubscriptionFromStripe(
@@ -384,7 +368,7 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
           },
         });
       } catch (syncError: any) {
-        console.error(`⚠️ Auto-sync failed:`, syncError.message);
+        console.error("Failed to auto-sync subscription:", syncError);
         // Still return payment intent status even if sync fails
       }
     }
@@ -564,11 +548,7 @@ export async function syncSubscriptionFromStripe(req: Request, res: Response) {
     // Use payment intent ID if provided, otherwise use subscription ID
     const identifier = paymentIntentId || stripeSubscriptionId;
 
-    console.log(
-      `📞 Manual sync requested for ${
-        paymentIntentId ? "payment intent" : "subscription"
-      } ${identifier} by user ${payload.userId}`
-    );
+   
 
     // Sync subscription (creates if doesn't exist, updates if exists)
     // The service will automatically detect if it's a payment intent ID or subscription ID
@@ -585,7 +565,6 @@ export async function syncSubscriptionFromStripe(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error(`❌ Error in syncSubscriptionFromStripe:`, e.message);
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,
@@ -609,21 +588,10 @@ export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
         message: "Payment intent ID is required",
       });
     }
-
-    console.log(
-      `🔄 Auto-sync requested for payment intent ${paymentIntentId} by user ${payload.userId}`
-    );
-
     // Check payment intent status first
     const paymentIntent = await subscriptionService.getPaymentIntentStatus(
       paymentIntentId
     );
-
-    console.log(
-      `📊 Payment intent status: ${paymentIntent.status}, metadata:`,
-      paymentIntent.metadata
-    );
-
     if (paymentIntent.status !== "succeeded") {
       return res.status(400).json({
         success: false,
@@ -637,21 +605,11 @@ export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
         },
       });
     }
-
-    console.log(
-      `✅ Payment intent succeeded, attempting to sync subscription...`
-    );
-
     // Automatically sync subscription
     const subscription = await subscriptionService.syncSubscriptionFromStripe(
       paymentIntentId,
       payload.userId
     );
-
-    console.log(
-      `✅ Subscription automatically synced: ${subscription.stripeSubscriptionId}`
-    );
-
     return res.json({
       success: true,
       message: "Payment succeeded and subscription synced successfully",
@@ -664,10 +622,6 @@ export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    console.error(`❌ Error in autoSyncOnPaymentSuccess:`, e);
-    console.error(`Error message:`, e.message);
-    console.error(`Error stack:`, e.stack);
-
     const status = e.message.includes("Access token") ? 401 : 500;
     return res.status(status).json({
       success: false,

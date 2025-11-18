@@ -24,7 +24,7 @@ import {
   fetchAndStoreDefaultAvatars,
   fetchAndStoreDefaultVoices,
 } from "./cron/fetchDefaultAvatars";
-import { checkPendingAvatarsAndUpdate } from "./cron/checkAvatarStatus";
+import { startAvatarStatusCheckCron } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
 import { startHeyGenAvatarSyncCron } from "./cron/syncHeyGenAvatars";
@@ -115,7 +115,7 @@ app.use((req, res, next) => {
     // Increase timeout for dynamic caption generation (OpenAI API calls)
     req.setTimeout(600000); // 10 minutes
     res.setTimeout(600000); // 10 minutes
-    console.log(`⏱️ Increased timeout for schedule edit endpoint: ${req.path}`);
+
   }
   next();
 });
@@ -171,8 +171,6 @@ app.use((req, res, next) => {
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.use("/api", apiRateLimiter.middleware());
 
-  // Video avatar endpoint - NO rate limiting (permanently disabled)
-  console.log("⚠️ Video avatar rate limiting is DISABLED");
 }
 
 // ---------- Routes ----------
@@ -214,21 +212,10 @@ app.use(
   routes
 );
 
-// Schedule weekly avatar and voice sync (every Sunday at 2:17 PM)
-// cron.schedule("55 14 * * 2", async () => {
-//   console.log("Weekly avatar sync job started...");
-//   await fetchAndStoreDefaultAvatars();
-//   console.log("Weekly avatar sync job finished.");
-//   console.log("Weekly voice sync job started...");
-//   await fetchAndStoreDefaultVoices();
-//   console.log("Weekly voice sync job finished.");
-// });
 
-// Schedule avatar status check every 5 minutes
-cron.schedule("*/2 * * * *", async () => {
-  console.log("Checking pending avatars status...");
-  await checkPendingAvatarsAndUpdate();
-});
+
+// Start avatar status check cron job (runs every 5 minutes)
+startAvatarStatusCheckCron();
 
 // Start HeyGen avatar sync cron job (runs every 12 hours)
 startHeyGenAvatarSyncCron();
@@ -244,10 +231,6 @@ startSubscriptionSync();
 // Fetches voices from API, adds new ones, updates existing ones, and removes deleted ones (except cloned)
 startElevenLabsVoicesSyncCron();
 
-// cron.schedule('0 23 * * 6', async () => {
-//   console.log('Updating trend topics...');
-//   await generateAndStoreTopicData();
-// }); // Removed - now using API endpoint
 
 // 404
 app.use((_req, res) => {
@@ -267,7 +250,7 @@ app.use(
     res: express.Response,
     _next: express.NextFunction
   ) => {
-    console.error(err);
+  
 
     const errorResponse: ApiResponse = {
       success: false,

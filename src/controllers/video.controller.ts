@@ -18,4 +18,5 @@ export {
   getAllTopics,
   getTopicByType,
   getTopicById,
+  updateVideoNote,
 } from "../modules/video/controllers/video.controller";

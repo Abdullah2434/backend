@@ -72,37 +72,29 @@ export class VideoScheduleUtils {
     );
     const weeks = Math.ceil(daysDiff / 7);
 
-    console.log(`📊 Calculating videos for ${frequency}:`);
-    console.log(
-      `📅 Period: ${startDate.toISOString()} to ${endDate.toISOString()}`
-    );
-    console.log(`📅 Days: ${daysDiff}, Weeks: ${weeks}`);
-
     let numberOfVideos = 0;
 
     switch (frequency) {
       case "once_week":
         numberOfVideos = weeks;
-        console.log(`📊 Once per week: ${numberOfVideos} videos`);
+
         break;
       case "twice_week":
         numberOfVideos = weeks * 2;
-        console.log(`📊 Twice per week: ${numberOfVideos} videos`);
+
         break;
       case "three_week":
         numberOfVideos = weeks * 3;
-        console.log(`📊 Three times per week: ${numberOfVideos} videos`);
+
         break;
       case "daily":
         numberOfVideos = daysDiff;
-        console.log(`📊 Daily: ${numberOfVideos} videos`);
+
         break;
       default:
         numberOfVideos = 1;
-        console.log(`📊 Default: ${numberOfVideos} videos`);
     }
 
-    console.log(`📊 Total videos to generate: ${numberOfVideos}`);
     return numberOfVideos;
   }
 
@@ -123,20 +115,12 @@ export class VideoScheduleUtils {
     let trendIndex = 0;
     const now = new Date();
 
-    console.log(
-      `📅 Creating scheduled trends from ${startDate.toISOString()} to ${endDate.toISOString()}`
-    );
-    console.log(`🕐 Current time: ${now.toISOString()}`);
-    console.log(`🌍 User timezone: ${timezone}`);
+  
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.toLocaleDateString("en-US", {
         weekday: "long",
       });
-
-      console.log(
-        `📅 Checking date: ${currentDate.toISOString()} (${dayOfWeek})`
-      );
 
       // Check if this day should have a video
       let shouldSchedule = false;
@@ -172,10 +156,6 @@ export class VideoScheduleUtils {
             ? new Date(`${dateString}T${timeString}Z`)
             : TimezoneService.ensureUTCDate(localDateTime, timezone);
 
-        console.log(`📅 Local datetime: ${localDateTime} (${timezone})`);
-        console.log(
-          `📅 Final scheduled time (UTC): ${finalScheduledTime.toISOString()}`
-        );
 
         // Edge case handling: Check if scheduled time is less than 40 minutes away
         const shouldSkipDay = this.shouldSkipScheduledDay(
@@ -195,12 +175,7 @@ export class VideoScheduleUtils {
         const trendToUse = trends[trendIndex];
 
         if (!trendToUse) {
-          console.log(
-            `📊 No more trends available at index ${trendIndex}. Total trends: ${trends.length}`
-          );
-          console.log(
-            `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
-          );
+     
           break; // Stop creating more posts when we run out of trends
         }
 
@@ -215,10 +190,7 @@ export class VideoScheduleUtils {
           !trendToUse.tiktok_caption ||
           !trendToUse.youtube_caption
         ) {
-          console.error(
-            `❌ Invalid trend data at index ${trendIndex}:`,
-            trendToUse
-          );
+         
           throw new Error(
             `Trend at index ${trendIndex} is missing required fields`
           );
@@ -236,15 +208,6 @@ export class VideoScheduleUtils {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log(
-      `📊 Created ${scheduledTrends.length} scheduled trends from ${trends.length} available trends`
-    );
-    console.log(
-      `📊 Used ${Math.min(
-        scheduledTrends.length,
-        trends.length
-      )} unique trends (no cycling)`
-    );
     return scheduledTrends;
   }
 
@@ -262,10 +225,6 @@ export class VideoScheduleUtils {
     let trendIndex = 0;
     const now = new Date();
 
-    console.log(
-      `📅 Creating immediate scheduled posts from ${startDate.toISOString()}`
-    );
-    console.log(`📊 Available trends: ${trends.length}`);
 
     // Create posts for the next few upcoming schedule slots
     let currentDate = new Date(startDate);
@@ -312,7 +271,7 @@ export class VideoScheduleUtils {
 
         const trendToUse = trends[trendIndex];
         if (!trendToUse) {
-          console.log(`📊 No more trends available at index ${trendIndex}`);
+      
           break;
         }
 
@@ -324,17 +283,13 @@ export class VideoScheduleUtils {
 
         trendIndex++;
         postsCreated++;
-        console.log(
-          `📅 Created post ${postsCreated} for ${dayOfWeek} at ${finalScheduledTime.toISOString()}`
-        );
+  
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log(
-      `📊 Created ${scheduledTrends.length} immediate scheduled posts`
-    );
+
     return scheduledTrends;
   }
 
@@ -351,37 +306,21 @@ export class VideoScheduleUtils {
     const timeDiff = scheduledTime.getTime() - currentTime.getTime();
     const minutesUntilScheduled = timeDiff / (1000 * 60); // Convert to minutes
 
-    console.log(
-      `📅 Checking ${dayOfWeek} ${scheduledTimeString}: ${minutesUntilScheduled.toFixed(
-        1
-      )} minutes until scheduled time`
-    );
 
     // Edge case: If scheduled time is less than 40 minutes away, skip this day
     if (minutesUntilScheduled < 40) {
-      console.log(
-        `⏰ Skipping ${dayOfWeek} ${scheduledTimeString} - less than 40 minutes away (${minutesUntilScheduled.toFixed(
-          1
-        )} minutes)`
-      );
+
       return true;
     }
 
-    console.log(
-      `✅ Scheduling ${dayOfWeek} ${scheduledTimeString} - ${minutesUntilScheduled.toFixed(
-        1
-      )} minutes away`
-    );
+
     return false;
   }
 
   /**
    * Helper method to calculate days until target day
    */
-  static getDaysUntilTargetDay(
-    currentDay: string,
-    targetDay: string
-  ): number {
+  static getDaysUntilTargetDay(currentDay: string, targetDay: string): number {
     const daysOfWeek = [
       "Sunday",
       "Monday",
@@ -403,4 +342,3 @@ export class VideoScheduleUtils {
     }
   }
 }
-

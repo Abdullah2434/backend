@@ -1,84 +1,186 @@
 import { Request, Response } from "express";
+import { AuthenticatedRequest } from "../types";
 import VideoScheduleService from "../services/videoSchedule.service";
-import { AuthService } from "../modules/auth/services/auth.service";
 import TimezoneService from "../utils/timezone";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  editSchedulePostSchema,
+  schedulePostIdSchema,
+  scheduleIdSchema,
+} from "../validations/schedule.validations";
 
+// ==================== CONSTANTS ====================
+const POST_ID_SEPARATOR = "_";
+const POST_STATUSES = ["pending", "completed", "processing", "failed"] as const;
+
+// ==================== SERVICE INSTANCE ====================
 const videoScheduleService = new VideoScheduleService();
-const authService = new AuthService();
 
-function requireAuth(req: Request) {
-  const token = (req.headers.authorization || "").replace("Bearer ", "");
-  if (!token) {
-    throw new Error("Access token is required");
+// ==================== HELPER FUNCTIONS ====================
+/**
+ * Get user ID from authenticated request
+ */
+function getUserIdFromRequest(req: AuthenticatedRequest): string {
+  if (!req.user?._id) {
+    throw new Error("User not authenticated");
   }
-
-  try {
-    // Verify JWT token and extract user information
-    const payload = authService.verifyToken(token);
-
-    if (!payload || !payload.userId) {
-      throw new Error("Invalid token: missing user information");
-    }
-
-    // Validate that userId is a valid ObjectId format
-    if (!/^[0-9a-fA-F]{24}$/.test(payload.userId)) {
-      throw new Error("Invalid user ID format in token");
-    }
-
-    return { userId: payload.userId };
-  } catch (error: any) {
-    if (error.name === "JsonWebTokenError") {
-      throw new Error("Invalid token format");
-    } else if (error.name === "TokenExpiredError") {
-      throw new Error("Token has expired");
-    } else {
-      throw new Error(`Token verification failed: ${error.message}`);
-    }
-  }
+  return req.user._id;
 }
 
 /**
- * Get pending schedule posts for the authenticated user
- * This endpoint returns only the pending posts from the user's active schedule
- *
- * Usage:
- * curl -H "Authorization: Bearer <token>" \
- *      -H "x-timezone: America/New_York" \
- *      http://localhost:4000/api/schedule
+ * Parse post ID to extract schedule ID and index
  */
-export async function getPendingSchedulePosts(req: Request, res: Response) {
+function parsePostId(postId: string): { scheduleId: string; index: number } {
+  if (!postId.includes(POST_ID_SEPARATOR)) {
+    throw new Error(
+      "Invalid post ID format. Expected format: scheduleId_index"
+    );
+  }
+
+  const parts = postId.split(POST_ID_SEPARATOR);
+  const index = parseInt(parts[1]);
+
+  if (isNaN(index)) {
+    throw new Error("Invalid post index in post ID");
+  }
+
+  return {
+    scheduleId: parts[0],
+    index,
+  };
+}
+
+/**
+ * Format post data for response
+ */
+function formatPostData(
+  post: any,
+  postId: string,
+  timezone: string,
+  includeVideoId: boolean = false
+) {
+  return {
+    id: postId,
+    description: post.description,
+    keypoints: post.keypoints,
+    scheduledFor: post.scheduledFor,
+    status: post.status,
+    scheduledForLocal: TimezoneService.convertFromUTC(
+      post.scheduledFor,
+      timezone
+    ),
+    captions: {
+      instagram: post.instagram_caption,
+      facebook: post.facebook_caption,
+      linkedin: post.linkedin_caption,
+      twitter: post.twitter_caption,
+      tiktok: post.tiktok_caption,
+      youtube: post.youtube_caption,
+    },
+    ...(includeVideoId && { videoId: post.videoId }),
+  };
+}
+
+/**
+ * Format schedule info for response
+ */
+function formatScheduleInfo(schedule: any) {
+  return {
+    frequency: schedule.frequency,
+    days: schedule.schedule?.days || [],
+    times: schedule.schedule?.times || [],
+    startDate: schedule.startDate,
+    endDate: schedule.endDate,
+    isActive: schedule.isActive,
+    status: schedule.status,
+    totalVideos: schedule.generatedTrends?.length || 0,
+    pendingVideos:
+      schedule.generatedTrends?.filter((t: any) => t.status === "pending")
+        .length || 0,
+    completedVideos:
+      schedule.generatedTrends?.filter((t: any) => t.status === "completed")
+        .length || 0,
+    processingVideos:
+      schedule.generatedTrends?.filter((t: any) => t.status === "processing")
+        .length || 0,
+    failedVideos:
+      schedule.generatedTrends?.filter((t: any) => t.status === "failed")
+        .length || 0,
+  };
+}
+
+/**
+ * Convert scheduledFor to UTC with timezone handling
+ */
+function convertScheduledForToUTC(
+  scheduledFor: string | Date,
+  timezone: string
+): Date {
+  if (typeof scheduledFor === "string") {
+    return TimezoneService.ensureUTCDate(scheduledFor, timezone);
+  } else if (scheduledFor instanceof Date) {
+    const dateString = scheduledFor
+      .toISOString()
+      .replace("T", " ")
+      .replace("Z", "")
+      .split(".")[0];
+    return TimezoneService.ensureUTCDate(dateString, timezone);
+  }
+  throw new Error("Invalid scheduledFor format");
+}
+
+/**
+ * Determine HTTP status code based on error message
+ */
+function getErrorStatus(error: Error): number {
+  const message = error.message.toLowerCase();
+
+  if (message.includes("token") || message.includes("not authenticated")) {
+    return 401;
+  }
+  if (message.includes("not found")) {
+    return 404;
+  }
+  if (
+    message.includes("invalid") ||
+    message.includes("out of range") ||
+    message.includes("can only")
+  ) {
+    return 400;
+  }
+  return 500;
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
+/**
+ * Get all pending schedule posts
+ */
+export async function getPendingSchedulePosts(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-  
-
-    // Authenticate user and extract userId from token
-    const payload = requireAuth(req);
-
-    // Detect timezone from request headers
+    const userId = getUserIdFromRequest(req);
     const timezone = TimezoneService.detectTimezone(req);
 
-
     // Get user's active schedule
-    const schedule = await videoScheduleService.getUserSchedule(payload.userId);
+    const schedule = await videoScheduleService.getUserSchedule(userId);
 
     if (!schedule) {
-      return res.status(404).json({
-        success: false,
-        message: "No active schedule found",
-      });
+      return ResponseHelper.notFound(res, "No active schedule found");
     }
 
-    // Get all posts (pending, completed, processing, failed)
+    // Format all posts
     const allPosts = schedule.generatedTrends
-      .map((trend: any, index) => ({
-        id: `${schedule._id}_${index}`, // Use scheduleId_index format
-        index: index, // Add index field
-        scheduleId: schedule._id, // Add scheduleId field
+      .map((trend: any, index: number) => ({
+        id: `${schedule._id}_${index}`,
+        index,
+        scheduleId: schedule._id.toString(),
         description: trend.description,
         keypoints: trend.keypoints,
         scheduledFor: trend.scheduledFor,
         status: trend.status,
         captions: {
-          // Changed from socialCaptions to captions
           instagram: trend.instagram_caption,
           facebook: trend.facebook_caption,
           linkedin: trend.linkedin_caption,
@@ -86,20 +188,19 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
           tiktok: trend.tiktok_caption,
           youtube: trend.youtube_caption,
         },
-        // Convert scheduled time to user's timezone for display
         scheduledForLocal: TimezoneService.convertFromUTC(
           trend.scheduledFor,
           timezone
         ),
-        videoId: trend.videoId, // Add videoId for completed posts
+        videoId: trend.videoId,
       }))
       .sort(
         (a, b) =>
           new Date(a.scheduledFor).getTime() -
           new Date(b.scheduledFor).getTime()
-      ); // Sort by scheduled time
+      );
 
-    // Separate posts by status for better organization
+    // Separate posts by status
     const pendingPosts = allPosts.filter((post) => post.status === "pending");
     const completedPosts = allPosts.filter(
       (post) => post.status === "completed"
@@ -109,182 +210,105 @@ export async function getPendingSchedulePosts(req: Request, res: Response) {
     );
     const failedPosts = allPosts.filter((post) => post.status === "failed");
 
-    console.log(
-      `📊 Found ${allPosts.length} total posts for user ${payload.userId} (${pendingPosts.length} pending, ${completedPosts.length} completed, ${processingPosts.length} processing, ${failedPosts.length} failed)`
-    );
-
-    return res.json({
-      success: true,
-      data: {
-        id: schedule._id, // Changed from scheduleId to id
-        status: schedule.status, // Schedule status (processing, ready, failed)
-        timezone: timezone,
+    return ResponseHelper.success(
+      res,
+      "Schedule posts retrieved successfully",
+      {
+        id: schedule._id.toString(),
+        status: schedule.status,
+        timezone,
         totalPosts: allPosts.length,
         totalPendingPosts: pendingPosts.length,
         totalCompletedPosts: completedPosts.length,
         totalProcessingPosts: processingPosts.length,
         totalFailedPosts: failedPosts.length,
-        allPosts: allPosts, // All posts in one array
-        pendingPosts: pendingPosts, // Only pending posts (for backward compatibility)
-        completedPosts: completedPosts, // Only completed posts
-        processingPosts: processingPosts, // Only processing posts
-        failedPosts: failedPosts, // Only failed posts
+        allPosts,
+        pendingPosts,
+        completedPosts,
+        processingPosts,
+        failedPosts,
         scheduleInfo: {
           frequency: schedule.frequency,
-          days: schedule.schedule.days, // Add days field
-          times: schedule.schedule.times, // Add times field
+          days: schedule.schedule?.days || [],
+          times: schedule.schedule?.times || [],
           startDate: schedule.startDate,
           endDate: schedule.endDate,
           isActive: schedule.isActive,
-          status: schedule.status, // Schedule creation status (processing, ready, failed)
+          status: schedule.status,
         },
-      },
-    });
-  } catch (e: any) {
-    console.error("Error getting pending schedule posts:", e);
-
-    // Handle authentication errors
-    if (e.message.includes("token") || e.message.includes("Token")) {
-      return res.status(401).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    return res.status(500).json({
+      }
+    );
+  } catch (error: any) {
+    console.error("Error in getPendingSchedulePosts:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to get pending schedule posts",
+      message: error.message || "Failed to get pending schedule posts",
     });
   }
 }
 
 /**
- * Edit a single post in the user's schedule
- *
- * Usage:
- * curl -X PUT \
- *      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
- *      -H "x-timezone: America/New_York" \
- *      -H "Content-Type: application/json" \
- *      -d '{
- *        "description": "Updated description for this trend",
- *        "keypoints": "Updated key point 1, Updated key point 2, Updated key point 3",
- *        "captions": {
- *          "instagram": "Updated Instagram caption with hashtags #RealEstate #Updated",
- *          "facebook": "Updated Facebook caption with more detailed content...",
- *          "linkedin": "Updated LinkedIn caption for professional audience...",
- *          "twitter": "Updated Twitter caption #RealEstate #Updated",
- *          "tiktok": "Updated TikTok caption with trending content...",
- *          "youtube": "Updated YouTube caption for video content..."
- *        },
- *        "scheduledFor": "2024-01-20 15:30:00"
- *      }' \
- *      http://localhost:4000/api/schedule/SCHEDULE_ID/post/POST_INDEX
+ * Edit a schedule post
  */
-export async function editSchedulePost(req: Request, res: Response) {
+export async function editSchedulePost(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    console.log("✏️ Editing schedule post...");
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-
-    // Authenticate user and extract userId from token
-    const payload = requireAuth(req);
-
-    // Extract scheduleId and postId from URL parameters
+    const userId = getUserIdFromRequest(req);
     const { scheduleId, postId } = req.params;
+    const timezone = TimezoneService.detectTimezone(req);
 
     // Validate postId format
-    if (!postId || !postId.includes("_")) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid post ID format. Expected format: scheduleId_index",
-      });
+    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    if (!postIdValidation.success) {
+      const errors = postIdValidation.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    // Detect timezone from request headers
-    const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
-
-    // Extract update data from request body
-    const { description, keypoints, scheduledFor, captions } = req.body;
-
-    // Validate that at least one field is provided for update
-    const updateFields = {
-      description,
-      keypoints,
-      scheduledFor,
-      captions,
-    };
-
-    const hasUpdates = Object.values(updateFields).some(
-      (value) => value !== undefined
-    );
-    if (!hasUpdates) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one field must be provided for update",
-      });
+    // Validate request body
+    const validationResult = editSchedulePostSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    // Convert scheduledFor to UTC if provided (avoid double conversion if already UTC/ISO with zone)
-    let scheduledForUTC = scheduledFor;
-    if (scheduledFor) {
-      try {
-        // If it's a string, convert it to Date
-        if (typeof scheduledFor === "string") {
-          // Convert user's local time to UTC using their timezone, unless the string already contains a timezone
-          scheduledForUTC = TimezoneService.ensureUTCDate(
-            scheduledFor,
-            timezone
-          );
-          console.log(
-            `🕐 Converted "${scheduledFor}" from ${timezone} to UTC: ${scheduledForUTC.toISOString()}`
-          );
-        } else if (scheduledFor instanceof Date) {
-          // If it's already a Date object, assume it's in user's timezone and convert to UTC
-          const dateString = scheduledFor
-            .toISOString()
-            .replace("T", " ")
-            .replace("Z", "")
-            .split(".")[0];
-          scheduledForUTC = TimezoneService.ensureUTCDate(dateString, timezone);
-          console.log(
-            `🕐 Converted Date object from ${timezone} to UTC: ${scheduledForUTC.toISOString()}`
-          );
-        }
-
-        // Validate the date
-        if (isNaN(scheduledForUTC.getTime())) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid scheduledFor date format",
-          });
-        }
-      } catch (error) {
-        console.error("Error converting scheduledFor to UTC:", error);
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid scheduledFor date format or timezone conversion failed",
-        });
-      }
-    }
-
-    // Validate captions structure if provided
-    if (captions !== undefined) {
-      if (typeof captions !== "object" || captions === null) {
-        return res.status(400).json({
-          success: false,
-          message: "Captions must be an object",
-        });
-      }
-    }
+    const { description, keypoints, scheduledFor, captions } =
+      validationResult.data;
 
     // Prepare update data
     const updateData: any = {};
     if (description !== undefined) updateData.description = description;
     if (keypoints !== undefined) updateData.keypoints = keypoints;
-    if (scheduledForUTC !== undefined)
-      updateData.scheduledFor = scheduledForUTC;
+
+    // Convert scheduledFor to UTC if provided
+    if (scheduledFor !== undefined) {
+      try {
+        const scheduledForUTC = convertScheduledForToUTC(
+          scheduledFor,
+          timezone
+        );
+        if (isNaN(scheduledForUTC.getTime())) {
+          return ResponseHelper.badRequest(
+            res,
+            "Invalid scheduledFor date format"
+          );
+        }
+        updateData.scheduledFor = scheduledForUTC;
+      } catch (error: any) {
+        return ResponseHelper.badRequest(
+          res,
+          "Invalid scheduledFor date format or timezone conversion failed"
+        );
+      }
+    }
 
     // Handle captions object
     if (captions !== undefined) {
@@ -302,434 +326,178 @@ export async function editSchedulePost(req: Request, res: Response) {
         updateData.youtube_caption = captions.youtube;
     }
 
-    console.log(
-      `📝 Updating post ${postId} in schedule ${scheduleId} for user ${payload.userId}`
-    );
-
     // Update the post
     const updatedSchedule = await videoScheduleService.updateSchedulePostById(
       scheduleId,
       postId,
-      payload.userId,
+      userId,
       updateData
     );
 
     if (!updatedSchedule) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule not found or not active",
-      });
+      return ResponseHelper.notFound(res, "Schedule not found or not active");
     }
 
-    // Parse post ID to get index for response
-    const parts = postId.split("_");
-    const postIndex = parseInt(parts[1]);
+    // Parse post ID to get index
+    const { index } = parsePostId(postId);
+    const updatedPost = updatedSchedule.generatedTrends[index];
 
-    // Get the updated post
-    const updatedPost = updatedSchedule.generatedTrends[postIndex];
-
-    console.log(
-      `✅ Successfully updated post ${postId} in schedule ${scheduleId}`
-    );
-
-    return res.json({
-      success: true,
-      message: "Post updated successfully",
-      data: {
-        scheduleId: updatedSchedule._id,
-        postId: postId,
-        postIndex: postIndex,
-        timezone: timezone,
-        updatedPost: {
-          id: postId,
-          description: updatedPost.description,
-          keypoints: updatedPost.keypoints,
-          scheduledFor: updatedPost.scheduledFor,
-          status: updatedPost.status,
-          scheduledForLocal: TimezoneService.convertFromUTC(
-            updatedPost.scheduledFor,
-            timezone
-          ),
-          socialCaptions: {
-            instagram: updatedPost.instagram_caption,
-            facebook: updatedPost.facebook_caption,
-            linkedin: updatedPost.linkedin_caption,
-            twitter: updatedPost.twitter_caption,
-            tiktok: updatedPost.tiktok_caption,
-            youtube: updatedPost.youtube_caption,
-          },
-        },
-      },
+    return ResponseHelper.success(res, "Post updated successfully", {
+      scheduleId: updatedSchedule._id.toString(),
+      postId,
+      postIndex: index,
+      timezone,
+      updatedPost: formatPostData(updatedPost, postId, timezone),
     });
-  } catch (e: any) {
-    console.error("Error editing schedule post:", e);
-
-    // Handle specific error cases
-    if (e.message.includes("Schedule not found")) {
-      return res.status(404).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    if (
-      e.message.includes("Post index out of range") ||
-      e.message.includes("Post not found")
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    if (e.message.includes("Can only edit pending posts")) {
-      return res.status(400).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    // Handle authentication errors
-    if (e.message.includes("token") || e.message.includes("Token")) {
-      return res.status(401).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in editSchedulePost:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to edit schedule post",
+      message: error.message || "Failed to edit schedule post",
     });
   }
 }
 
 /**
- * Delete a single post from the user's schedule
- *
- * Usage:
- * curl -X DELETE \
- *      -H "Authorization: Bearer <token>" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/1
+ * Delete a schedule post
  */
-export async function deleteSchedulePost(req: Request, res: Response) {
+export async function deleteSchedulePost(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    console.log("🗑️ Deleting schedule post...");
-
-    // Authenticate user and extract userId from token
-    const payload = requireAuth(req);
-
-    // Extract scheduleId and postId from URL parameters
+    const userId = getUserIdFromRequest(req);
     const { scheduleId, postId } = req.params;
 
     // Validate postId format
-    if (!postId || !postId.includes("_")) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid post ID format. Expected format: scheduleId_index",
-      });
+    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    if (!postIdValidation.success) {
+      const errors = postIdValidation.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    console.log(
-      `🗑️ Deleting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
-    );
-
-    // Delete the post
     const updatedSchedule = await videoScheduleService.deleteSchedulePostById(
       scheduleId,
       postId,
-      payload.userId
+      userId
     );
 
     if (!updatedSchedule) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule not found or not active",
-      });
+      return ResponseHelper.notFound(res, "Schedule not found or not active");
     }
 
-    console.log(
-      `✅ Successfully deleted post ${postId} from schedule ${scheduleId}`
-    );
-
-    return res.json({
-      success: true,
-      message: "Post deleted successfully",
-      data: {
-        scheduleId: updatedSchedule._id,
-        deletedPostId: postId,
-        remainingPosts: updatedSchedule.generatedTrends.length,
-        scheduleInfo: {
-          frequency: updatedSchedule.frequency,
-          startDate: updatedSchedule.startDate,
-          endDate: updatedSchedule.endDate,
-          isActive: updatedSchedule.isActive,
-          totalVideos: updatedSchedule.generatedTrends.length,
-          pendingVideos: updatedSchedule.generatedTrends.filter(
-            (t) => t.status === "pending"
-          ).length,
-          completedVideos: updatedSchedule.generatedTrends.filter(
-            (t) => t.status === "completed"
-          ).length,
-          processingVideos: updatedSchedule.generatedTrends.filter(
-            (t) => t.status === "processing"
-          ).length,
-          failedVideos: updatedSchedule.generatedTrends.filter(
-            (t) => t.status === "failed"
-          ).length,
-        },
-      },
+    return ResponseHelper.success(res, "Post deleted successfully", {
+      scheduleId: updatedSchedule._id.toString(),
+      deletedPostId: postId,
+      remainingPosts: updatedSchedule.generatedTrends.length,
+      scheduleInfo: formatScheduleInfo(updatedSchedule),
     });
-  } catch (e: any) {
-    console.error("Error deleting schedule post:", e);
-
-    // Handle specific error cases
-    if (e.message.includes("Schedule not found")) {
-      return res.status(404).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    if (
-      e.message.includes("Post index out of range") ||
-      e.message.includes("Post not found")
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    if (e.message.includes("Can only delete pending posts")) {
-      return res.status(400).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    // Handle authentication errors
-    if (e.message.includes("token") || e.message.includes("Token")) {
-      return res.status(401).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in deleteSchedulePost:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to delete schedule post",
+      message: error.message || "Failed to delete schedule post",
     });
   }
 }
 
 /**
- * Get a single post from the user's schedule by post ID
- *
- * Usage:
- * curl -H "Authorization: Bearer <token>" \
- *      -H "x-timezone: America/New_York" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1/post/68ed0c8a9ff65c5692f718f4_0
+ * Get a specific schedule post
  */
-export async function getSchedulePost(req: Request, res: Response) {
+export async function getSchedulePost(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    console.log("📋 Getting single schedule post...");
-
-    // Authenticate user and extract userId from token
-    const payload = requireAuth(req);
-
-    // Extract scheduleId and postId from URL parameters
+    const userId = getUserIdFromRequest(req);
     const { scheduleId, postId } = req.params;
+    const timezone = TimezoneService.detectTimezone(req);
 
     // Validate postId format
-    if (!postId || !postId.includes("_")) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid post ID format. Expected format: scheduleId_index",
-      });
+    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    if (!postIdValidation.success) {
+      const errors = postIdValidation.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    // Detect timezone from request headers
-    const timezone = TimezoneService.detectTimezone(req);
-    console.log("🌍 Detected timezone:", timezone);
-
-    console.log(
-      `📋 Getting post ${postId} from schedule ${scheduleId} for user ${payload.userId}`
-    );
-
-    // Get the post
     const result = await videoScheduleService.getSchedulePostById(
       scheduleId,
       postId,
-      payload.userId
+      userId
     );
 
     if (!result) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule or post not found",
-      });
+      return ResponseHelper.notFound(res, "Schedule or post not found");
     }
 
     const { schedule, post, postIndex } = result;
 
-    console.log(
-      `✅ Successfully retrieved post ${postId} from schedule ${scheduleId}`
-    );
-
-    return res.json({
-      success: true,
-      data: {
-        scheduleId: schedule._id,
-        postId: postId,
-        postIndex: postIndex,
-        timezone: timezone,
-        post: {
-          id: postId,
-          description: post.description,
-          keypoints: post.keypoints,
-          scheduledFor: post.scheduledFor,
-          status: post.status,
-          scheduledForLocal: TimezoneService.convertFromUTC(
-            post.scheduledFor,
-            timezone
-          ),
-          socialCaptions: {
-            instagram: post.instagram_caption,
-            facebook: post.facebook_caption,
-            linkedin: post.linkedin_caption,
-            twitter: post.twitter_caption,
-            tiktok: post.tiktok_caption,
-            youtube: post.youtube_caption,
-          },
-          videoId: post.videoId,
-        },
-        scheduleInfo: {
-          frequency: schedule.frequency,
-          days: schedule.schedule.days,
-          times: schedule.schedule.times,
-          startDate: schedule.startDate,
-          endDate: schedule.endDate,
-          isActive: schedule.isActive,
-          totalVideos: schedule.generatedTrends.length,
-          pendingVideos: schedule.generatedTrends.filter(
-            (t) => t.status === "pending"
-          ).length,
-          completedVideos: schedule.generatedTrends.filter(
-            (t) => t.status === "completed"
-          ).length,
-          processingVideos: schedule.generatedTrends.filter(
-            (t) => t.status === "processing"
-          ).length,
-          failedVideos: schedule.generatedTrends.filter(
-            (t) => t.status === "failed"
-          ).length,
-        },
-      },
+    return ResponseHelper.success(res, "Schedule post retrieved successfully", {
+      scheduleId: schedule._id.toString(),
+      postId,
+      postIndex,
+      timezone,
+      post: formatPostData(post, postId, timezone, true),
+      scheduleInfo: formatScheduleInfo(schedule),
     });
-  } catch (e: any) {
-    console.error("Error getting schedule post:", e);
-
-    // Handle specific error cases
-    if (e.message.includes("Schedule not found")) {
-      return res.status(404).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    if (
-      e.message.includes("Post not found") ||
-      e.message.includes("Invalid post ID")
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    // Handle authentication errors
-    if (e.message.includes("token") || e.message.includes("Token")) {
-      return res.status(401).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in getSchedulePost:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to get schedule post",
+      message: error.message || "Failed to get schedule post",
     });
   }
 }
 
 /**
  * Delete entire schedule
- *
- * Usage:
- * curl -X DELETE \
- *      -H "Authorization: Bearer <token>" \
- *      http://localhost:4000/api/schedule/64f1a2b3c4d5e6f7g8h9i0j1
  */
-export async function deleteEntireSchedule(req: Request, res: Response) {
+export async function deleteEntireSchedule(
+  req: AuthenticatedRequest,
+  res: Response
+) {
   try {
-    console.log("🗑️ Deleting entire schedule...");
-
-    // Authenticate user and extract userId from token
-    const payload = requireAuth(req);
-
-    // Extract scheduleId from URL parameters
+    const userId = getUserIdFromRequest(req);
     const { scheduleId } = req.params;
 
-    console.log(
-      `🗑️ Deleting entire schedule ${scheduleId} for user ${payload.userId}`
-    );
+    // Validate scheduleId
+    const validationResult = scheduleIdSchema.safeParse({ scheduleId });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
 
-    // Delete the entire schedule
     const deleted = await videoScheduleService.deleteEntireSchedule(
       scheduleId,
-      payload.userId
+      userId
     );
 
     if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        message: "Schedule not found or not active",
-      });
+      return ResponseHelper.notFound(res, "Schedule not found or not active");
     }
 
-    console.log(`✅ Successfully deleted entire schedule ${scheduleId}`);
-
-    return res.json({
-      success: true,
-      message: "Schedule deleted successfully",
-      data: {
-        deletedScheduleId: scheduleId,
-        deletedAt: new Date().toISOString(),
-      },
+    return ResponseHelper.success(res, "Schedule deleted successfully", {
+      deletedScheduleId: scheduleId,
+      deletedAt: new Date().toISOString(),
     });
-  } catch (e: any) {
-    console.error("Error deleting entire schedule:", e);
-
-    // Handle specific error cases
-    if (e.message.includes("Schedule not found")) {
-      return res.status(404).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    // Handle authentication errors
-    if (e.message.includes("token") || e.message.includes("Token")) {
-      return res.status(401).json({
-        success: false,
-        message: e.message,
-      });
-    }
-
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("Error in deleteEntireSchedule:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: e.message || "Failed to delete schedule",
+      message: error.message || "Failed to delete schedule",
     });
   }
 }

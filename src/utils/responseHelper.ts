@@ -31,6 +31,14 @@ export class ResponseHelper {
     });
   }
 
+  static created(res: Response, message: string, data?: any) {
+    return res.status(201).json({
+      success: true,
+      message,
+      data
+    });
+  }
+
   static serverError(res: Response, message: string, error?: any) {
     return res.status(500).json({
       success: false,

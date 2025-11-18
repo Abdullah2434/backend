@@ -51,7 +51,7 @@ export const worker = new Worker(
           },
         });
       } catch (uploadError: any) {
-        console.error("HeyGen upload request failed:", uploadError);
+      
 
         let errorCode = "upload_failed";
         let userFriendlyMessage =
@@ -103,10 +103,7 @@ export const worker = new Worker(
       }
       const image_key = uploadRes.data?.data?.image_key;
       if (!image_key) {
-        console.error(
-          "HeyGen image upload failed, no image_key returned:",
-          uploadRes.data
-        );
+     
         notificationService.notifyPhotoAvatarProgress(
           userId,
           "upload",
@@ -223,8 +220,7 @@ export const worker = new Worker(
             }
           );
         } catch (trainError: any) {
-          console.error("HeyGen training request failed:", trainError);
-
+          
           let errorCode = "training_failed";
           let userFriendlyMessage =
             "Failed to start avatar training. Please try again.";
@@ -284,7 +280,7 @@ export const worker = new Worker(
           throw trainError;
         }
 
-        console.log("Train response:", response.data);
+    
 
         // 4. Save custom avatar in DB
         notificationService.notifyPhotoAvatarProgress(
@@ -340,18 +336,14 @@ export const worker = new Worker(
           "response" in groupErr
         ) {
           const errObj = groupErr as any;
-          console.error("HeyGen avatar group creation failed:", {
-            status: errObj.response?.status,
-            data: errObj.response?.data,
-            payload: groupPayload,
-          });
+      
 
           // Notify user about specific error
           let errorMessage = "Failed to create avatar group. Please try again.";
           let errorCode = "unknown_error";
           let userFriendlyMessage = "Something went wrong. Please try again.";
 
-          console.log("Error object:", errObj.response);
+
 
           if (errObj.response?.status === 400) {
             // Check for specific error codes in the response
@@ -443,7 +435,7 @@ export const worker = new Worker(
             }
           );
         } else {
-          console.error("HeyGen avatar group creation error:", groupErr);
+
           notificationService.notifyPhotoAvatarProgress(
             userId,
             "group-creation",
@@ -466,7 +458,7 @@ export const worker = new Worker(
         throw groupErr;
       }
     } catch (error) {
-      console.error("Photo avatar worker error:", error);
+  
 
       // Determine error type and create appropriate message
       let errorCode = "processing_error";

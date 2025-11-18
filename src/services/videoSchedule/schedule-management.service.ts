@@ -87,8 +87,6 @@ export class VideoScheduleManagement {
     schedule.isActive = false;
     await schedule.save();
 
-    // Log deactivation (no WebSocket notification)
-    console.log(`✅ Video schedule deactivated for user ${userId}`);
 
     return true;
   }
@@ -113,7 +111,7 @@ export class VideoScheduleManagement {
     // Delete the entire schedule document
     await VideoSchedule.findByIdAndDelete(scheduleId);
 
-    console.log(`🗑️ Deleted entire schedule ${scheduleId} for user ${userId}`);
+  
 
     return true;
   }

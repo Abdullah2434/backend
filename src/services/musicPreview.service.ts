@@ -31,7 +31,7 @@ export class MusicPreviewService {
         .audioFilters("afade=t=out:st=14:d=1")
         .format("mp3")
         .on("error", (err: any) => {
-          console.error("FFmpeg error:", err);
+        
           reject(new Error(`Preview generation failed: ${err.message}`));
         })
         .on("end", () => {
@@ -112,7 +112,7 @@ export class MusicPreviewService {
         previewUrl,
       };
     } catch (error: any) {
-      console.error("Error processing music track:", error);
+   
       throw new Error(`Failed to process music track: ${error.message}`);
     }
   }

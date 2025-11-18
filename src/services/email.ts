@@ -20,9 +20,7 @@ export class EmailService {
 
     if (emailUser && emailPass) {
       try {
-        console.log(
-          `[Email Service] Configuring SMTP with host: ${emailHost}, port: ${emailPort}, user: ${emailUser}`
-        );
+    
         this.transporter = nodemailer.createTransport({
           host: emailHost,
           port: emailPort,
@@ -35,18 +33,12 @@ export class EmailService {
             rejectUnauthorized: false,
           },
         });
-        console.log("✅ Email service configured successfully with SMTP");
       } catch (error) {
-        console.error("Email service configuration failed:", error);
+    
         this.transporter = null;
       }
     } else {
-      console.log("Email service not configured - running in development mode");
-      console.log("Required environment variables: EMAIL_USER, EMAIL_PASS");
-      console.log(
-        "Current values: EMAIL_USER=" + (emailUser ? "SET" : "NOT SET"),
-        "EMAIL_PASS=" + (emailPass ? "SET" : "NOT SET")
-      );
+     
     }
   }
 
@@ -107,9 +99,7 @@ export class EmailService {
   async send(to: string, subject: string, html: string): Promise<void> {
     if (!this.transporter) {
       if (this.isDevelopment) {
-        console.log("[DEV EMAIL] To:", to);
-        console.log("[DEV EMAIL] Subject:", subject);
-        console.log("[DEV EMAIL] HTML:", html);
+
         return;
       }
       throw new Error("Email service not configured");

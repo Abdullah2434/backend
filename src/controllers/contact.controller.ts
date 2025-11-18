@@ -54,8 +54,6 @@ export const submitContactForm = async (req: Request, res: Response) => {
     res.status(200).json(successResponse);
 
   } catch (error) {
-    console.error("Contact form submission error:", error);
-    
     const errorResponse: ApiResponse = {
       success: false,
       message: "Failed to submit contact form. Please try again later."

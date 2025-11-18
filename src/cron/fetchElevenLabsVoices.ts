@@ -1,64 +1,166 @@
 import dotenv from "dotenv";
-dotenv.config();
-
 import cron from "node-cron";
 import { fetchAndSyncElevenLabsVoices } from "../services/elevenLabsVoice.service";
+import CronMonitoringService from "../services/cronMonitoring.service";
+import {
+  executeWithOverallTimeout,
+  retryWithBackoff,
+} from "../utils/cronHelpers";
+import { getCronConfig } from "../config/cron.config";
+import {
+  VALID_CRON_SCHEDULES,
+  envConfigSchema,
+} from "../validations/fetchElevenLabsVoices.validations";
+import {
+  ElevenLabsVoicesSyncResult,
+  ElevenLabsVoicesSyncConfig,
+} from "../types/cron/fetchElevenLabsVoices.types";
 
+// ==================== CONSTANTS ====================
+dotenv.config();
+
+const CRON_JOB_NAME = "elevenlabs-voices-sync";
+const CRON_SCHEDULE = VALID_CRON_SCHEDULES.TWICE_DAILY; // 11:03 AM and 11:03 PM
+
+// ==================== SERVICE INSTANCE ====================
+const cronMonitor = CronMonitoringService.getInstance();
+
+// ==================== HELPER FUNCTIONS ====================
 /**
- * Run ElevenLabs voices sync once immediately
+ * Validate environment configuration
  */
-export async function startElevenLabsVoicesSync() {
-  const startTime = Date.now();
-  console.log("🔄 Starting ElevenLabs voices sync job...");
+function validateEnvironmentConfig(): { valid: boolean; error?: string } {
+  const validationResult = envConfigSchema.safeParse(process.env);
 
-  try {
-    await fetchAndSyncElevenLabsVoices();
-    const duration = Date.now() - startTime;
-    console.log(
-      `✅ ElevenLabs voices sync job completed in ${duration}ms`
-    );
-  } catch (error: any) {
-    const duration = Date.now() - startTime;
-    console.error(
-      `❌ ElevenLabs voices sync job failed after ${duration}ms:`,
-      error.message
-    );
+  if (!validationResult.success) {
+    const errors = validationResult.error.errors
+      .map((e) => `${e.path.join(".")}: ${e.message}`)
+      .join(", ");
+    return { valid: false, error: `Environment validation failed: ${errors}` };
   }
+
+  return { valid: true };
 }
 
 /**
- * Start cron job to sync ElevenLabs voices twice daily (every 12 hours)
- * - Runs at 11:03 AM and 11:03 PM
- * - Fetches voices from ElevenLabs API
- * - Adds new voices to database
- * - Updates existing voices
- * - Removes voices that no longer exist in API (except cloned voices)
+ * Execute sync with retry and timeout
+ */
+async function executeSyncWithRetry(
+  config: ElevenLabsVoicesSyncConfig
+): Promise<void> {
+  await executeWithOverallTimeout(
+    CRON_JOB_NAME,
+    retryWithBackoff(
+      () => fetchAndSyncElevenLabsVoices(),
+      config.maxRetries,
+      config.retryInitialDelayMs
+    ),
+    config.overallTimeoutMs
+  );
+}
+
+/**
+ * Run ElevenLabs voices sync with monitoring and error handling
+ */
+async function runSyncJob(): Promise<ElevenLabsVoicesSyncResult> {
+  const startTime = Date.now();
+  const config = getCronConfig(CRON_JOB_NAME);
+
+  // Validate environment configuration
+  const envValidation = validateEnvironmentConfig();
+  if (!envValidation.valid) {
+    const duration = Date.now() - startTime;
+    const error = envValidation.error || "Environment validation failed";
+    console.error(`❌ ${error}`);
+    return {
+      success: false,
+      duration,
+      error,
+    };
+  }
+
+  try {
+    await executeSyncWithRetry({
+      maxRetries: config.maxRetries,
+      retryInitialDelayMs: config.retryInitialDelayMs,
+      overallTimeoutMs: config.overallTimeoutMs,
+    });
+
+    const duration = Date.now() - startTime;
+    console.log(`✅ ElevenLabs voices sync job completed in ${duration}ms`);
+    return {
+      success: true,
+      duration,
+    };
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error?.message || "Unknown error";
+    console.error(
+      `❌ ElevenLabs voices sync job failed after ${duration}ms:`,
+      errorMessage
+    );
+    return {
+      success: false,
+      duration,
+      error: errorMessage,
+    };
+  }
+}
+
+// ==================== EXPORTED FUNCTIONS ====================
+/**
+ * Run ElevenLabs voices sync once immediately
+ */
+export async function startElevenLabsVoicesSync(): Promise<ElevenLabsVoicesSyncResult> {
+  return await runSyncJob();
+}
+
+/**
+ * Start cron job to sync ElevenLabs voices
+ * Runs at 11:03 AM and 11:03 PM (every 12 hours)
  */
 export function startElevenLabsVoicesSyncCron() {
+  // Initialize monitoring
+  cronMonitor.startMonitoring(CRON_JOB_NAME);
+  const config = getCronConfig(CRON_JOB_NAME);
+
+  // Validate environment before starting cron
+  const envValidation = validateEnvironmentConfig();
+  if (!envValidation.valid) {
+    console.error(`❌ Cannot start cron job: ${envValidation.error}`);
+    return;
+  }
+
   // Run at 11:03 AM and 11:03 PM (every 12 hours): 3 11,23 * * *
-  cron.schedule("3 11,23 * * *", async () => {
+  cron.schedule(CRON_SCHEDULE, async () => {
     const startTime = Date.now();
-    console.log(
-      `⏰ ElevenLabs voices sync cron job started at ${new Date().toISOString()}`
-    );
+    cronMonitor.markJobStarted(CRON_JOB_NAME);
 
     try {
-      await fetchAndSyncElevenLabsVoices();
+      await executeSyncWithRetry({
+        maxRetries: config.maxRetries,
+        retryInitialDelayMs: config.retryInitialDelayMs,
+        overallTimeoutMs: config.overallTimeoutMs,
+      });
+
       const duration = Date.now() - startTime;
       console.log(
         `✅ ElevenLabs voices sync cron job completed in ${duration}ms`
       );
+      cronMonitor.markJobCompleted(CRON_JOB_NAME, duration, true);
     } catch (error: any) {
       const duration = Date.now() - startTime;
+      const errorMessage = error?.message || "Unknown error";
       console.error(
         `❌ ElevenLabs voices sync cron job failed after ${duration}ms:`,
-        error.message
+        errorMessage
       );
+      cronMonitor.markJobFailed(CRON_JOB_NAME, errorMessage);
     }
   });
 
   console.log(
-    "⏰ ElevenLabs voices sync cron job started - running at 11:03 AM and 11:03 PM (every 12 hours)"
+    `⏰ ElevenLabs voices sync cron job started - running at 11:03 AM and 11:03 PM (every 12 hours) (schedule: ${CRON_SCHEDULE})`
   );
 }
 
@@ -66,13 +168,21 @@ export function startElevenLabsVoicesSyncCron() {
 if (require.main === module) {
   (async () => {
     try {
-      await fetchAndSyncElevenLabsVoices();
-      console.log("✅ Manual sync completed successfully");
-      process.exit(0);
+      const result = await startElevenLabsVoicesSync();
+
+      if (result.success) {
+        console.log("✅ Manual sync completed successfully");
+        process.exit(0);
+      } else {
+        console.error("❌ Manual sync failed:", result.error);
+        process.exit(1);
+      }
     } catch (error: any) {
-      console.error("❌ Manual sync failed:", error.message);
+      console.error(
+        "❌ Manual sync failed with exception:",
+        error?.message || error
+      );
       process.exit(1);
     }
   })();
 }
-

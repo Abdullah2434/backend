@@ -1,7 +1,6 @@
 import UserVideoSettings, {
   IUserVideoSettings,
 } from "../models/UserVideoSettings";
-import User from "../models/User";
 import MusicTrack, { IMusicTrack } from "../models/MusicTrack";
 import { MusicService } from "./music.service";
 import { S3Service } from "./s3";
@@ -10,43 +9,16 @@ import {
   MusicEnergyLevel,
   VOICE_ENERGY_PRESETS,
 } from "../constants/voiceEnergy";
-
-export interface AvatarObject {
-  avatar_id: string;
-  avatarType: string;
-}
-
-export interface AvatarObject {
-  avatar_id: string;
-  avatarType: string;
-}
-
-export interface UserVideoSettingsData {
-  prompt: string;
-  avatar: string[];
-  titleAvatar: AvatarObject | string;
-  conclusionAvatar: AvatarObject | string;
-  bodyAvatar?: AvatarObject | string;
-  name: string;
-  position: string;
-  companyName: string;
-  license: string;
-  tailoredFit: string;
-  socialHandles: string;
-  city: string;
-  preferredTone: string;
-  callToAction: string;
-  gender?: "male" | "female";
-  email: string;
-  voiceEnergy?: VoiceEnergyLevel;
-  musicEnergy?: MusicEnergyLevel;
-  selectedMusicTrackId?: string;
-  selectedVoiceId?: string;
-  preset?: string;
-  selectedVoicePreset?: string;
-  selectedMusicPreset?: string;
-  customVoiceMusic?: boolean;
-}
+import { UserVideoSettingsData } from "../types/services/userVideoSettings.types";
+import {
+  findUserByEmail,
+  findUserByEmailOrNull,
+  buildUpdateData,
+  buildNewSettingsData,
+  getDefaultVoiceEnergy,
+  getDefaultMusicEnergy,
+  validateMusicTrackEnergy,
+} from "../utils/userVideoSettingsHelpers";
 
 export class UserVideoSettingsService {
   private musicService: MusicService;
@@ -68,10 +40,7 @@ export class UserVideoSettingsService {
     data: UserVideoSettingsData
   ): Promise<IUserVideoSettings> {
     // Find user by email to get userId
-    const user = await User.findOne({ email: data.email });
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await findUserByEmail(data.email);
 
     // Check if settings already exist for this user
     const existingSettings = await UserVideoSettings.findOne({
@@ -80,34 +49,10 @@ export class UserVideoSettingsService {
 
     if (existingSettings) {
       // Update existing settings
+      const updateData = buildUpdateData(data);
       const updatedSettings = await UserVideoSettings.findOneAndUpdate(
         { userId: user._id },
-        {
-          prompt: data.prompt,
-          avatar: data.avatar,
-          titleAvatar: data.titleAvatar,
-          conclusionAvatar: data.conclusionAvatar,
-          bodyAvatar: data.bodyAvatar,
-          name: data.name,
-          position: data.position,
-          companyName: data.companyName,
-          license: data.license,
-          tailoredFit: data.tailoredFit,
-          socialHandles: data.socialHandles,
-          city: data.city,
-          preferredTone: data.preferredTone,
-          callToAction: data.callToAction,
-          gender: data.gender,
-          email: data.email,
-          voiceEnergy: data.voiceEnergy,
-          musicEnergy: data.musicEnergy,
-          selectedMusicTrackId: data.selectedMusicTrackId,
-          selectedVoiceId: data.selectedVoiceId,
-          preset: data.preset,
-          selectedVoicePreset: data.selectedVoicePreset,
-          selectedMusicPreset: data.selectedMusicPreset,
-          customVoiceMusic: data.customVoiceMusic,
-        },
+        updateData,
         { new: true, upsert: false }
       );
 
@@ -118,33 +63,8 @@ export class UserVideoSettingsService {
       return updatedSettings;
     } else {
       // Create new settings
-      const newSettings = new UserVideoSettings({
-        userId: user._id,
-        email: data.email,
-        prompt: data.prompt,
-        avatar: data.avatar,
-        titleAvatar: data.titleAvatar,
-        conclusionAvatar: data.conclusionAvatar,
-        bodyAvatar: data.bodyAvatar,
-        name: data.name,
-        position: data.position,
-        companyName: data.companyName,
-        license: data.license,
-        tailoredFit: data.tailoredFit,
-        socialHandles: data.socialHandles,
-        city: data.city,
-        preferredTone: data.preferredTone,
-        callToAction: data.callToAction,
-        gender: data.gender,
-        voiceEnergy: data.voiceEnergy,
-        musicEnergy: data.musicEnergy,
-        selectedMusicTrackId: data.selectedMusicTrackId,
-        selectedVoiceId: data.selectedVoiceId,
-        preset: data.preset,
-        selectedVoicePreset: data.selectedVoicePreset,
-        selectedMusicPreset: data.selectedMusicPreset,
-        customVoiceMusic: data.customVoiceMusic,
-      });
+      const newSettingsData = buildNewSettingsData(user._id, data);
+      const newSettings = new UserVideoSettings(newSettingsData);
 
       await newSettings.save();
       return newSettings;
@@ -157,7 +77,7 @@ export class UserVideoSettingsService {
   async getUserVideoSettings(
     email: string
   ): Promise<IUserVideoSettings | null> {
-    const user = await User.findOne({ email });
+    const user = await findUserByEmailOrNull(email);
     if (!user) {
       return null;
     }
@@ -178,7 +98,7 @@ export class UserVideoSettingsService {
    * Delete user video settings
    */
   async deleteUserVideoSettings(email: string): Promise<boolean> {
-    const user = await User.findOne({ email });
+    const user = await findUserByEmailOrNull(email);
     if (!user) {
       return false;
     }
@@ -202,10 +122,7 @@ export class UserVideoSettingsService {
     email: string,
     energyLevel: VoiceEnergyLevel
   ): Promise<IUserVideoSettings> {
-    const user = await User.findOne({ email });
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await findUserByEmail(email);
 
     const settings = await UserVideoSettings.findOne({ userId: user._id });
     if (!settings) {
@@ -238,10 +155,7 @@ export class UserVideoSettingsService {
     musicEnergy: MusicEnergyLevel,
     selectedMusicTrackId?: string
   ): Promise<IUserVideoSettings> {
-    const user = await User.findOne({ email });
-    if (!user) {
-      throw new Error("User not found");
-    }
+    const user = await findUserByEmail(email);
 
     const settings = await UserVideoSettings.findOne({ userId: user._id });
     if (!settings) {
@@ -255,7 +169,10 @@ export class UserVideoSettingsService {
     if (selectedMusicTrackId) {
       // Verify the track exists and matches the music energy
       const track = await MusicTrack.findById(selectedMusicTrackId);
-      if (track && track.energyCategory === musicEnergy) {
+      if (
+        track &&
+        validateMusicTrackEnergy(track.energyCategory, musicEnergy)
+      ) {
         settings.selectedMusicTrackId = track._id;
       } else {
         throw new Error(
@@ -289,8 +206,8 @@ export class UserVideoSettingsService {
     const settings = await this.getUserVideoSettings(email);
     if (!settings) return null;
 
-    const voiceEnergy = settings.voiceEnergy || "mid";
-    const musicEnergy = settings.musicEnergy || "mid";
+    const voiceEnergy = settings.voiceEnergy || getDefaultVoiceEnergy();
+    const musicEnergy = settings.musicEnergy || getDefaultMusicEnergy();
     const voiceParams = VOICE_ENERGY_PRESETS[voiceEnergy];
 
     let selectedMusicTrack: IMusicTrack | undefined;
@@ -315,7 +232,7 @@ export class UserVideoSettingsService {
     email: string,
     musicEnergy: MusicEnergyLevel
   ): Promise<IUserVideoSettings | null> {
-    const user = await User.findOne({ email });
+    const user = await findUserByEmailOrNull(email);
     if (!user) return null;
 
     const settings = await UserVideoSettings.findOne({ userId: user._id });

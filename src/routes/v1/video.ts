@@ -14,6 +14,7 @@ router.get('/avatars', ctrl.getAvatars)
 router.get('/voices', ctrl.getVoices)
 router.post('/photo-avatar', ctrl.createPhotoAvatarUpload as any, ctrl.createPhotoAvatar)
 router.get('/pending-workflows/:userId', ctrl.checkPendingWorkflows)
+router.put('/:videoId/note', ctrl.updateVideoNote) // PUT /api/video/:videoId/note
 
 // PUBLIC ROUTES (no authentication required)
 router.post('/download', ctrl.download)

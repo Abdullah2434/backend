@@ -53,7 +53,6 @@ class SocialBuMediaService {
     try {
       await connectMongo();
 
-      console.log('Starting complete media upload workflow for user:', userId);
 
       // Get valid token
       const tokenString = await socialBuService.getValidToken();
@@ -82,7 +81,7 @@ class SocialBuMediaService {
       );
 
       if (response.data) {
-        console.log('SocialBu upload response received, saving to database...');
+        
 
         // Create media record with API response
         const mediaRecord = new SocialBuMedia({
@@ -108,11 +107,10 @@ class SocialBuMediaService {
         await mediaRecord.save();
         await mediaRecord.markApiCompleted();
 
-        console.log('Media upload record saved to database:', mediaRecord._id);
 
         // Execute upload script if videoUrl is provided
         if (mediaData.videoUrl) {
-          console.log('Executing upload script...');
+        
           const scriptResult = await this.executeUploadScript(mediaRecord, mediaData.videoUrl);
           
           return {
@@ -135,7 +133,7 @@ class SocialBuMediaService {
         error: 'Empty response'
       };
     } catch (error) {
-      console.error('Error in media upload workflow:', error);
+
       
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
@@ -164,7 +162,7 @@ class SocialBuMediaService {
     try {
       await mediaRecord.markScriptExecuting();
       
-      console.log(`🚀 Downloading video from ${videoUrl} and uploading to signed URL...`);
+
 
       const signedUrl = mediaRecord.socialbuResponse.signed_url;
       const https = require('https');
@@ -178,7 +176,7 @@ class SocialBuMediaService {
           .get(videoUrl, (res: any) => {
             if (res.statusCode !== 200) {
               const error = `Failed to download video: HTTP ${res.statusCode}`;
-              console.error(`❌ ${error}`);
+
               mediaRecord.markScriptFailed(error).then(() => reject(new Error(error)));
               return;
             }
@@ -196,14 +194,11 @@ class SocialBuMediaService {
 
             req.on("response", async (uploadRes: any) => {
               if (uploadRes.statusCode === 200) {
-                console.log("✅ Upload successful!");
-                console.log("📊 Response status:", uploadRes.statusCode);
-                console.log("📊 Response headers:", uploadRes.headers);
+              
                 
                 // Extract the clean video URL (without query parameters)
                 const finalVideoUrl = signedUrl.split('?')[0];
-                console.log("🎥 Your video is now available at:");
-                console.log("🔗", finalVideoUrl);
+             
                 
                 const response: UploadScriptResponse = {
                   statusCode: uploadRes.statusCode,
@@ -216,8 +211,7 @@ class SocialBuMediaService {
                 resolve(mediaRecord);
               } else {
                 const error = `Upload failed: HTTP ${uploadRes.statusCode}`;
-                console.error(`❌ ${error}`);
-                console.log("📊 Response headers:", uploadRes.headers);
+               
                 await mediaRecord.markScriptFailed(error);
                 reject(new Error(error));
               }
@@ -225,20 +219,20 @@ class SocialBuMediaService {
 
             req.on("error", async (err: any) => {
               const error = `Upload error: ${err.message}`;
-              console.error("❌", error);
+
               await mediaRecord.markScriptFailed(error);
               reject(new Error(error));
             });
           })
           .on("error", async (err: any) => {
             const error = `Download error: ${err.message}`;
-            console.error("❌", error);
+ 
             await mediaRecord.markScriptFailed(error);
             reject(new Error(error));
           });
       });
     } catch (error) {
-      console.error('Error executing upload script:', error);
+
       await mediaRecord.markScriptFailed(error instanceof Error ? error.message : 'Unknown error');
       throw error;
     }
@@ -259,7 +253,7 @@ class SocialBuMediaService {
         data: mediaRecords as any
       };
     } catch (error) {
-      console.error('Error getting user media:', error);
+
       
       return {
         success: false,
@@ -297,7 +291,7 @@ class SocialBuMediaService {
         data: mediaRecord
       };
     } catch (error) {
-      console.error('Error updating media status:', error);
+ 
       
       return {
         success: false,
@@ -329,7 +323,7 @@ class SocialBuMediaService {
         data: mediaRecord
       };
     } catch (error) {
-      console.error('Error getting media by ID:', error);
+
       
       return {
         success: false,

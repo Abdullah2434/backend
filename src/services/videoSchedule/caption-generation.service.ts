@@ -9,10 +9,6 @@ export class VideoScheduleCaptionGeneration {
     userSettings: any,
     userId: string
   ): Promise<any[]> {
-    console.log(
-      `🎯 Generating dynamic captions for ${trends.length} trends during schedule creation...`
-    );
-
     const enhancedTrends = [];
 
     for (const trend of trends) {
@@ -62,14 +58,9 @@ export class VideoScheduleCaptionGeneration {
         };
 
         enhancedTrends.push(enhancedTrend);
-        console.log(
-          `✅ Generated dynamic captions for trend: "${trend.description}"`
-        );
+  
       } catch (error) {
-        console.warn(
-          `⚠️ Failed to generate dynamic captions for trend "${trend.description}":`,
-          error
-        );
+     
         // Keep original trend if enhancement fails
         enhancedTrends.push({
           ...trend,
@@ -92,11 +83,7 @@ export class VideoScheduleCaptionGeneration {
     userSettings: any,
     totalVideos: number
   ): void {
-    console.log(
-      `🔄 Queuing background caption generation for ${totalVideos} videos...`
-    );
-
-    // Process all videos in background
+ 
     setImmediate(async () => {
       try {
         await this.processAllBackgroundCaptions(
@@ -106,7 +93,7 @@ export class VideoScheduleCaptionGeneration {
           totalVideos
         );
       } catch (error: any) {
-        console.error("❌ Background caption generation failed:", error);
+
 
         // Update schedule status to failed
         await VideoSchedule.findByIdAndUpdate(scheduleId, {
@@ -143,10 +130,6 @@ export class VideoScheduleCaptionGeneration {
     const { notificationService } = await import("../notification.service");
     let processedCount = 0;
 
-    console.log(
-      `🎯 Starting background caption generation for ${totalVideos} videos...`
-    );
-
     // Process videos in batches of 3 to avoid rate limiting
     const batchSize = 3;
     const totalBatches = Math.ceil(totalVideos / batchSize);
@@ -155,11 +138,7 @@ export class VideoScheduleCaptionGeneration {
       const startIndex = batchIndex * batchSize;
       const endIndex = Math.min(startIndex + batchSize, totalVideos);
 
-      console.log(
-        `📦 Processing batch ${batchIndex + 1}/${totalBatches} (videos ${
-          startIndex + 1
-        }-${endIndex})...`
-      );
+  
 
       // Process videos in this batch
       const batchPromises = [];
@@ -181,12 +160,6 @@ export class VideoScheduleCaptionGeneration {
         await Promise.all(batchPromises);
         processedCount = endIndex;
 
-        console.log(
-          `✅ Batch ${
-            batchIndex + 1
-          } completed: ${processedCount}/${totalVideos} videos processed`
-        );
-
         // Send progress notification
         notificationService.notifyScheduleStatus(userId, "processing", {
           scheduleId,
@@ -200,7 +173,7 @@ export class VideoScheduleCaptionGeneration {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       } catch (error: any) {
-        console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
+      
         // Continue with next batch
       }
     }
@@ -218,9 +191,6 @@ export class VideoScheduleCaptionGeneration {
       processedVideos: totalVideos,
     });
 
-    console.log(
-      `🎉 Background caption generation completed for schedule ${scheduleId}`
-    );
   }
 
   /**
@@ -293,16 +263,8 @@ export class VideoScheduleCaptionGeneration {
         },
       });
 
-      console.log(
-        `✅ Generated dynamic captions for trend ${trendIndex + 1}: "${
-          trend.description
-        }"`
-      );
     } catch (error: any) {
-      console.error(
-        `❌ Failed to generate dynamic captions for trend ${trendIndex + 1}:`,
-        error
-      );
+    
 
       // Mark as failed but continue processing others
       await VideoSchedule.findByIdAndUpdate(scheduleId, {
@@ -322,32 +284,19 @@ export class VideoScheduleCaptionGeneration {
     userId: string,
     userSettings: any
   ): void {
-    console.log(
-      `🚀 Queuing background caption generation for schedule ${scheduleId}`
-    );
+
 
     // Start background processing immediately (non-blocking)
     setImmediate(async () => {
       try {
-        console.log(
-          `🔄 Starting background caption generation for schedule ${scheduleId}...`
-        );
+   
         await this.processBackgroundCaptions(scheduleId, userId, userSettings);
-        console.log(
-          `✅ Background caption generation completed for schedule ${scheduleId}`
-        );
+    
       } catch (error) {
-        console.error(
-          `❌ Background caption generation failed for schedule ${scheduleId}:`,
-          error
-        );
+   
       }
     });
 
-    console.log(
-      `📋 Background caption generation queued for schedule ${scheduleId}`
-    );
-    console.log(`⏰ Enhanced captions will be available within 5-10 minutes`);
   }
 
   /**
@@ -367,9 +316,6 @@ export class VideoScheduleCaptionGeneration {
       (trend: any) => trend.caption_status === "pending"
     );
 
-    console.log(
-      `📊 Found ${pendingTrends.length} videos pending caption generation`
-    );
 
     for (let i = 0; i < pendingTrends.length; i++) {
       const trendIndex = schedule.generatedTrends.findIndex(
@@ -377,11 +323,7 @@ export class VideoScheduleCaptionGeneration {
       );
 
       try {
-        console.log(
-          `🎯 Processing video ${i + 1}/${pendingTrends.length}: "${
-            pendingTrends[i].description
-          }"`
-        );
+   
 
         // Generate dynamic captions for this trend
         const userContext = {
@@ -438,21 +380,12 @@ export class VideoScheduleCaptionGeneration {
         // Save after each video to prevent data loss
         await schedule.save();
 
-        console.log(
-          `✅ Video ${i + 1}/${
-            pendingTrends.length
-          } captions generated and saved`
-        );
-
         // Small delay between videos to avoid rate limiting
         if (i < pendingTrends.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       } catch (error) {
-        console.error(
-          `❌ Failed to generate captions for video ${i + 1}:`,
-          error
-        );
+      
         // Mark as failed but continue with other videos
         schedule.generatedTrends[trendIndex].caption_status = "failed";
         schedule.generatedTrends[trendIndex].caption_error =
@@ -461,9 +394,7 @@ export class VideoScheduleCaptionGeneration {
       }
     }
 
-    console.log(
-      `🎉 Background caption generation completed for schedule ${scheduleId}`
-    );
+
   }
 
   /**
@@ -475,8 +406,6 @@ export class VideoScheduleCaptionGeneration {
       return post.content;
     }
 
-    // Fallback caption when dynamic generation fails
-    console.warn(`⚠️ No dynamic caption found for ${platform}, using fallback`);
     return `Real Estate Update - Check out the latest market insights!`;
   }
 }

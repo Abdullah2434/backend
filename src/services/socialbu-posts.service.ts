@@ -105,17 +105,17 @@ export class SocialBuPostsService {
       // If the response has an 'items' property (SocialBu API structure), use that
       if (postsResult.data && typeof postsResult.data === 'object' && postsResult.data.items) {
         postsData = postsResult.data.items;
-        console.log('Using items array from SocialBu response, found', postsData.length, 'posts');
+       
       }
       // If the response has a data property, use that
       else if (postsResult.data && typeof postsResult.data === 'object' && postsResult.data.data) {
         postsData = postsResult.data.data;
-        console.log('Using data property from response, found', postsData.length, 'posts');
+   
       }
       
       // If postsData is not an array, wrap it in an array or return empty array
       if (!Array.isArray(postsData)) {
-        console.log('Posts data is not an array:', typeof postsData, postsData);
+
         postsData = [];
       }
 
@@ -177,7 +177,7 @@ export class SocialBuPostsService {
         data: responseData,
       };
     } catch (error) {
-      console.error("Error getting user posts", error);
+
       return {
         success: false,
         message: "Failed to retrieve user posts",

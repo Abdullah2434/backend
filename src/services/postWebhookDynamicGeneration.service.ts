@@ -19,9 +19,7 @@ export class PostWebhookDynamicGenerationService {
     title: string
   ): Promise<void> {
     try {
-      console.log(`🔄 Processing dynamic generation for video: ${videoId}`);
-      console.log(`📧 Email: ${email}`);
-      console.log(`📝 Title: ${title}`);
+    
 
       // Find pending captions that need generation (dynamic or fallback)
       const pendingCaption = await PendingCaptions.findOne({
@@ -31,26 +29,19 @@ export class PostWebhookDynamicGenerationService {
       });
 
       if (!pendingCaption) {
-        console.log(`📝 No pending caption generation found for: ${title}`);
+
         return;
       }
 
       // Check video status (but don't require it to be "ready")
       const video = await this.videoService.getVideo(videoId);
       if (video) {
-        console.log(
-          `📹 Video status: ${video.status} (dynamic generation will proceed regardless)`
-        );
+      
       } else {
-        console.log(
-          `⚠️ Video not found in database, proceeding with dynamic generation anyway`
-        );
+       
       }
 
-      console.log(`📝 Found pending caption generation for: ${title}`);
-      console.log(`📝 Topic: ${pendingCaption.topic}`);
-      console.log(`📝 Key Points: ${pendingCaption.keyPoints}`);
-      console.log(`📝 Is Dynamic: ${pendingCaption.isDynamic}`);
+   
 
       let dynamicPosts: any[] = [];
       let captions: any;
@@ -71,7 +62,6 @@ export class PostWebhookDynamicGenerationService {
               pendingCaption.platforms!
             );
 
-          console.log(`🎯 Generated ${dynamicPosts.length} dynamic posts`);
 
           // Convert dynamic posts to traditional caption format for compatibility
           const instagramPost = dynamicPosts.find((p: any) => p.platform === "instagram");
@@ -89,13 +79,9 @@ export class PostWebhookDynamicGenerationService {
             tiktok_caption: tiktokPost?.content || "",
             youtube_caption: youtubePost?.content || "", // ✅ Ensure youtube_caption is included
           };
-          
-          console.log(`✅ Generated captions include youtube_caption:`, !!captions.youtube_caption, captions.youtube_caption ? `Length: ${captions.youtube_caption.length}` : "MISSING");
+
         } catch (dynamicError) {
-          console.warn(
-            "Dynamic generation failed, falling back to traditional captions:",
-            dynamicError
-          );
+      
           // Fall through to generate fallback captions
           captions = await this.generateFallbackCaptions(
             pendingCaption.topic || title,
@@ -110,8 +96,7 @@ export class PostWebhookDynamicGenerationService {
           );
         }
       } else {
-        // Generate fallback captions for non-dynamic or when dynamic fails
-        console.log("📝 Generating fallback captions (non-dynamic)");
+    
         captions = await this.generateFallbackCaptions(
           pendingCaption.topic || title,
           pendingCaption.keyPoints || "",
@@ -125,8 +110,7 @@ export class PostWebhookDynamicGenerationService {
         );
       }
 
-      // Update the pending captions with generated content
-      console.log(`💾 Storing captions in PendingCaptions - YouTube:`, !!captions.youtube_caption);
+ 
       
       await PendingCaptions.findOneAndUpdate(
         {
@@ -143,30 +127,17 @@ export class PostWebhookDynamicGenerationService {
 
       // Update the video with the generated captions (works even if video is processing)
       try {
-        console.log(`💾 Storing captions on video - YouTube:`, !!captions.youtube_caption);
+   
         await this.videoService.updateVideoCaptions(videoId, captions);
-        console.log(`✅ Captions updated in video record for: ${videoId} - YouTube:`, !!captions.youtube_caption);
+      
       } catch (captionUpdateError) {
-        console.warn(
-          `⚠️ Could not update video captions (video may still be processing): ${captionUpdateError}`
-        );
+    
         // Continue anyway - captions are stored in PendingCaptions
       }
 
-      console.log(`✅ Dynamic generation completed for video: ${videoId}`);
-      console.log(
-        `📱 Generated captions for platforms: ${pendingCaption.platforms?.join(
-          ", "
-        )}`
-      );
-      console.log(
-        `📝 Captions stored in PendingCaptions and will be applied when video is ready`
-      );
+   
     } catch (error: any) {
-      console.error(
-        `❌ Error processing dynamic generation for video ${videoId}:`,
-        error
-      );
+    
 
       // Mark as failed in pending captions
       await PendingCaptions.findOneAndUpdate(
@@ -206,28 +177,19 @@ export class PostWebhookDynamicGenerationService {
             videoId,
             fallbackCaptions
           );
-          console.log(
-            `🔄 Fallback captions generated and updated for video: ${videoId}`
-          );
+         
         } catch (updateError) {
-          console.warn(
-            `⚠️ Could not update video with fallback captions (video may still be processing): ${updateError}`
-          );
+        
           // Store in PendingCaptions as fallback
           await PendingCaptions.findOneAndUpdate(
             { email: email, title: title },
             { captions: fallbackCaptions, isPending: false, isDynamic: false },
             { upsert: true }
           );
-          console.log(
-            `📝 Fallback captions stored in PendingCaptions for: ${videoId}`
-          );
+        
         }
       } catch (fallbackError) {
-        console.error(
-          `❌ Failed to generate fallback captions for video ${videoId}:`,
-          fallbackError
-        );
+      
       }
     }
   }
@@ -244,14 +206,13 @@ export class PostWebhookDynamicGenerationService {
       "./captionGeneration.service"
     );
 
-    console.log(`📝 Generating fallback captions for topic: ${topic}`);
+   
     const captions = await CaptionGenerationService.generateCaptions(
       topic,
       keyPoints,
       userContext
     );
     
-    console.log(`✅ Fallback captions generated - YouTube:`, !!captions.youtube_caption, captions.youtube_caption ? `Length: ${captions.youtube_caption.length}` : "MISSING");
     
     return captions;
   }

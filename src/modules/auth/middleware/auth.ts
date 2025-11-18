@@ -48,6 +48,10 @@ const AUTH_ROUTES = {
     "/video-schedule/schedule/details",
     "/video-schedule/schedule/stats",
     "/video-schedule/schedule/:scheduleId",
+    "/schedule",
+    "/api/schedule",
+    "/payment-methods",
+    "/api/payment-methods",
     "/v2/video_avatar",
     "/api/v2/video_avatar",
     "/elevenlabs/voices/add",
@@ -85,7 +89,6 @@ async function extractUserFromToken(token: string) {
     const user = await authService.getCurrentUser(token);
     return user;
   } catch (error) {
-    console.error("Token extraction error:", error);
     return null;
   }
 }
@@ -101,17 +104,13 @@ export function authenticate() {
   ) => {
     const { path } = req;
 
-    console.log(`🔐 Auth Middleware: Processing ${req.method} ${path}`);
-
     // Skip auth for public routes
     if (isPublicRoute(path)) {
-      console.log(`🔐 Auth Middleware: Public route ${path}`);
       return next();
     }
 
     // Check if route requires authentication
     if (!requiresAuth(path)) {
-      console.log(`🔐 Auth Middleware: No auth required for ${path}`);
       return next();
     }
 
@@ -120,7 +119,6 @@ export function authenticate() {
     const accessToken = authHeader?.replace("Bearer ", "");
 
     if (!accessToken) {
-      console.log(`🔐 Auth Middleware: No access token for ${path}`);
       return res.status(401).json({
         success: false,
         message: "Access token is required",
@@ -129,9 +127,7 @@ export function authenticate() {
 
     // Validate token and extract user
     const user = await extractUserFromToken(accessToken);
-    console.log(`🔐 Auth Middleware: Extracted user for ${path}:`, user);
     if (!user) {
-      console.log(`🔐 Auth Middleware: Invalid access token for ${path}`);
       return res.status(401).json({
         success: false,
         message: "Invalid or expired access token",
@@ -145,9 +141,6 @@ export function authenticate() {
       firstName: user.firstName,
       lastName: user.lastName,
     };
-    console.log(`🔐 Auth Middleware: Set req.user for ${path}:`, req.user);
-
-    console.log(`🔐 Auth Middleware: Authentication successful for ${path}`);
     next();
   };
 }

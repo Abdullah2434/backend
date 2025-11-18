@@ -989,18 +989,15 @@ const templates = [
 
 async function initializeDynamicTemplates(): Promise<void> {
   try {
-    console.log("🚀 Initializing 25 Dynamic Templates...");
 
-    // Connect to MongoDB
     const mongoUri =
       process.env.MONGODB_URI || "mongodb://localhost:27017/edge-ai";
-    console.log(`📡 Connecting to MongoDB...`);
-    await mongoose.connect(mongoUri);
-    console.log("✅ Connected to MongoDB");
 
+    await mongoose.connect(mongoUri);
+  
     // Clear existing templates
     await ContentTemplate.deleteMany({});
-    console.log("🗑️ Cleared existing templates");
+   
 
     // Add templates one by one
     let addedCount = 0;
@@ -1009,18 +1006,13 @@ async function initializeDynamicTemplates(): Promise<void> {
         const newTemplate = new ContentTemplate(template);
         await newTemplate.save();
         addedCount++;
-        console.log(
-          `✅ Added template: ${template.platform} variant ${template.variant} - ${template.name}`
-        );
+    
       } catch (error) {
-        console.warn(
-          `⚠️ Failed to add ${template.platform} variant ${template.variant}:`,
-          error
-        );
+      
       }
     }
 
-    console.log(`✅ Successfully added ${addedCount} templates`);
+
 
     // Show summary by platform
     const platformCounts: any = templates.reduce((acc: any, template) => {
@@ -1028,20 +1020,18 @@ async function initializeDynamicTemplates(): Promise<void> {
       return acc;
     }, {});
 
-    console.log("📊 Templates by platform:");
+
     Object.entries(platformCounts).forEach(([platform, count]) => {
-      console.log(`  ${platform}: ${count} templates`);
+
     });
 
-    console.log("🎉 Template Rotation Engine initialized successfully!");
-    console.log("💡 System now has templates across 5 platforms!");
-    console.log("💡 Each platform has unique template variants!");
+
   } catch (error) {
-    console.error("❌ Error initializing templates:", error);
+
     throw error;
   } finally {
     await mongoose.disconnect();
-    console.log("🔌 Disconnected from MongoDB");
+  
   }
 }
 
@@ -1049,11 +1039,11 @@ async function initializeDynamicTemplates(): Promise<void> {
 if (require.main === module) {
   initializeDynamicTemplates()
     .then(() => {
-      console.log("✅ Template initialization completed!");
+  
       process.exit(0);
     })
     .catch((error) => {
-      console.error("❌ Initialization failed:", error);
+  
       process.exit(1);
     });
 }

@@ -1,180 +1,206 @@
-import { Request, Response } from 'express';
-import webhookService from '../services/webhooksocialbu.service';
-import { userConnectedAccountService } from '../services/userConnectedAccount.service';
+import { Response } from "express";
+import { AuthenticatedRequest } from "../types";
+import webhookService from "../services/webhooksocialbu.service";
+import { userConnectedAccountService } from "../services/userConnectedAccount.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import { accountIdParamSchema } from "../validations/socialbuAccount.validations";
+
+// ==================== HELPER FUNCTIONS ====================
+/**
+ * Get user ID from authenticated request
+ */
+function getUserIdFromRequest(req: AuthenticatedRequest): string {
+  if (!req.user?._id) {
+    throw new Error("User not authenticated");
+  }
+  return req.user._id.toString();
+}
 
 /**
- * Disconnect a user's SocialBu account by account ID
+ * Parse account ID from string to number
  */
-export const disconnectAccount = async (req: Request, res: Response, token: string) => {
+function parseAccountId(accountId: string): number {
+  const accountIdNumber = parseInt(accountId, 10);
+  if (isNaN(accountIdNumber)) {
+    throw new Error("Invalid account ID format. Must be a valid number");
+  }
+  return accountIdNumber;
+}
+
+/**
+ * Determine HTTP status code based on error message
+ */
+function getErrorStatus(error: Error): number {
+  const message = error.message.toLowerCase();
+
+  if (
+    message.includes("token") ||
+    message.includes("not authenticated") ||
+    message.includes("user not found")
+  ) {
+    return 401;
+  }
+  if (message.includes("not found")) {
+    return 404;
+  }
+  if (message.includes("invalid") || message.includes("required")) {
+    return 400;
+  }
+  return 500;
+}
+
+// ==================== CONTROLLER FUNCTIONS ====================
+/**
+ * Disconnect a user's SocialBu account by account ID
+ * DELETE /api/socialbu-account/:accountId
+ */
+export const disconnectAccount = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
+    const userId = getUserIdFromRequest(req);
     const { accountId } = req.params;
-    const authService = new (await import("../services/auth.service")).default();
 
-    const user = await authService.getCurrentUser(token);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found or invalid token",
-      });
+    // Validate accountId parameter
+    const validationResult = accountIdParamSchema.safeParse({ accountId });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    const userId = user._id.toString();
+    const accountIdNumber = parseAccountId(accountId);
 
-    if (!accountId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Account ID is required'
-      });
-    }
+    // Check if user has this account
+    const checkResult = await webhookService.checkUserHasAccount(
+      userId,
+      accountIdNumber
+    );
 
-    const accountIdNumber = parseInt(accountId, 10);
-    if (isNaN(accountIdNumber)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid account ID format'
-      });
-    }
-
-    console.log(`Disconnecting account ${accountId} for user ${userId}`);
-
-    // First check if user has this account
-    const checkResult = await webhookService.checkUserHasAccount(userId, accountIdNumber);
-    
     if (!checkResult.success) {
-      return res.status(400).json({
-        success: false,
-        message: checkResult.message,
-        error: checkResult.error
-      });
+      return ResponseHelper.badRequest(
+        res,
+        checkResult.message,
+        checkResult.error
+      );
     }
 
     if (!checkResult.data?.hasAccount) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found in user\'s connected accounts',
-        data: {
-          accountId: accountIdNumber,
-          userAccounts: checkResult.data?.userAccounts || []
-        }
-      });
+      return ResponseHelper.notFound(
+        res,
+        "Account not found in user's connected accounts"
+      );
     }
 
     // Call SocialBu API to disconnect the account
     try {
-      const socialBuService = (await import("../services/socialbu.service")).default;
-      const socialBuResult = await socialBuService.makeAuthenticatedRequest(
-        'DELETE',
+      const socialBuService = (await import("../services/socialbu.service"))
+        .default;
+      await socialBuService.makeAuthenticatedRequest(
+        "DELETE",
         `/accounts/${accountIdNumber}`
       );
-      
-      if (!socialBuResult.success) {
-        console.warn(`Failed to disconnect account ${accountIdNumber} from SocialBu:`, socialBuResult.message);
-        // Continue with local disconnection even if SocialBu API fails
-      } else {
-        console.log(`Account ${accountIdNumber} successfully disconnected from SocialBu`);
-      }
     } catch (socialBuError) {
-      console.error('Error calling SocialBu API to disconnect account:', socialBuError);
+      console.error(
+        "Failed to disconnect account from SocialBu API:",
+        socialBuError
+      );
       // Continue with local disconnection even if SocialBu API fails
     }
 
     // Remove the account from user's connected accounts
-    const removeResult = await webhookService.removeUserSocialBuAccount(userId, accountIdNumber);
+    const removeResult = await webhookService.removeUserSocialBuAccount(
+      userId,
+      accountIdNumber
+    );
 
     if (!removeResult.success) {
-      return res.status(400).json({
-        success: false,
-        message: removeResult.message,
-        error: removeResult.data
-      });
+      return ResponseHelper.badRequest(
+        res,
+        removeResult.message,
+        removeResult.data
+      );
     }
 
     // Also delete the account from UserConnectedAccount database
-    if (removeResult.success) {
-      try {
-        await userConnectedAccountService.deleteUserConnectedAccount(userId, accountIdNumber);
-        console.log(`Account ${accountIdNumber} deleted from UserConnectedAccount database for user ${userId}`);
-      } catch (dbError) {
-        console.error('Error deleting account from UserConnectedAccount database:', dbError);
-        // Don't fail the request if database update fails
-      }
+    try {
+      await userConnectedAccountService.deleteUserConnectedAccount(
+        userId,
+        accountIdNumber
+      );
+    } catch (dbError) {
+      console.error(
+        "Failed to delete account from UserConnectedAccount:",
+        dbError
+      );
+      // Don't fail the request if database update fails
     }
 
-    res.status(200).json({
-      success: true,
-      message: `Account ${accountId} disconnected successfully`,
-      data: {
+    return ResponseHelper.success(
+      res,
+      `Account ${accountId} disconnected successfully`,
+      {
         accountId: accountIdNumber,
         userId,
-        remainingAccounts: removeResult.data?.socialbu_account_ids || []
+        remainingAccounts: removeResult.data?.socialbu_account_ids || [],
       }
-    });
-  } catch (error) {
-    console.error('Error disconnecting account:', error);
-    
-    res.status(500).json({
+    );
+  } catch (error: any) {
+    console.error("Error in disconnectAccount:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: 'Failed to disconnect account',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: error.message || "Failed to disconnect account",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
 
 /**
  * Check if user has a specific account
+ * GET /api/socialbu-account/:accountId/check
  */
-export const checkAccount = async (req: Request, res: Response) => {
+export const checkAccount = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
   try {
+    const userId = getUserIdFromRequest(req);
     const { accountId } = req.params;
-    // For testing purposes, use a hardcoded user ID
-    const userId = req.user?._id || "68b19f13b732018f898d7046";
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: 'User authentication required'
-      });
+    // Validate accountId parameter
+    const validationResult = accountIdParamSchema.safeParse({ accountId });
+    if (!validationResult.success) {
+      const errors = validationResult.error.errors.map((err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      }));
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    if (!accountId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Account ID is required'
-      });
-    }
+    const accountIdNumber = parseAccountId(accountId);
 
-    const accountIdNumber = parseInt(accountId, 10);
-    if (isNaN(accountIdNumber)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid account ID format'
-      });
-    }
-
-    console.log(`Checking account ${accountId} for user ${userId}`);
-
-    const result = await webhookService.checkUserHasAccount(userId, accountIdNumber);
+    // Check if user has this account
+    const result = await webhookService.checkUserHasAccount(
+      userId,
+      accountIdNumber
+    );
 
     if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message,
-        error: result.error
-      });
+      return ResponseHelper.badRequest(res, result.message, result.error);
     }
 
-    res.status(200).json({
-      success: true,
-      message: result.message,
-      data: result.data
-    });
-  } catch (error) {
-    console.error('Error checking account:', error);
-    
-    res.status(500).json({
+    return ResponseHelper.success(res, result.message, result.data);
+  } catch (error: any) {
+    console.error("Error in checkAccount:", error);
+    const status = getErrorStatus(error);
+    return res.status(status).json({
       success: false,
-      message: 'Failed to check account',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      message: error.message || "Failed to check account",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };

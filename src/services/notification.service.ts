@@ -13,15 +13,15 @@ class NotificationService {
     });
 
     this.io.on("connection", (socket: Socket) => {
-      console.log("User connected:", socket.id);
+  
 
       socket.on("join-room", (userId: string) => {
         socket.join(`user-${userId}`);
-        console.log(`User ${userId} joined room`);
+   
       });
 
       socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.id);
+
       });
     });
   }
@@ -29,7 +29,7 @@ class NotificationService {
   notifyUser(userId: string, event: string, data: any) {
     if (this.io) {
       this.io.to(`user-${userId}`).emit(event, data);
-      console.log(`Notification sent to user ${userId}:`, event, data);
+
     }
   }
 

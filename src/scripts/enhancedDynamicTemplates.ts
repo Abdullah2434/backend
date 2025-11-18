@@ -1665,20 +1665,16 @@ NO EMOJIS`,
 
 async function initializeEnhancedTemplates(): Promise<void> {
   try {
-    console.log(
-      "🚀 Initializing 30 Enhanced Dynamic Templates (6 platforms × 5 variants)..."
-    );
 
-    // Connect to MongoDB
     const mongoUri =
       process.env.MONGODB_URI || "mongodb://localhost:27017/edge-ai";
-    console.log(`📡 Connecting to MongoDB...`);
+    
     await mongoose.connect(mongoUri);
-    console.log("✅ Connected to MongoDB");
+
 
     // Clear existing templates
     await ContentTemplate.deleteMany({});
-    console.log("🗑️ Cleared existing templates");
+ 
 
     // Add enhanced templates one by one
     let addedCount = 0;
@@ -1687,20 +1683,12 @@ async function initializeEnhancedTemplates(): Promise<void> {
         const newTemplate = new ContentTemplate(template);
         await newTemplate.save();
         addedCount++;
-        console.log(
-          `✅ Added enhanced template: ${template.platform} variant ${template.variant} - ${template.name}`
-        );
+     
       } catch (error) {
-        console.warn(
-          `⚠️ Failed to add ${template.platform} variant ${template.variant}:`,
-          error
-        );
+     
       }
     }
 
-    console.log(`✅ Successfully added ${addedCount} enhanced templates`);
-
-    // Show summary by platform
     const platformCounts: any = enhancedTemplates.reduce(
       (acc: any, template) => {
         acc[template.platform] = (acc[template.platform] || 0) + 1;
@@ -1709,21 +1697,18 @@ async function initializeEnhancedTemplates(): Promise<void> {
       {}
     );
 
-    console.log("📊 Enhanced Templates by platform:");
+
     Object.entries(platformCounts).forEach(([platform, count]) => {
       console.log(`  ${platform}: ${count} templates`);
     });
 
-    console.log("🎉 Enhanced Template Library initialized successfully!");
-    console.log(
-      "💡 System now has sophisticated templates matching your specification!"
-    );
+
   } catch (error) {
-    console.error("❌ Error initializing enhanced templates:", error);
+   
     throw error;
   } finally {
     await mongoose.disconnect();
-    console.log("🔌 Disconnected from MongoDB");
+  
   }
 }
 
