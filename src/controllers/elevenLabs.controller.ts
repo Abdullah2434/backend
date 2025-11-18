@@ -44,35 +44,39 @@ const VALID_GENDERS = ["male", "female", "unknown"] as const;
 const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
 const DEFAULT_LANGUAGE = "en";
 
-// Voice preset configurations
+// Voice preset configurations - optimized for natural speech
+// Lower stability = more emotional range and natural variation
+// Higher similarity_boost = closer to original voice
+// Style controls exaggeration (0 = natural, higher = more dramatic)
+// Speed: 0.9-1.1 range for natural pacing
 const VOICE_PRESETS = {
   low: {
-    stability: 0.3,
-    similarity_boost: 0.75,
-    style: 0.6,
+    stability: 0.75, // Lower for more natural variation
+    similarity_boost: 0.8, // Higher for better voice match
+    style: 0.0, // Lower for more natural delivery
     use_speaker_boost: true,
-    speed: 1.15,
+    speed: 0.85, // Slightly faster but still natural
   },
   medium: {
-    stability: 0.5,
-    similarity_boost: 0.75,
-    style: 0.4,
+    stability: 0.5, // Balanced for natural speech
+    similarity_boost: 0.75, // Higher for better voice match
+    style: 0.2, // Lower for natural delivery
     use_speaker_boost: true,
-    speed: 1.0,
+    speed: 1.0, // Natural pace
   },
   mid: {
-    stability: 0.5,
-    similarity_boost: 0.75,
-    style: 0.4,
+    stability: 0.5, // Balanced for natural speech
+    similarity_boost: 0.75, // Higher for better voice match
+    style: 0.2, // Lower for natural delivery
     use_speaker_boost: true,
-    speed: 1.0,
+    speed: 1.0, // Natural pace
   },
   high: {
-    stability: 0.7,
-    similarity_boost: 0.75,
-    style: 0.2,
+    stability: 0.25, // Slightly higher but still allows variation
+    similarity_boost: 0.7, // Higher for better voice match
+    style: 0.5, // Very low for most natural delivery
     use_speaker_boost: true,
-    speed: 0.9,
+    speed: 1.15, // Slightly slower for emphasis
   },
 } as const;
 
@@ -177,8 +181,17 @@ export async function textToSpeech(req: Request, res: Response) {
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    const { voice_id, hook, body, conclusion, output_format, model_id } =
-      validationResult.data;
+    const {
+      voice_id,
+      hook,
+      body,
+      conclusion,
+      output_format,
+      model_id,
+      apply_text_normalization,
+      seed,
+      pronunciation_dictionary_locators,
+    } = validationResult.data;
 
     // Validate model_id if provided
     if (model_id && !ELEVEN_LABS_MODELS.includes(model_id as any)) {
@@ -231,6 +244,10 @@ export async function textToSpeech(req: Request, res: Response) {
       output_format: output_format || DEFAULT_OUTPUT_FORMAT,
       model_id: model_id || undefined,
       voice_settings: voice_settings || undefined,
+      apply_text_normalization: apply_text_normalization || "auto", // Default to "auto" for better pronunciation
+      seed: seed || undefined,
+      pronunciation_dictionary_locators:
+        pronunciation_dictionary_locators || undefined,
     });
 
     return ResponseHelper.success(res, "Speech generated successfully", {

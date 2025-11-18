@@ -24,33 +24,33 @@ function getVoiceSettingsByPreset(preset: string): {
   speed: number;
 } | null {
   const presetLower = preset?.toLowerCase().trim();
-  
+
   if (presetLower === "low") {
     return {
-      stability: 0.3,
-      similarity_boost: 0.75,
-      style: 0.6,
+      stability: 0.75, // Lower for more natural variation
+      similarity_boost: 0.8, // Higher for better voice match
+      style: 0.0, // Lower for more natural delivery
       use_speaker_boost: true,
-      speed: 1.15,
+      speed: 0.85, // Slightly faster but still natural
     };
   } else if (presetLower === "medium" || presetLower === "mid") {
     return {
-      stability: 0.5,
-      similarity_boost: 0.75,
-      style: 0.4,
+      stability: 0.5, // Balanced for natural speech
+      similarity_boost: 0.75, // Higher for better voice match
+      style: 0.2, // Lower for natural delivery
       use_speaker_boost: true,
-      speed: 1.0,
+      speed: 1.0, // Natural pace
     };
   } else if (presetLower === "high") {
     return {
-      stability: 0.7,
-      similarity_boost: 0.75,
-      style: 0.2,
+      stability: 0.25, // Slightly higher but still allows variation
+      similarity_boost: 0.7, // Higher for better voice match
+      style: 0.5, // Very low for most natural delivery
       use_speaker_boost: true,
-      speed: 0.9,
+      speed: 1.15, // Slightly slower for emphasis
     };
   }
-  
+
   return null;
 }
 
@@ -90,7 +90,7 @@ export class VideoScheduleProcessing {
 
     // Check if video is already processing to prevent duplicate emails
     const isAlreadyProcessing = trend.status === "processing";
-    
+
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
@@ -138,7 +138,6 @@ export class VideoScheduleProcessing {
       ) {
         throw subErr;
       }
-     
     }
 
     // Send processing email only once (when video first starts processing)
@@ -155,12 +154,8 @@ export class VideoScheduleProcessing {
           timezone: schedule.timezone,
         };
         await this.emailService.sendVideoProcessingEmail(processingEmailData);
-
-      } catch (emailError) {
-
-      }
+      } catch (emailError) {}
     } else {
-   
     }
 
     notificationService.notifyScheduledVideoProgress(
@@ -176,7 +171,6 @@ export class VideoScheduleProcessing {
     );
 
     try {
-      
       const captions =
         await CaptionGenerationService.generateScheduledVideoCaptions(
           trend.description,
@@ -189,8 +183,6 @@ export class VideoScheduleProcessing {
             socialHandles: userSettings.socialHandles,
           }
         );
-
-
 
       // ✅ Helper functions to extract clean IDs and types
       const extractAvatarId = (avatarValue: any): string => {
@@ -268,9 +260,7 @@ export class VideoScheduleProcessing {
         enhancedContent = await VideoScheduleAPICalls.callCreateVideoAPI(
           videoCreationData
         );
-  
       } catch (err: any) {
-
         throw new Error(`Create Video API failed: ${err.message}`);
       }
 
@@ -283,31 +273,30 @@ export class VideoScheduleProcessing {
         // Get voice_id from user settings
         const selectedVoiceId = userSettings.selectedVoiceId;
         if (!selectedVoiceId) {
-      
         } else {
-         
-
           // Check if voice category is "cloned" and get preset from userSettings
           let voice_settings = null;
           try {
-            const voice = await ElevenLabsVoice.findOne({ voice_id: selectedVoiceId });
+            const voice = await ElevenLabsVoice.findOne({
+              voice_id: selectedVoiceId,
+            });
             if (voice) {
               const voiceCategory = voice.category?.toLowerCase().trim();
-              
+
               if (voiceCategory === "cloned") {
                 // Get preset directly from userSettings (already know which user)
                 const preset = userSettings.preset;
-                
+
                 if (preset) {
                   voice_settings = getVoiceSettingsByPreset(preset);
-                 
                 } else {
-                  console.log(`⚠️ No preset found in user settings for auto posting`);
+                  console.log(
+                    `⚠️ No preset found in user settings for auto posting`
+                  );
                 }
               }
             }
           } catch (voiceError: any) {
-
             // Continue without voice_settings if there's an error
           }
 
@@ -321,14 +310,11 @@ export class VideoScheduleProcessing {
             voice_settings: voice_settings || undefined, // Pass voice_settings if available
           });
 
-    
-
           // Get music URL from selectedMusicTrackId
           // Auto: Find track by ID → Extract S3 key from s3FullTrackUrl → Convert to clean MP3 URL
 
           if (userSettings.selectedMusicTrackId) {
             try {
-           
               // Step 1: Find music track by ID from userSettings
               const musicTrack = await MusicTrack.findById(
                 userSettings.selectedMusicTrackId
@@ -343,8 +329,6 @@ export class VideoScheduleProcessing {
                   `⚠️ Music track has no s3FullTrackUrl: ${musicTrack._id}`
                 );
               } else {
-             
-
                 // Step 2: Extract S3 key from s3FullTrackUrl (stored in DB)
                 const extractS3KeyFromUrl = (url: string): string | null => {
                   try {
@@ -374,7 +358,6 @@ export class VideoScheduleProcessing {
 
                     return s3Key;
                   } catch (error: any) {
-
                     return null;
                   }
                 };
@@ -382,10 +365,7 @@ export class VideoScheduleProcessing {
                 const s3Key = extractS3KeyFromUrl(musicTrack.s3FullTrackUrl);
 
                 if (!s3Key) {
-                
                 } else {
-          
-
                   // Step 3: Ensure key ends with .mp3
                   const finalS3Key = s3Key.endsWith(".mp3")
                     ? s3Key
@@ -409,20 +389,15 @@ export class VideoScheduleProcessing {
                   if (!musicUrl.endsWith(".mp3")) {
                     musicUrl = musicUrl + ".mp3";
                   }
-
-               
                 }
               }
             } catch (musicError: any) {
-           
               // Don't fail the entire process, just log the error
             }
           } else {
-         
           }
         }
       } catch (ttsError: any) {
-    
         // Don't fail the entire process, just log the error
       }
 
@@ -430,7 +405,7 @@ export class VideoScheduleProcessing {
       // Use TTS audio URLs if available, otherwise fall back to text
       const videoGenerationData = {
         hook: ttsResult?.hook_url, // Audio URL from TTS or text string from API
-        body: ttsResult?.body_url,  // Audio URL from TTS or text string from API
+        body: ttsResult?.body_url, // Audio URL from TTS or text string from API
         conclusion: ttsResult?.conclusion_url, // Audio URL from TTS or text string from API
         text: enhancedContent.body,
         company_name: userSettings.companyName,
@@ -453,13 +428,10 @@ export class VideoScheduleProcessing {
 
       try {
         await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
-     
       } catch (err: any) {
-    
         throw new Error(`Generate Video API failed: ${err.message}`);
       }
 
-      
       notificationService.notifyScheduledVideoProgress(
         schedule.userId.toString(),
         "video-creation",
@@ -473,7 +445,6 @@ export class VideoScheduleProcessing {
         }
       );
     } catch (error: any) {
-
       schedule.generatedTrends[trendIndex].status = "failed";
       await schedule.save();
 
@@ -515,14 +486,11 @@ export class VideoScheduleProcessing {
 
       const trend = schedule.generatedTrends[trendIndex];
 
-     
-
       // Log status update (no WebSocket notification)
       const statusMessage =
         status === "completed"
           ? `✅ Scheduled video "${trend.description}" completed for user ${schedule.userId}`
           : `❌ Scheduled video "${trend.description}" failed for user ${schedule.userId}`;
-
     }
   }
 }

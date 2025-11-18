@@ -1,27 +1,31 @@
 export const VOICE_ENERGY_PRESETS = {
-  high: {
-    stability: 0.3,
-    similarity_boost: 0.75,
-    style: 0.6,
+   low: {
+    stability: 0.75, // Lower for more natural variation
+    similarity_boost: 0.8, // Higher for better voice match
+    style: 0.0, // Lower for more natural delivery
     use_speaker_boost: true,
-    speed: 1.15,
-    emotion_tags: "[excited] [enthusiastic]",
+    speed: 0.85, // Slightly faster but still natural
+  },
+  medium: {
+    stability: 0.5, // Balanced for natural speech
+    similarity_boost: 0.75, // Higher for better voice match
+    style: 0.2, // Lower for natural delivery
+    use_speaker_boost: true,
+    speed: 1.0, // Natural pace
   },
   mid: {
-    stability: 0.5,
-    similarity_boost: 0.75,
-    style: 0.4,
+    stability: 0.5, // Balanced for natural speech
+    similarity_boost: 0.75, // Higher for better voice match
+    style: 0.2, // Lower for natural delivery
     use_speaker_boost: true,
-    speed: 1.0,
-    emotion_tags: "",
+    speed: 1.0, // Natural pace
   },
-  low: {
-    stability: 0.7,
-    similarity_boost: 0.75,
-    style: 0.2,
+  high: {
+    stability: 0.25, // Slightly higher but still allows variation
+    similarity_boost: 0.7, // Higher for better voice match
+    style: 0.5, // Very low for most natural delivery
     use_speaker_boost: true,
-    speed: 0.9,
-    emotion_tags: "[calm] [professional]",
+    speed: 1.15, // Slightly slower for emphasis
   },
 } as const;
 
