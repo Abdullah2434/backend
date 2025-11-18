@@ -131,12 +131,14 @@ export class UserVideoSettingsService {
 
     // Update both voice and music energy
     settings.voiceEnergy = energyLevel;
-    settings.musicEnergy = energyLevel;
+    // Convert "medium" to "mid" for music energy (music only supports "high" | "mid" | "low")
+    const musicEnergy: MusicEnergyLevel = energyLevel === "medium" ? "mid" : energyLevel;
+    settings.musicEnergy = musicEnergy;
     settings.customVoiceMusic = false;
 
     // Auto-assign random music track for the energy level
     const randomTrack = await this.musicService.getRandomTrackByEnergy(
-      energyLevel
+      musicEnergy
     );
     if (randomTrack) {
       settings.selectedMusicTrackId = randomTrack._id;
