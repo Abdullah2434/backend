@@ -414,11 +414,26 @@ export async function syncVoices(req: Request, res: Response) {
  * Supports single file or array of files for better voice cloning
  */
 export async function addCustomVoiceEndpoint(
-  req: AuthenticatedRequest & { files?: Express.Multer.File[] },
+  req: AuthenticatedRequest & {
+    files?:
+      | Express.Multer.File[]
+      | { [fieldname: string]: Express.Multer.File[] };
+  },
   res: Response
 ) {
   try {
-    const files = req.files as Express.Multer.File[] | undefined;
+    // Handle multer's file array type - upload.array() returns File[] or object with fieldname keys
+    let files: Express.Multer.File[] | undefined;
+    if (req.files) {
+      if (Array.isArray(req.files)) {
+        // upload.array() returns File[] directly
+        files = req.files;
+      } else {
+        // Fallback: if it's an object with fieldname keys, extract the array
+        const fileArray = Object.values(req.files).flat();
+        files = fileArray.length > 0 ? fileArray : undefined;
+      }
+    }
     const userId = getUserIdFromRequest(req);
 
     if (!userId) {
@@ -442,7 +457,10 @@ export async function addCustomVoiceEndpoint(
 
     // Validate files - support both single file and array
     if (!files || (Array.isArray(files) && files.length === 0)) {
-      return ResponseHelper.badRequest(res, "At least one audio file is required");
+      return ResponseHelper.badRequest(
+        res,
+        "At least one audio file is required"
+      );
     }
 
     // Ensure files is an array
