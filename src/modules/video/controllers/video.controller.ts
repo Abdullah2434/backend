@@ -1302,7 +1302,6 @@ export async function generateVideo(req: Request, res: Response) {
         style: voiceEnergyParams.style,
         use_speaker_boost: voiceEnergyParams.use_speaker_boost,
         speed: voiceEnergyParams.speed,
-        emotion_tags: voiceEnergyParams.emotion_tags,
       },
       // Energy level for reference
       energyLevel: energyLevel,
