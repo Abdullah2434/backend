@@ -21,6 +21,10 @@ import { EmailService } from "../../../services/email";
 import PendingCaptions from "../../../models/PendingCaptions";
 import CaptionGenerationService from "../../../services/captionGeneration.service";
 import { text } from "stream/consumers";
+import {
+  updateVideoNoteSchema,
+  videoIdParamSchema,
+} from "../../../validations/video.validations";
 
 const authService = new AuthService();
 const videoService = new VideoService();
@@ -75,6 +79,7 @@ export async function gallery(req: Request, res: Response) {
         downloadUrl: video.downloadUrl || null,
         videoUrl: video.videoUrl || null,
         socialMediaCaptions: video.socialMediaCaptions ? socialMediaCaptions : null,
+        note: video.note || null,
       };
     });
 
@@ -1456,6 +1461,91 @@ export async function getTopicById(req: Request, res: Response) {
     });
   } catch (e: any) {
     return res.status(500).json({
+      success: false,
+      message: e.message || "Internal server error",
+    });
+  }
+}
+
+/**
+ * Update video note
+ * PUT /api/video/:videoId/note
+ */
+export async function updateVideoNote(req: Request, res: Response) {
+  try {
+    const payload = requireAuth(req);
+    const { videoId } = req.params;
+
+    // Validate videoId parameter
+    const videoIdValidation = videoIdParamSchema.safeParse({ videoId });
+    if (!videoIdValidation.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Video ID is required",
+        errors: videoIdValidation.error.errors.map((err) => ({
+          field: err.path.join("."),
+          message: err.message,
+        })),
+      });
+    }
+
+    // Validate request body
+    const validationResult = updateVideoNoteSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: validationResult.error.errors.map((err) => ({
+          field: err.path.join("."),
+          message: err.message,
+        })),
+      });
+    }
+
+    const { note } = validationResult.data;
+
+    // Get video to verify ownership
+    const video = await videoService.getVideo(videoId);
+    if (!video) {
+      return res.status(404).json({
+        success: false,
+        message: "Video not found",
+      });
+    }
+
+    // Verify video belongs to user
+    if (video.userId && video.userId.toString() !== payload.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized to update this video",
+      });
+    }
+
+    // Update video note
+    const updatedVideo = await videoService.updateVideoNote(
+      videoId,
+      note ?? null
+    );
+
+    if (!updatedVideo) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update video note",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Video note updated successfully",
+      data: {
+        videoId: updatedVideo.videoId,
+        note: updatedVideo.note,
+        updatedAt: updatedVideo.updatedAt,
+      },
+    });
+  } catch (e: any) {
+    const status = e.message.includes("Access token") ? 401 : 500;
+    return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
     });

@@ -190,6 +190,22 @@ export class VideoService {
   }
 
   /**
+   * Update video note
+   */
+  async updateVideoNote(
+    videoId: string,
+    note: string | null
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { note },
+      { new: true }
+    ).select("+secretKey");
+
+    return video;
+  }
+
+  /**
    * Delete a video (from database only, not from S3)
    */
   async deleteVideo(videoId: string): Promise<boolean> {
