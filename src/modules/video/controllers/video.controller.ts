@@ -791,6 +791,62 @@ export async function createPhotoAvatar(
 
 export async function createVideo(req: Request, res: Response) {
   try {
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    // This prevents n8n webhook from being called if user has reached their limit
+    const email = String(req.body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const subscriptionService = new SubscriptionService();
+    const videoLimit = await subscriptionService.canCreateVideo(
+      user._id.toString()
+    );
+
+    if (!videoLimit.canCreate) {
+      // Send plan-full email notification
+      try {
+        const emailService = new EmailService();
+        await emailService.send(
+          email,
+          "Your monthly video limit has been reached",
+          `
+          <h2>Video Limit Reached</h2>
+          <p>You have reached your monthly video limit (${videoLimit.limit} videos per month).</p>
+          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month.</p>
+          <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
+          <p><a href="${
+            process.env.FRONTEND_URL || "https://www.edgeairealty.com"
+          }" target="_blank">Visit Dashboard</a></p>
+          `
+        );
+      } catch (mailErr) {
+        // Email sending failed, but still return error
+      }
+
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.limit - videoLimit.remaining,
+        },
+      });
+    }
+
+    // Now proceed with field validation
     const requiredFields = [
       "prompt",
       "avatar",
@@ -815,60 +871,13 @@ export async function createVideo(req: Request, res: Response) {
         });
       }
     }
+
     const webhookUrl = process.env.VIDEO_CREATION_WEBHOOK_URL;
     if (!webhookUrl) {
-
       return res.status(500).json({
         success: false,
         message: "Video creation service is not configured",
       });
-    }
-
-    // Preflight subscription check (stop before webhook)
-    try {
-      const email = String(req.body.email || "").trim();
-      if (!email) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Email is required" });
-      }
-      const user = await videoService.getUserByEmail(email);
-      if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
-      }
-      const subscriptionService = new SubscriptionService();
-      const videoLimit = await subscriptionService.canCreateVideo(
-        user._id.toString()
-      );
-      if (!videoLimit.canCreate) {
-        // Send plan-full email notification
-        try {
-          const emailService = new EmailService();
-          await emailService.send(
-            email,
-            "Your monthly video limit has been reached",
-            `
-            <h2>Video Limit Reached</h2>
-            <p>You have reached your monthly video limit (30 videos per month).</p>
-            <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
-            <p><a href="${
-              process.env.FRONTEND_URL || "https://www.edgeairealty.com"
-            }" target="_blank">Visit Dashboard</a></p>
-            `
-          );
-        } catch (mailErr) {
-        }
-        return res.status(429).json({
-          success: false,
-          message: `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`,
-        });
-      }
-    } catch (subErr) {
-      return res
-        .status(500)
-        .json({ success: false, message: "Subscription check failed" });
     }
     const body = req.body;
     const webhookData = {
@@ -1048,6 +1057,63 @@ export async function createVideo(req: Request, res: Response) {
 export async function generateVideo(req: Request, res: Response) {
   try {
     const body = req.body;
+
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    // This prevents n8n webhook from being called if user has reached their limit
+    const email = String(body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const subscriptionService = new SubscriptionService();
+    const videoLimit = await subscriptionService.canCreateVideo(
+      user._id.toString()
+    );
+
+    if (!videoLimit.canCreate) {
+      // Send plan-full email notification
+      try {
+        const emailService = new EmailService();
+        await emailService.send(
+          email,
+          "Your monthly video limit has been reached",
+          `
+          <h2>Video Limit Reached</h2>
+          <p>You have reached your monthly video limit (${videoLimit.limit} videos per month).</p>
+          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month.</p>
+          <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
+          <p><a href="${
+            process.env.FRONTEND_URL || "https://www.edgeairealty.com"
+          }" target="_blank">Visit Dashboard</a></p>
+          `
+        );
+      } catch (mailErr) {
+        // Email sending failed, but still return error
+      }
+
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.limit - videoLimit.remaining,
+        },
+      });
+    }
+
+    // Now proceed with field validation
     const requiredFields = [
       "hook",
       "body",
@@ -1062,9 +1128,7 @@ export async function generateVideo(req: Request, res: Response) {
       "title",
     ];
     for (const field of requiredFields) {
-
       if (!body[field] || String(body[field]).trim() === "") {
-
         return res.status(400).json({
           success: false,
           message: `Missing or empty required field: ${field}`,
@@ -1073,61 +1137,13 @@ export async function generateVideo(req: Request, res: Response) {
         });
       }
     }
+
     const webhookUrl = process.env.GENERATE_VIDEO_WEBHOOK_URL;
     if (!webhookUrl) {
       return res.status(500).json({
         success: false,
         message: "GENERATE_VIDEO_WEBHOOK_URL environment variable is not set",
       });
-    }
-
-    // Preflight subscription check (stop before webhook)
-    try {
-      const email = String(body.email || "").trim();
-      if (!email) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Email is required" });
-      }
-      const user = await videoService.getUserByEmail(email);
-      if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
-      }
-      const subscriptionService = new SubscriptionService();
-      const videoLimit = await subscriptionService.canCreateVideo(
-        user._id.toString()
-      );
-      if (!videoLimit.canCreate) {
-        // Send plan-full email notification
-        try {
-          const emailService = new EmailService();
-          await emailService.send(
-            email,
-            "Your monthly video limit has been reached",
-            `
-            <h2>Video Limit Reached</h2>
-            <p>You have reached your monthly video limit (30 videos per month).</p>
-            <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
-            <p><a href="${
-              process.env.FRONTEND_URL || "https://www.edgeairealty.com"
-            }" target="_blank">Visit Dashboard</a></p>
-            `
-          );
-        } catch (mailErr) {
-
-        }
-        return res.status(429).json({
-          success: false,
-          message: `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`,
-        });
-      }
-    } catch (subErr) {
-    
-      return res
-        .status(500)
-        .json({ success: false, message: "Subscription check failed" });
     }
     // Get energy profile settings - either from request body or user settings
     let voiceEnergyParams: (typeof VOICE_ENERGY_PRESETS)[keyof typeof VOICE_ENERGY_PRESETS] =

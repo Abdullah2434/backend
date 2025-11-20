@@ -12,6 +12,11 @@ import { VideoScheduleAPICalls } from "./api-calls.service";
 import { text } from "stream/consumers";
 import { SubscriptionService } from "../subscription.service";
 import ElevenLabsVoice from "../../models/elevenLabsVoice";
+import { EmailService } from "../email";
+import {
+  generateVideoLimitReachedEmail,
+  generateSubscriptionExpiredEmail,
+} from "../videoScheduleFailureEmails";
 
 /**
  * Get voice settings based on preset (case insensitive)
@@ -105,14 +110,31 @@ export class VideoScheduleProcessing {
 
       if (!subscription) {
         // Update trend status to failed
-        schedule.generatedTrends[trendIndex].status = "failed";
-        schedule.generatedTrends[trendIndex].error =
+        const errorMessage =
           "Active subscription required. Your subscription has expired or is not active.";
+        schedule.generatedTrends[trendIndex].status = "failed";
+        schedule.generatedTrends[trendIndex].error = errorMessage;
         await schedule.save();
 
-        throw new Error(
-          "Active subscription required. Your subscription has expired or is not active."
-        );
+        // Send email notification to user about subscription expired
+        try {
+          const emailService = new EmailService();
+          const emailContent = generateSubscriptionExpiredEmail({
+            videoTitle: trend.description,
+            frontendUrl:
+              process.env.FRONTEND_URL || "https://www.edgeairealty.com",
+          });
+          await emailService.send(
+            schedule.email,
+            "⚠️ Scheduled Video Failed: Subscription Required",
+            emailContent
+          );
+        } catch (emailErr) {
+          // Log email error but don't fail the process
+          console.error("Failed to send subscription expired email:", emailErr);
+        }
+
+        throw new Error(errorMessage);
       }
 
       // Then check video limit
@@ -120,15 +142,38 @@ export class VideoScheduleProcessing {
         schedule.userId.toString()
       );
       if (!videoLimit.canCreate) {
-        // Update trend status to failed
+        // Update trend status to failed with detailed error message
+        const errorMessage = `Video limit reached. You have used ${
+          videoLimit.limit - videoLimit.remaining
+        } out of ${
+          videoLimit.limit
+        } videos this month. Your subscription will renew monthly.`;
         schedule.generatedTrends[trendIndex].status = "failed";
-        schedule.generatedTrends[trendIndex].error =
-          "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.";
+        schedule.generatedTrends[trendIndex].error = errorMessage;
         await schedule.save();
 
-        throw new Error(
-          "Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly."
-        );
+        // Send email notification to user about video limit reached
+        try {
+          const emailService = new EmailService();
+          const emailContent = generateVideoLimitReachedEmail({
+            videoTitle: trend.description,
+            limit: videoLimit.limit,
+            remaining: videoLimit.remaining,
+            used: videoLimit.limit - videoLimit.remaining,
+            frontendUrl:
+              process.env.FRONTEND_URL || "https://www.edgeairealty.com",
+          });
+          await emailService.send(
+            schedule.email,
+            "⚠️ Scheduled Video Failed: Video Limit Reached",
+            emailContent
+          );
+        } catch (emailErr) {
+          // Log email error but don't fail the process
+          console.error("Failed to send video limit email:", emailErr);
+        }
+
+        throw new Error(errorMessage);
       }
     } catch (subErr: any) {
       // If it's a subscription error, rethrow it (don't call APIs)
