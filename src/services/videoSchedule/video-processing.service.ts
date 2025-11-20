@@ -93,9 +93,21 @@ export class VideoScheduleProcessing {
     const trend = schedule.generatedTrends[trendIndex];
     if (!trend) throw new Error("Trend not found");
 
-    // Check if video is already processing to prevent duplicate emails
-    const isAlreadyProcessing = trend.status === "processing";
+    // ⚠️ CRITICAL: Check if video is already processing or completed to prevent duplicate processing
+    if (trend.status === "processing") {
+      throw new Error(`Video is already being processed for trend ${trendIndex}`);
+    }
 
+    if (trend.status === "completed") {
+      throw new Error(`Video is already completed for trend ${trendIndex}`);
+    }
+
+    // Only process if status is "pending"
+    if (trend.status !== "pending") {
+      throw new Error(`Cannot process video with status: ${trend.status}. Expected: pending`);
+    }
+
+    // Set status to processing atomically (prevents race conditions and duplicate processing)
     schedule.generatedTrends[trendIndex].status = "processing";
     await schedule.save();
 
@@ -185,22 +197,20 @@ export class VideoScheduleProcessing {
       }
     }
 
-    // Send processing email only once (when video first starts processing)
-    // Only send if status was not already "processing" (prevents duplicate emails)
-    if (!isAlreadyProcessing) {
-      try {
-        const processingEmailData: VideoProcessingEmailData = {
-          userEmail: schedule.email,
-          scheduleId: schedule._id.toString(),
-          videoTitle: trend.description,
-          videoDescription: trend.description,
-          videoKeypoints: trend.keypoints,
-          startedAt: new Date(),
-          timezone: schedule.timezone,
-        };
-        await this.emailService.sendVideoProcessingEmail(processingEmailData);
-      } catch (emailError) {}
-    } else {
+    // Send processing email (only sent once since we prevent duplicate processing above)
+    try {
+      const processingEmailData: VideoProcessingEmailData = {
+        userEmail: schedule.email,
+        scheduleId: schedule._id.toString(),
+        videoTitle: trend.description,
+        videoDescription: trend.description,
+        videoKeypoints: trend.keypoints,
+        startedAt: new Date(),
+        timezone: schedule.timezone,
+      };
+      await this.emailService.sendVideoProcessingEmail(processingEmailData);
+    } catch (emailError) {
+      // Email sending failed, but don't fail the process
     }
 
     notificationService.notifyScheduledVideoProgress(

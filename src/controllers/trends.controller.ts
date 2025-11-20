@@ -9,6 +9,11 @@ import {
   getCityBasedTrendsSchema,
   generateContentFromDescriptionSchema,
 } from "../validations/trends.validations";
+import AuthService from "../services/auth.service";
+import {
+  getUserExistingVideoTitles,
+  filterExistingTrends,
+} from "../utils/videoHelpers";
 
 // ==================== CONSTANTS ====================
 const DEFAULT_TREND_COUNT = 10;
@@ -192,14 +197,38 @@ export const getRealEstateTrends = async (req: Request, res: Response) => {
   try {
     const trends = await generateRealEstateTrends();
 
+    // Optionally filter out trends that already have videos (if user is authenticated)
+    let filteredTrends = trends;
+    try {
+      const authService = new AuthService();
+      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      
+      if (token) {
+        const user = await authService.getCurrentUser(token);
+        if (user) {
+          // Get user's existing video titles
+          const existingTitles = await getUserExistingVideoTitles(
+            user._id.toString(),
+            user.email
+          );
+          
+          // Filter out trends that match existing videos
+          filteredTrends = filterExistingTrends(trends, existingTitles);
+        }
+      }
+    } catch (authError) {
+      // If auth fails, just return all trends (don't break the API)
+      console.warn("Could not filter trends by existing videos:", authError);
+    }
+
     return ResponseHelper.success(
       res,
       "Real estate trends generated successfully",
       {
         topic: TOPIC_REAL_ESTATE,
         location: LOCATION_AMERICA,
-        trends,
-        count: trends.length,
+        trends: filteredTrends,
+        count: filteredTrends.length,
       }
     );
   } catch (error: any) {
@@ -245,6 +274,30 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
     );
     const endTime = Date.now();
 
+    // Optionally filter out trends that already have videos (if user is authenticated)
+    let filteredTrends = trends;
+    try {
+      const authService = new AuthService();
+      const token = (req.headers.authorization || "").replace("Bearer ", "");
+      
+      if (token) {
+        const user = await authService.getCurrentUser(token);
+        if (user) {
+          // Get user's existing video titles
+          const existingTitles = await getUserExistingVideoTitles(
+            user._id.toString(),
+            user.email
+          );
+          
+          // Filter out trends that match existing videos
+          filteredTrends = filterExistingTrends(trends, existingTitles);
+        }
+      }
+    } catch (authError) {
+      // If auth fails, just return all trends (don't break the API)
+      console.warn("Could not filter trends by existing videos:", authError);
+    }
+
     return ResponseHelper.success(
       res,
       `Real estate trends for ${normalizedCity} (${normalizedPosition}) generated successfully`,
@@ -252,8 +305,8 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
         topic: TOPIC_REAL_ESTATE,
         location: normalizedCity,
         position: normalizedPosition,
-        trends,
-        count: trends.length,
+        trends: filteredTrends,
+        count: filteredTrends.length,
         city: normalizedCity,
         processing_time_ms: endTime - startTime,
         cached: trends.length > 0 ? "Cache hit" : "Fresh generation",

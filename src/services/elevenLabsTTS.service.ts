@@ -351,17 +351,11 @@ async function generateSpeechPart(
 
   // Check if text exceeds limit
   if (textLength > characterLimit) {
-    console.log(`[TTS] Text for ${partName} exceeds limit (${textLength} > ${characterLimit}), splitting into chunks`);
-    
-    // Split text into chunks (using normalized text)
     const chunks = splitTextIntoChunks(normalizedText, characterLimit);
-    console.log(`[TTS] Split ${partName} into ${chunks.length} chunks`);
-
     // Generate speech for each chunk sequentially to maintain context
     // (Sequential instead of parallel to avoid context loss between chunks)
     const audioChunks: Buffer[] = [];
     for (let i = 0; i < chunks.length; i++) {
-      console.log(`[TTS] Generating chunk ${i + 1}/${chunks.length} for ${partName} (${chunks[i].length} chars)`);
       const audioBuffer = await generateSpeechChunk(
         voice_id, 
         chunks[i], 

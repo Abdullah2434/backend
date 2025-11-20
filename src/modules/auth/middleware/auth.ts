@@ -114,14 +114,24 @@ export function authenticate() {
       return next();
     }
 
-    // Extract access token
+    // Extract access token from query parameter or Authorization header
+    // For download-proxy route, allow token in query parameter for native downloads
+    const isDownloadProxyRoute = path === "/api/video/download-proxy" || 
+                                 path === "/video/download-proxy" ||
+                                 path.includes("/download-proxy");
+    const tokenFromQuery = isDownloadProxyRoute 
+      ? String((req.query as any).token || "").trim() 
+      : "";
     const authHeader = req.headers.authorization;
-    const accessToken = authHeader?.replace("Bearer ", "");
+    const tokenFromHeader = authHeader?.replace("Bearer ", "") || "";
+    
+    // Use token from query parameter if provided, otherwise fall back to header
+    const accessToken = tokenFromQuery || tokenFromHeader;
 
     if (!accessToken) {
       return res.status(401).json({
         success: false,
-        message: "Access token is required",
+        message: "Access token is required (provide via ?token=xxx or Authorization header)",
       });
     }
 

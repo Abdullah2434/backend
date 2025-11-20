@@ -60,6 +60,9 @@ videoSchema.index({ userId: 1, createdAt: -1 });
 videoSchema.index({ email: 1, createdAt: -1 });
 videoSchema.index({ status: 1, createdAt: -1 });
 videoSchema.index({ s3Key: 1 });
+// Compound indexes for efficient title lookups
+videoSchema.index({ userId: 1, title: 1 });
+videoSchema.index({ email: 1, title: 1 });
 
 export default mongoose.models.Video ||
   mongoose.model<IVideo>("Video", videoSchema);

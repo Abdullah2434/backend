@@ -211,7 +211,6 @@ export class CronMonitoringService {
     if (stats) {
       stats.isRunning = false;
       stats.lastError = `Force reset at ${new Date().toISOString()}`;
-      console.log(`🔄 Force reset job: ${jobName}`);
     } else {
       console.warn(`⚠️ Job ${jobName} not found for force reset`);
     }

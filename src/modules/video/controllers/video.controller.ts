@@ -66,7 +66,7 @@ export async function gallery(req: Request, res: Response) {
         tiktok_caption: captions.tiktok_caption || null,
         youtube_caption: captions.youtube_caption || null, // ✅ Ensure youtube_caption is always included
       };
-      
+
       return {
         id: video._id.toString(),
         videoId: video.videoId,
@@ -78,7 +78,9 @@ export async function gallery(req: Request, res: Response) {
         metadata: video.metadata,
         downloadUrl: video.downloadUrl || null,
         videoUrl: video.videoUrl || null,
-        socialMediaCaptions: video.socialMediaCaptions ? socialMediaCaptions : null,
+        socialMediaCaptions: video.socialMediaCaptions
+          ? socialMediaCaptions
+          : null,
         note: video.note || null,
       };
     });
@@ -132,8 +134,6 @@ export async function trackExecution(req: Request, res: Response) {
 
     await workflowHistory.save();
 
-  
-
     return res.json({
       success: true,
       message: "Execution tracked successfully",
@@ -145,7 +145,6 @@ export async function trackExecution(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-    
     return res.status(500).json({
       success: false,
       message: e.message || "Internal server error",
@@ -182,8 +181,6 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
       status: "pending",
     });
 
-  
-
     if (pendingWorkflows.length === 0) {
       return res.json({
         success: true,
@@ -205,11 +202,7 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
           message: "Your video creation is in progress",
           timestamp: new Date().toISOString(),
         });
-
-   
-      } catch (notificationError) {
-   
-      }
+      } catch (notificationError) {}
     }
 
     // Return pending workflow information
@@ -228,7 +221,6 @@ export async function checkPendingWorkflows(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-
     return res.status(500).json({
       success: false,
       message: e.message || "Internal server error",
@@ -283,9 +275,7 @@ export async function download(req: Request, res: Response) {
         result.videoId,
         Boolean(scheduleId)
       );
-    } catch (autoGenErr) {
-    
-    }
+    } catch (autoGenErr) {}
 
     // If captions are provided in the request (manual/custom flow), store them on the video
     try {
@@ -299,14 +289,11 @@ export async function download(req: Request, res: Response) {
           tiktok_caption: captions.tiktok_caption,
           youtube_caption: captions.youtube_caption,
         });
-     
       } else {
         // Otherwise, try to consume server-stored pending captions (generated at createVideo)
         try {
           const pending = await PendingCaptions.findOne({ email, title });
           if (pending?.captions) {
-     
-           
             await videoService.updateVideoCaptions(result.videoId, {
               instagram_caption: pending.captions.instagram_caption,
               facebook_caption: pending.captions.facebook_caption,
@@ -315,7 +302,7 @@ export async function download(req: Request, res: Response) {
               tiktok_caption: pending.captions.tiktok_caption,
               youtube_caption: pending.captions.youtube_caption, // ✅ Ensure youtube_caption is stored
             });
-            
+
             // best-effort cleanup
             try {
               await PendingCaptions.deleteOne({ _id: (pending as any)._id });
@@ -328,9 +315,7 @@ export async function download(req: Request, res: Response) {
           );
         }
       }
-    } catch (capErr) {
-  
-    }
+    } catch (capErr) {}
 
     // Update workflow history if executionId is provided
     if (executionId) {
@@ -342,10 +327,7 @@ export async function download(req: Request, res: Response) {
             completedAt: new Date(),
           }
         );
-      
-      } catch (workflowError) {
-      
-      }
+      } catch (workflowError) {}
     }
 
     // Send success notification
@@ -366,22 +348,18 @@ export async function download(req: Request, res: Response) {
       // Run asynchronously; do not delay the response
       (async () => {
         try {
-      
           // Idempotency: if already completed, skip posting
           const schedule = await VideoSchedule.findById(scheduleId);
           if (!schedule) {
-      
             return;
           }
 
           const trend = schedule.generatedTrends?.[Number(trendIndex)];
           if (!trend) {
-        
             return;
           }
 
           if (trend.status === "completed" && trend.videoId) {
-        
             return;
           }
 
@@ -409,10 +387,7 @@ export async function download(req: Request, res: Response) {
             videoUrl: downloadableUrl,
             videoTitle: result.title,
           });
-
-        } catch (autoErr: any) {
-        
-        }
+        } catch (autoErr: any) {}
       })();
     }
 
@@ -432,7 +407,6 @@ export async function download(req: Request, res: Response) {
           Number(trendIndex),
           "failed"
         );
-
       }
     } catch {}
     // Update workflow history as failed if executionId is provided
@@ -447,11 +421,8 @@ export async function download(req: Request, res: Response) {
             errorMessage: e.message || "Video download failed",
           }
         );
-   
       }
-    } catch (workflowError) {
-  
-    }
+    } catch (workflowError) {}
 
     // Send error notification if we have user info
     try {
@@ -470,9 +441,7 @@ export async function download(req: Request, res: Response) {
           );
         }
       }
-    } catch (notificationError) {
-
-    }
+    } catch (notificationError) {}
 
     return res
       .status(500)
@@ -593,7 +562,6 @@ export async function deleteVideoById(req: Request, res: Response) {
       });
     }
 
-
     // Get video to verify ownership
     const video = await videoService.getVideo(videoId);
     if (!video) {
@@ -621,7 +589,6 @@ export async function deleteVideoById(req: Request, res: Response) {
       });
     }
 
-
     return res.json({
       success: true,
       message: "Video deleted successfully",
@@ -631,8 +598,10 @@ export async function deleteVideoById(req: Request, res: Response) {
       },
     });
   } catch (e: any) {
-
-    const status = e.message.includes("Access token") || e.message.includes("token") ? 401 : 500;
+    const status =
+      e.message.includes("Access token") || e.message.includes("token")
+        ? 401
+        : 500;
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -650,7 +619,44 @@ export async function downloadProxy(req: Request, res: Response) {
       });
     }
 
+    // Get token from query parameter or Authorization header
+    const tokenFromQuery = String(req.query.token || "").trim();
+    const tokenFromHeader = (req.headers.authorization || "").replace("Bearer ", "").trim();
+    
+    // Use token from query parameter if provided, otherwise fall back to header
+    const token = tokenFromQuery || tokenFromHeader;
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Access token is required (provide via ?token=xxx or Authorization header)",
+      });
+    }
 
+    // Validate token
+    try {
+      const payload = authService.verifyToken(token);
+      if (!payload) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid or expired access token",
+        });
+      }
+
+      // Optionally verify user exists
+      const user = await authService.getCurrentUser(token);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+    } catch (authError: any) {
+      return res.status(401).json({
+        success: false,
+        message: authError.message || "Invalid or expired access token",
+      });
+    }
 
     // Fetch the video from S3 (server-side, no CORS issues)
     const videoResponse = await fetch(videoUrl);
@@ -757,7 +763,9 @@ export async function createPhotoAvatar(
 
     // Check for active subscription
     const subscriptionService = new SubscriptionService();
-    const subscription = await subscriptionService.getActiveSubscription(userId);
+    const subscription = await subscriptionService.getActiveSubscription(
+      userId
+    );
     if (!subscription) {
       return res.status(403).json({
         success: false,
@@ -823,8 +831,12 @@ export async function createVideo(req: Request, res: Response) {
           "Your monthly video limit has been reached",
           `
           <h2>Video Limit Reached</h2>
-          <p>You have reached your monthly video limit (${videoLimit.limit} videos per month).</p>
-          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month.</p>
+          <p>You have reached your monthly video limit (${
+            videoLimit.limit
+          } videos per month).</p>
+          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${
+            videoLimit.limit
+          } videos this month.</p>
           <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
           <p><a href="${
             process.env.FRONTEND_URL || "https://www.edgeairealty.com"
@@ -837,7 +849,11 @@ export async function createVideo(req: Request, res: Response) {
 
       return res.status(429).json({
         success: false,
-        message: `Video limit reached. You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month. Your subscription will renew monthly.`,
+        message: `Video limit reached. You have used ${
+          videoLimit.limit - videoLimit.remaining
+        } out of ${
+          videoLimit.limit
+        } videos this month. Your subscription will renew monthly.`,
         data: {
           limit: videoLimit.limit,
           remaining: videoLimit.remaining,
@@ -949,10 +965,7 @@ export async function createVideo(req: Request, res: Response) {
             },
             { upsert: true, new: true }
           );
-
-        
         } else {
-       
           // Fallback to traditional captions
           const captions = await CaptionGenerationService.generateCaptions(
             topic,
@@ -965,9 +978,7 @@ export async function createVideo(req: Request, res: Response) {
               socialHandles: body.socialHandles,
             }
           );
-          
 
-          
           await PendingCaptions.findOneAndUpdate(
             {
               email: body.email,
@@ -981,13 +992,9 @@ export async function createVideo(req: Request, res: Response) {
             },
             { upsert: true, new: true }
           );
-          
-
         }
       }
-    } catch (capGenErr) {
-
-    }
+    } catch (capGenErr) {}
     // Use native node http(s) for webhook POST
     const https = require("https");
     const url = require("url");
@@ -1035,7 +1042,6 @@ export async function createVideo(req: Request, res: Response) {
       });
     });
     webhookReq.on("error", (error: any) => {
- 
       return res.status(500).json({
         success: false,
         message: "Internal server error. Please try again later.",
@@ -1045,7 +1051,6 @@ export async function createVideo(req: Request, res: Response) {
     webhookReq.write(postData);
     webhookReq.end();
   } catch (error: any) {
-
     return res.status(500).json({
       success: false,
       message: "Internal server error. Please try again later.",
@@ -1090,8 +1095,12 @@ export async function generateVideo(req: Request, res: Response) {
           "Your monthly video limit has been reached",
           `
           <h2>Video Limit Reached</h2>
-          <p>You have reached your monthly video limit (${videoLimit.limit} videos per month).</p>
-          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month.</p>
+          <p>You have reached your monthly video limit (${
+            videoLimit.limit
+          } videos per month).</p>
+          <p>You have used ${videoLimit.limit - videoLimit.remaining} out of ${
+            videoLimit.limit
+          } videos this month.</p>
           <p>Your subscription will renew monthly, allowing you to create more videos next month.</p>
           <p><a href="${
             process.env.FRONTEND_URL || "https://www.edgeairealty.com"
@@ -1104,7 +1113,11 @@ export async function generateVideo(req: Request, res: Response) {
 
       return res.status(429).json({
         success: false,
-        message: `Video limit reached. You have used ${videoLimit.limit - videoLimit.remaining} out of ${videoLimit.limit} videos this month. Your subscription will renew monthly.`,
+        message: `Video limit reached. You have used ${
+          videoLimit.limit - videoLimit.remaining
+        } out of ${
+          videoLimit.limit
+        } videos this month. Your subscription will renew monthly.`,
         data: {
           limit: videoLimit.limit,
           remaining: videoLimit.remaining,
@@ -1155,7 +1168,6 @@ export async function generateVideo(req: Request, res: Response) {
       energyLevel = body.energyLevel;
       voiceEnergyParams =
         VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
-     
     } else if (
       body.customVoiceEnergy &&
       ["high", "mid", "low"].includes(body.customVoiceEnergy)
@@ -1163,7 +1175,6 @@ export async function generateVideo(req: Request, res: Response) {
       energyLevel = body.customVoiceEnergy;
       voiceEnergyParams =
         VOICE_ENERGY_PRESETS[energyLevel as keyof typeof VOICE_ENERGY_PRESETS];
-   
     } else {
       // Fallback: Get from user's saved settings
       try {
@@ -1176,14 +1187,12 @@ export async function generateVideo(req: Request, res: Response) {
           voiceEnergyParams = energyProfile.voiceParams;
           energyLevel = energyProfile.voiceEnergy;
         }
-      } catch (energyError) {
-    
-      }
+      } catch (energyError) {}
     }
     const avatarDoc = await DefaultAvatar.findOne({
       avatar_id: body.avatar_title,
     });
- 
+
     const gender = avatarDoc ? avatarDoc.gender : undefined;
     // Get voice_id from DefaultVoice by gender
     let voice_id: string | undefined = undefined;
@@ -1192,7 +1201,6 @@ export async function generateVideo(req: Request, res: Response) {
 
       voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
     }
-   
 
     // Resolve avatar types for title/body/conclusion avatars
     const avatarIdsToResolve = [
@@ -1255,7 +1263,6 @@ export async function generateVideo(req: Request, res: Response) {
           { upsert: true, new: true }
         );
       } else {
-       
         // Store fallback data
         await PendingCaptions.findOneAndUpdate(
           {
@@ -1281,9 +1288,7 @@ export async function generateVideo(req: Request, res: Response) {
           { upsert: true, new: true }
         );
       }
-    } catch (capGenErr) {
-    
-    }
+    } catch (capGenErr) {}
 
     const webhookData = {
       hook: {
@@ -1342,9 +1347,7 @@ export async function generateVideo(req: Request, res: Response) {
       webhookPayload.scheduleId !== undefined ||
       webhookPayload.trendIndex !== undefined
     ) {
-   
     } else {
-   
     }
 
     // Fire and forget: send request to n8n webhook and return immediately
@@ -1364,13 +1367,9 @@ export async function generateVideo(req: Request, res: Response) {
     };
     const webhookReq = https.request(options, (webhookRes: any) => {
       webhookRes.on("data", () => {}); // ignore data
-      webhookRes.on("end", () => {
-    
-      });
+      webhookRes.on("end", () => {});
     });
-    webhookReq.on("error", (error: any) => {
-     
-    });
+    webhookReq.on("error", (error: any) => {});
     webhookReq.write(postData);
     webhookReq.end();
     // Return immediately with request info
@@ -1389,7 +1388,6 @@ export async function generateVideo(req: Request, res: Response) {
 
     return res.json(response);
   } catch (error: any) {
-
     return res.status(500).json({
       success: false,
       message: "Internal server error. Please try again later.",
