@@ -913,6 +913,7 @@ export async function createVideo(req: Request, res: Response) {
       zipKeyPoints: body.zipKeyPoints || null,
       callToAction: body.callToAction,
       email: body.email,
+      language: body.language || "English", // Default to English if not provided
       timestamp: new Date().toISOString(),
       requestId: `video_${Date.now()}_${Math.random()
         .toString(36)
