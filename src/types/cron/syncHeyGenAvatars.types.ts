@@ -4,6 +4,7 @@
 
 export interface SyncHeyGenAvatar {
   avatar_id?: string;
+  talking_photo_id?: string;
   [key: string]: any;
 }
 

@@ -48,6 +48,7 @@ function validateAPIConfig(): { valid: boolean; error?: string } {
 
 /**
  * Extract avatar IDs from HeyGen API response
+ * Collects both avatar_id (from avatars) and talking_photo_id (from talking_photos)
  */
 function extractAvatarIdsFromAPI(responseData: any): {
   avatarIds: Set<string>;
@@ -73,18 +74,25 @@ function extractAvatarIdsFromAPI(responseData: any): {
 
   const avatarIds = new Set<string>();
 
-  // Add video avatar IDs
+  // Add video avatar IDs from avatars array
   for (const avatar of videoAvatars) {
     if (avatar.avatar_id && typeof avatar.avatar_id === "string") {
       avatarIds.add(avatar.avatar_id);
     }
   }
 
-  // Add photo avatar IDs (check both avatar_id and talking_photo_id)
+  // Add photo avatar IDs from talking_photos array
+  // Check both avatar_id and talking_photo_id fields
   for (const photo of photoAvatars) {
-    const avatarId = photo.avatar_id || (photo as any).talking_photo_id;
-    if (avatarId && typeof avatarId === "string") {
-      avatarIds.add(avatarId);
+    // Add talking_photo_id if it exists
+    const talkingPhotoId = (photo as any).talking_photo_id;
+    if (talkingPhotoId && typeof talkingPhotoId === "string") {
+      avatarIds.add(talkingPhotoId);
+    }
+
+    // Also add avatar_id if it exists (some talking_photos might have both)
+    if (photo.avatar_id && typeof photo.avatar_id === "string") {
+      avatarIds.add(photo.avatar_id);
     }
   }
 

@@ -297,6 +297,7 @@ export class VideoScheduleProcessing {
         topicKeyPoints: trend.keypoints,
         city: userSettings.city,
         preferredTone: userSettings.preferredTone,
+        language: userSettings.language,
         zipCode: 90014,
         zipKeyPoints: "new bars and restaurants",
         callToAction: userSettings.callToAction,
@@ -456,6 +457,28 @@ export class VideoScheduleProcessing {
         // Don't fail the entire process, just log the error
       }
 
+      // Map language from userSettings to language code
+      let languageCode: string | undefined = undefined;
+      if (userSettings?.language) {
+        // Map language names to codes
+        const languageMap: Record<string, string> = {
+          english: "en",
+          spanish: "es",
+          french: "fr",
+          german: "de",
+          italian: "it",
+          portuguese: "pt",
+          chinese: "zh",
+          japanese: "ja",
+          korean: "ko",
+        };
+
+        const languageLower = String(userSettings.language)
+          .toLowerCase()
+          .trim();
+        languageCode = languageMap[languageLower] || languageLower; // Use mapped code or original if not found
+      }
+
       // Generate Video API accepts flat format and converts internally
       // Use TTS audio URLs if available, otherwise fall back to text
       const videoGenerationData = {
@@ -478,6 +501,8 @@ export class VideoScheduleProcessing {
         scheduleId: scheduleId,
         trendIndex: trendIndex,
         _captions: captions,
+        ...(languageCode ? { language: languageCode } : {}), // Add language code if available
+
         ...(musicUrl ? { music: musicUrl } : {}),
       };
 

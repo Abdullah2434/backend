@@ -2,9 +2,11 @@ import { z } from "zod";
 
 /**
  * Validation schema for HeyGen avatar from API (for sync)
+ * Supports both avatar_id (for video avatars) and talking_photo_id (for photo avatars)
  */
 export const syncHeyGenAvatarSchema = z.object({
   avatar_id: z.string().optional(),
+  talking_photo_id: z.string().optional(),
 });
 
 /**
@@ -23,4 +25,3 @@ export const syncHeyGenAvatarsAPIResponseSchema = z.object({
  * Cron schedule constants for HeyGen avatars sync
  */
 export const HEYGEN_AVATARS_SYNC_SCHEDULE = "3 */12 * * *"; // Every 12 hours at minute 3
-

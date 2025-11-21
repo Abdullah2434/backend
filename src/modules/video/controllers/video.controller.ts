@@ -621,15 +621,18 @@ export async function downloadProxy(req: Request, res: Response) {
 
     // Get token from query parameter or Authorization header
     const tokenFromQuery = String(req.query.token || "").trim();
-    const tokenFromHeader = (req.headers.authorization || "").replace("Bearer ", "").trim();
-    
+    const tokenFromHeader = (req.headers.authorization || "")
+      .replace("Bearer ", "")
+      .trim();
+
     // Use token from query parameter if provided, otherwise fall back to header
     const token = tokenFromQuery || tokenFromHeader;
-    
+
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Access token is required (provide via ?token=xxx or Authorization header)",
+        message:
+          "Access token is required (provide via ?token=xxx or Authorization header)",
       });
     }
 
@@ -1220,6 +1223,55 @@ export async function generateVideo(req: Request, res: Response) {
       }
     }
 
+    // Get language code - check body.language first (from scheduled video), then userSettings
+    let languageCode: string | undefined = undefined;
+
+    // First, check if language is provided in request body (from scheduled video processing)
+    if (body.language && typeof body.language === "string") {
+      const languageMap: Record<string, string> = {
+        english: "en",
+        spanish: "es",
+        french: "fr",
+        german: "de",
+        italian: "it",
+        portuguese: "pt",
+        chinese: "zh",
+        japanese: "ja",
+        korean: "ko",
+      };
+      const languageLower = String(body.language).toLowerCase().trim();
+      languageCode = languageMap[languageLower] || languageLower;
+    } else {
+      // Fallback: Get from user settings
+      try {
+        const userVideoSettingsService = new UserVideoSettingsService();
+        const userSettings =
+          await userVideoSettingsService.getUserVideoSettings(body.email);
+
+        if (userSettings?.language) {
+          // Map language names to codes
+          const languageMap: Record<string, string> = {
+            english: "en",
+            spanish: "es",
+            french: "fr",
+            german: "de",
+            italian: "it",
+            portuguese: "pt",
+            chinese: "zh",
+            japanese: "ja",
+            korean: "ko",
+          };
+
+          const languageLower = String(userSettings.language)
+            .toLowerCase()
+            .trim();
+          languageCode = languageMap[languageLower] || languageLower; // Use mapped code or original if not found
+        }
+      } catch (langError) {
+        // If language fetch fails, continue without language code
+      }
+    }
+
     // Store caption generation data for asynchronous processing after webhook
     // Caption generation will happen after n8n webhook completes (second hook)
     try {
@@ -1317,6 +1369,7 @@ export async function generateVideo(req: Request, res: Response) {
       voice_id: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
+      ...(languageCode ? { language: languageCode } : {}), // Add language code if available
       // New voice energy parameters
       voiceEnergy: {
         stability: voiceEnergyParams.stability,
