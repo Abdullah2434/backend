@@ -25,6 +25,7 @@ export interface UserVideoSettingsData {
   preferredTone: string;
   callToAction: string;
   gender?: "male" | "female";
+  language?: string;
   email: string;
   voiceEnergy?: VoiceEnergyLevel;
   musicEnergy?: MusicEnergyLevel;

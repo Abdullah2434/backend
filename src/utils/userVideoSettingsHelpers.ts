@@ -26,7 +26,7 @@ export async function findUserByEmailOrNull(email: string) {
  * Build update data object for user video settings
  */
 export function buildUpdateData(data: UserVideoSettingsData) {
-  return {
+  const updateData: any = {
     prompt: data.prompt,
     avatar: data.avatar,
     titleAvatar: data.titleAvatar,
@@ -52,6 +52,13 @@ export function buildUpdateData(data: UserVideoSettingsData) {
     selectedMusicPreset: data.selectedMusicPreset,
     customVoiceMusic: data.customVoiceMusic,
   };
+  
+  // Explicitly include language if provided (even if empty string or null)
+  if (data.language !== undefined) {
+    updateData.language = data.language || null;
+  }
+  
+  return updateData;
 }
 
 /**
@@ -79,6 +86,7 @@ export function buildNewSettingsData(
     preferredTone: data.preferredTone,
     callToAction: data.callToAction,
     gender: data.gender,
+    language: data.language,
     voiceEnergy: data.voiceEnergy,
     musicEnergy: data.musicEnergy,
     selectedMusicTrackId: data.selectedMusicTrackId,

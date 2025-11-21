@@ -46,6 +46,7 @@ export const saveUserVideoSettingsSchema = z.object({
   preferredTone: z.string().min(1, "Preferred tone is required"),
   callToAction: z.string().min(1, "Call to action is required"),
   gender: z.enum(["male", "female"]).optional(),
+  language: z.string().optional(),
   email: z.string().email("Email must be a valid email address").min(1, "Email is required"),
   selectedVoiceId: z.string().optional(),
   selectedMusicTrackId: z.string().optional(),

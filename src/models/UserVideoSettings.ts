@@ -24,6 +24,7 @@ export interface IUserVideoSettings extends Document {
   preferredTone: string;
   callToAction: string;
   gender?: "male" | "female";
+  language?: string;
   voiceEnergy?: "high" | "mid" | "low";
   musicEnergy?: "high" | "mid" | "low";
   selectedMusicTrackId?: mongoose.Types.ObjectId;
@@ -123,6 +124,11 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
     gender: {
       type: String,
       enum: ["male", "female"],
+      required: false,
+      trim: true,
+    },
+    language: {
+      type: String,
       required: false,
       trim: true,
     },
