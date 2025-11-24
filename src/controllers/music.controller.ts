@@ -1,21 +1,19 @@
 import { Request, Response } from "express";
 import { MusicService } from "../services/music.service";
 import { S3Service } from "../services/s3";
-import multer from "multer";
 import { MusicEnergyLevel } from "../constants/voiceEnergy";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  uploadMusicTrackSchema,
-  getMusicTracksByEnergySchema,
-  getMusicTrackByIdSchema,
-  streamMusicPreviewSchema,
-  deleteMusicTrackSchema,
+  validateUploadMusicTrack,
+  validateGetAllMusicTracksQuery,
+  validateGetMusicTracksByEnergy,
+  validateGetMusicTrackById,
+  validateStreamMusicPreview,
+  validateDeleteMusicTrack,
 } from "../validations/music.validations";
-
-// ==================== CONSTANTS ====================
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const PREVIEW_URL_EXPIRATION = 3600; // 1 hour in seconds
-const VALID_ENERGY_CATEGORIES = ["high", "mid", "low"] as const;
+import { extractS3KeyFromUrl } from "../utils/musicHelpers";
+import { PREVIEW_URL_EXPIRATION } from "../constants/music.constants";
+import { musicUpload } from "../config/multer.config";
 
 // ==================== SERVICE INITIALIZATION ====================
 const s3Service = new S3Service({
@@ -26,39 +24,8 @@ const s3Service = new S3Service({
 });
 const musicService = new MusicService(s3Service);
 
-// ==================== MULTER CONFIGURATION ====================
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-  },
-  fileFilter: (req, file, cb) => {
-    // Accept audio files
-    if (file.mimetype.startsWith("audio/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only audio files are allowed"));
-    }
-  },
-});
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Extract S3 key from S3 URL
- */
-function extractS3KeyFromUrl(s3Url: string): string {
-  // Remove protocol and domain, keep only the path
-  return s3Url.split("/").slice(3).join("/");
-}
-
-/**
- * Validate energy category
- */
-function isValidEnergyCategory(category: string): category is MusicEnergyLevel {
-  return VALID_ENERGY_CATEGORIES.includes(category as MusicEnergyLevel);
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Upload music track (Admin endpoint)
  */
@@ -71,17 +38,17 @@ export async function uploadMusicTrack(req: Request, res: Response) {
     }
 
     // Validate request body
-    const validationResult = uploadMusicTrackSchema.safeParse(req.body);
+    const validationResult = validateUploadMusicTrack(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const { name, energyCategory, duration, artist, source, license, genre } =
-      validationResult.data;
+      validationResult.data!;
 
     // Create music track
     const musicTrack = await musicService.createMusicTrack({
@@ -119,17 +86,17 @@ export async function uploadMusicTrack(req: Request, res: Response) {
  */
 export async function getAllMusicTracks(req: Request, res: Response) {
   try {
-    const { energyCategory } = req.query;
-
-    // Validate energy category if provided
-    if (energyCategory && !isValidEnergyCategory(energyCategory as string)) {
+    // Validate query parameters
+    const validationResult = validateGetAllMusicTracksQuery(req.query);
+    if (!validationResult.success) {
       return ResponseHelper.badRequest(
         res,
-        `Invalid energy category. Must be one of: ${VALID_ENERGY_CATEGORIES.join(
-          ", "
-        )}`
+        "Validation failed",
+        validationResult.errors
       );
     }
+
+    const { energyCategory } = validationResult.data || {};
 
     const tracks = await musicService.getAllMusicTracks(
       energyCategory as MusicEnergyLevel | undefined
@@ -154,27 +121,25 @@ export async function getAllMusicTracks(req: Request, res: Response) {
  */
 export async function getMusicTracksByEnergy(req: Request, res: Response) {
   try {
-    const { energyCategory } = req.params;
-
-    // Validate energy category
-    const validationResult = getMusicTracksByEnergySchema.safeParse({
-      energyCategory,
-    });
+    // Validate route parameters
+    const validationResult = validateGetMusicTracksByEnergy(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { energyCategory } = validationResult.data!;
+
     const tracks = await musicService.getMusicTracksByEnergy(
-      validationResult.data.energyCategory as MusicEnergyLevel
+      energyCategory as MusicEnergyLevel
     );
 
     return ResponseHelper.success(
       res,
-      `Music tracks for ${validationResult.data.energyCategory} energy retrieved successfully`,
+      `Music tracks for ${energyCategory} energy retrieved successfully`,
       tracks
     );
   } catch (error: any) {
@@ -191,21 +156,19 @@ export async function getMusicTracksByEnergy(req: Request, res: Response) {
  */
 export async function getMusicTrackById(req: Request, res: Response) {
   try {
-    const { trackId } = req.params;
-
-    // Validate trackId
-    const validationResult = getMusicTrackByIdSchema.safeParse({ trackId });
+    // Validate route parameters
+    const validationResult = validateGetMusicTrackById(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const track = await musicService.getMusicTrackWithUrls(
-      validationResult.data.trackId
-    );
+    const { trackId } = validationResult.data!;
+
+    const track = await musicService.getMusicTrackWithUrls(trackId);
 
     if (!track) {
       return ResponseHelper.notFound(res, "Music track not found");
@@ -230,21 +193,19 @@ export async function getMusicTrackById(req: Request, res: Response) {
  */
 export async function streamMusicPreview(req: Request, res: Response) {
   try {
-    const { trackId } = req.params;
-
-    // Validate trackId
-    const validationResult = streamMusicPreviewSchema.safeParse({ trackId });
+    // Validate route parameters
+    const validationResult = validateStreamMusicPreview(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const track = await musicService.getMusicTrackById(
-      validationResult.data.trackId
-    );
+    const { trackId } = validationResult.data!;
+
+    const track = await musicService.getMusicTrackById(trackId);
 
     if (!track) {
       return ResponseHelper.notFound(res, "Music track not found");
@@ -273,21 +234,19 @@ export async function streamMusicPreview(req: Request, res: Response) {
  */
 export async function deleteMusicTrack(req: Request, res: Response) {
   try {
-    const { trackId } = req.params;
-
-    // Validate trackId
-    const validationResult = deleteMusicTrackSchema.safeParse({ trackId });
+    // Validate route parameters
+    const validationResult = validateDeleteMusicTrack(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const success = await musicService.deleteMusicTrack(
-      validationResult.data.trackId
-    );
+    const { trackId } = validationResult.data!;
+
+    const success = await musicService.deleteMusicTrack(trackId);
 
     if (!success) {
       return ResponseHelper.notFound(res, "Music track not found");
@@ -325,4 +284,4 @@ export async function getMusicTracksStats(req: Request, res: Response) {
 }
 
 // Export multer middleware for use in routes
-export { upload };
+export { musicUpload as upload };

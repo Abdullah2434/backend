@@ -1,142 +1,246 @@
-import * as crypto from "crypto";
-import { WebhookRequest, VideoAvatarCallbackPayload } from "../types";
+import { Request } from "express";
+import { WebhookRequest, WebhookResponse, WebhookResult } from "../types";
+import {
+  DEFAULT_WEBHOOK_URL,
+  USER_FRIENDLY_ERROR_MESSAGE,
+  VALID_AVATAR_STATUSES,
+} from "../constants/webhook.constants";
+import crypto from "crypto";
 
-// ==================== CONSTANTS ====================
-export const WEBHOOK_USER_AGENT = "VideoAvatar-Webhook/1.0";
-export const WEBHOOK_CONTENT_TYPE = "application/json";
-export const WEBHOOK_SIGNATURE_HEADER = "X-Webhook-Signature";
-export const DEFAULT_WEBHOOK_SECRET = "default-webhook-secret";
-export const HMAC_ALGORITHM = "sha256";
+// ==================== CONTROLLER HELPER FUNCTIONS ====================
 
-// ==================== SIGNATURE UTILITIES ====================
 /**
- * Generate webhook signature for security
+ * Extract authorization token from request headers
  */
-export function generateWebhookSignature(payload: any): string {
-  const secret = process.env.WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET;
-  const payloadString = JSON.stringify(payload);
-  return crypto
-    .createHmac(HMAC_ALGORITHM, secret)
-    .update(payloadString)
-    .digest("hex");
+export function extractAuthToken(req: Request): string | undefined {
+  return req.headers.authorization;
 }
 
 /**
- * Verify webhook signature
+ * Build webhook payload from validated data (controller-level)
  */
-export function verifyWebhookSignature(
-  payload: any,
-  signature: string
+export function buildWebhookPayload(data: {
+  avatar_id: string;
+  status: string;
+  avatar_group_id: string;
+  callback_id?: string;
+  user_id?: string;
+}): WebhookRequest {
+  return {
+    avatar_id: data.avatar_id,
+    status: data.status as "completed" | "failed",
+    avatar_group_id: data.avatar_group_id,
+    callback_id: data.callback_id,
+    user_id: data.user_id,
+  };
+}
+
+/**
+ * Get webhook URL with fallback to default
+ */
+export function getWebhookUrl(webhookUrl?: string): string {
+  return webhookUrl || DEFAULT_WEBHOOK_URL;
+}
+
+/**
+ * Build video complete payload
+ */
+export function buildVideoCompletePayload(data: {
+  videoId: string;
+  status?: string;
+  s3Key?: string;
+  metadata?: any;
+  error?: string;
+  scheduleId?: string;
+  trendIndex?: number;
+  captions?: any;
+}) {
+  return {
+    videoId: data.videoId,
+    status: data.status,
+    s3Key: data.s3Key,
+    metadata: data.metadata,
+    error: data.error,
+    scheduleId: data.scheduleId,
+    trendIndex: data.trendIndex,
+    captions: data.captions,
+  };
+}
+
+/**
+ * Build caption complete payload
+ */
+export function buildCaptionCompletePayload(data: {
+  videoId: string;
+  status: string;
+  email?: string;
+  title?: string;
+}) {
+  return {
+    videoId: data.videoId,
+    status: data.status,
+    email: data.email,
+    title: data.title,
+  };
+}
+
+/**
+ * Check if schedule context is valid
+ */
+export function isValidScheduleContext(
+  scheduleId?: string,
+  trendIndex?: number
 ): boolean {
-  try {
-    const expectedSignature = generateWebhookSignature(payload);
-    return crypto.timingSafeEqual(
-      Buffer.from(signature, "hex"),
-      Buffer.from(expectedSignature, "hex")
-    );
-  } catch (error) {
-    return false;
-  }
+  return !!(
+    scheduleId &&
+    (trendIndex === 0 || Number.isInteger(trendIndex))
+  );
 }
 
-// ==================== PAYLOAD BUILDING ====================
 /**
- * Build webhook payload with user information
+ * Build error notification payload
  */
-export function buildWebhookPayload(
+export function buildErrorNotificationPayload() {
+  return {
+    type: "error",
+    status: "error",
+    message: USER_FRIENDLY_ERROR_MESSAGE,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Build workflow error response payload
+ */
+export function buildWorkflowErrorResponsePayload(
+  executionId: string,
+  email: string,
+  errorMessage: string
+) {
+  return {
+    executionId,
+    email,
+    originalError: errorMessage,
+    userMessage: USER_FRIENDLY_ERROR_MESSAGE,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Determine HTTP status code based on error message
+ */
+export function getErrorStatus(error: Error): number {
+  const message = error.message.toLowerCase();
+
+  if (message.includes("not found")) {
+    return 404;
+  }
+  if (message.includes("invalid") || message.includes("required")) {
+    return 400;
+  }
+  return 500;
+}
+
+// ==================== SERVICE-LEVEL UTILITY FUNCTIONS ====================
+
+/**
+ * Build webhook payload with user information (service-level)
+ */
+export function buildWebhookPayloadWithUser(
   payload: WebhookRequest,
   user?: any
-): VideoAvatarCallbackPayload {
-  const webhookPayload: VideoAvatarCallbackPayload = {
-    avatar_id: payload.avatar_id,
-    status: payload.status,
-    avatar_group_id: payload.avatar_group_id,
-    callback_id: payload.callback_id,
-    user_id: payload.user_id,
-  };
-
-  // Add user information if available
+): WebhookRequest {
+  const webhookPayload: WebhookRequest = { ...payload };
   if (user) {
-    webhookPayload.user = {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    };
+    webhookPayload.user_id = user.id;
   }
-
   return webhookPayload;
 }
 
-// ==================== HEADER BUILDING ====================
 /**
- * Build webhook request headers
+ * Build webhook headers
  */
-export function buildWebhookHeaders(payload: any): Record<string, string> {
+export function buildWebhookHeaders(payload: WebhookRequest): Record<string, string> {
+  const secret = process.env.WEBHOOK_SECRET || "default-secret";
+  const payloadString = JSON.stringify(payload);
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(payloadString)
+    .digest("hex");
+
   return {
-    "Content-Type": WEBHOOK_CONTENT_TYPE,
-    "User-Agent": WEBHOOK_USER_AGENT,
-    [WEBHOOK_SIGNATURE_HEADER]: generateWebhookSignature(payload),
+    "Content-Type": "application/json",
+    "X-Webhook-Signature": signature,
+    "X-Webhook-Timestamp": new Date().toISOString(),
   };
 }
 
-// ==================== RESPONSE BUILDING ====================
 /**
  * Build success webhook response
  */
-export function buildSuccessWebhookResponse(data?: any) {
+export function buildSuccessWebhookResponse(data: any): WebhookResponse {
   return {
     success: true,
-    message: "Webhook sent successfully",
-    data: data || null,
+    message: "Webhook processed successfully",
+    data,
   };
 }
 
 /**
  * Build error webhook response
  */
-export function buildErrorWebhookResponse(error: any) {
+export function buildErrorWebhookResponse(error: any): WebhookResponse {
   return {
     success: false,
-    message: `Webhook failed: ${error?.message || "Unknown error"}`,
-    data: null,
+    message: error.message || "Webhook processing failed",
+    data: {
+      error: error.message || "Unknown error",
+    },
   };
 }
 
 /**
- * Build webhook result response
+ * Build webhook result
  */
 export function buildWebhookResult(
   success: boolean,
   message: string,
-  data?: any
-) {
+  data: any
+): WebhookResult {
   return {
     success,
     message,
-    data: data || null,
+    data,
   };
 }
 
-// ==================== VALIDATION ====================
 /**
- * Validate webhook URL
+ * Validate video ID
  */
-export function isValidWebhookUrl(url: string): boolean {
+export function validateVideoId(videoId: string): void {
+  if (!videoId || typeof videoId !== "string" || videoId.trim() === "") {
+    throw new Error("Video ID is required and must be a non-empty string");
+  }
+}
+
+/**
+ * Verify webhook signature
+ */
+export function verifyWebhookSignature(payload: any, signature: string): boolean {
   try {
-    const urlObj = new URL(url);
-    return urlObj.protocol === "http:" || urlObj.protocol === "https:";
-  } catch {
+    const secret = process.env.WEBHOOK_SECRET || "default-secret";
+    const payloadString = JSON.stringify(payload);
+    const expectedSignature = crypto
+      .createHmac("sha256", secret)
+      .update(payloadString)
+      .digest("hex");
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (error) {
+    console.error("Error verifying webhook signature:", error);
     return false;
   }
 }
-
-/**
- * Validate video ID is present
- */
-export function validateVideoId(videoId: string | undefined): void {
-  if (!videoId) {
-    throw new Error("Video ID is required");
-  }
-}
-

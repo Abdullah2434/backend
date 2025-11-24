@@ -1,57 +1,23 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
 import { PaymentMethodsService } from "../services/payment-methods.service";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  updatePaymentMethodSchema,
-  setDefaultPaymentMethodSchema,
-  removePaymentMethodSchema,
+  validateUpdatePaymentMethod,
+  validateSetDefaultPaymentMethod,
+  validateRemovePaymentMethod,
 } from "../validations/paymentMethods.validations";
+import {
+  getUserIdFromRequest,
+  getErrorStatus,
+  formatPaymentMethodErrorMessage,
+} from "../utils/paymentMethodsHelpers";
 
 // ==================== SERVICE INSTANCE ====================
 const paymentMethodsService = new PaymentMethodsService();
 
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("access token") ||
-    message.includes("not authenticated")
-  ) {
-    return 401;
-  }
-  if (
-    message.includes("does not belong") ||
-    message.includes("access denied")
-  ) {
-    return 403;
-  }
-  if (
-    message.includes("not succeeded") ||
-    message.includes("canceled subscription") ||
-    message.includes("cannot remove") ||
-    message.includes("required")
-  ) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * GET /api/payment-methods
  * Fetch all saved payment methods for the logged-in user
@@ -127,16 +93,16 @@ export async function updatePaymentMethod(
     const userId = getUserIdFromRequest(req);
 
     // Validate request body
-    const validationResult = updatePaymentMethodSchema.safeParse(req.body);
+    const validationResult = validateUpdatePaymentMethod(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const { setupIntentId, setAsDefault } = validationResult.data;
+    const { setupIntentId, setAsDefault } = validationResult.data!;
 
     const cardInfo = await paymentMethodsService.confirmSetupIntent(
       userId,
@@ -167,23 +133,22 @@ export async function setDefaultPaymentMethod(
 ) {
   try {
     const userId = getUserIdFromRequest(req);
-    const { paymentMethodId } = req.params;
 
-    // Validate paymentMethodId
-    const validationResult = setDefaultPaymentMethodSchema.safeParse({
-      paymentMethodId,
-    });
+    // Validate route parameters
+    const validationResult = validateSetDefaultPaymentMethod(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { paymentMethodId } = validationResult.data!;
 
     await paymentMethodsService.setDefaultPaymentMethod(
       userId,
-      validationResult.data.paymentMethodId
+      paymentMethodId
     );
 
     return ResponseHelper.success(
@@ -193,12 +158,7 @@ export async function setDefaultPaymentMethod(
   } catch (error: any) {
     console.error("Error in setDefaultPaymentMethod:", error);
     const status = getErrorStatus(error);
-    let message = error.message || "Internal server error";
-
-    // Customize message for specific errors
-    if (error.message.includes("canceled subscription")) {
-      message = "Cannot update payment method for canceled subscription";
-    }
+    const message = formatPaymentMethodErrorMessage(error);
 
     return res.status(status).json({
       success: false,
@@ -217,24 +177,20 @@ export async function removePaymentMethod(
 ) {
   try {
     const userId = getUserIdFromRequest(req);
-    const { paymentMethodId } = req.params;
 
-    // Validate paymentMethodId
-    const validationResult = removePaymentMethodSchema.safeParse({
-      paymentMethodId,
-    });
+    // Validate route parameters
+    const validationResult = validateRemovePaymentMethod(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    await paymentMethodsService.removePaymentMethod(
-      userId,
-      validationResult.data.paymentMethodId
-    );
+    const { paymentMethodId } = validationResult.data!;
+
+    await paymentMethodsService.removePaymentMethod(userId, paymentMethodId);
 
     return ResponseHelper.success(res, "Payment method removed successfully");
   } catch (error: any) {

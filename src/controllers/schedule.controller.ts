@@ -1,157 +1,27 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
 import VideoScheduleService from "../services/videoSchedule.service";
 import TimezoneService from "../utils/timezone";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  editSchedulePostSchema,
-  schedulePostIdSchema,
-  scheduleIdSchema,
+  validateEditSchedulePost,
+  validateSchedulePostId,
+  validateScheduleId,
 } from "../validations/schedule.validations";
-
-// ==================== CONSTANTS ====================
-const POST_ID_SEPARATOR = "_";
-const POST_STATUSES = ["pending", "completed", "processing", "failed"] as const;
+import {
+  getUserIdFromRequest,
+  parsePostId,
+  formatPostData,
+  formatScheduleInfo,
+  getErrorStatus,
+  prepareUpdateData,
+} from "../utils/scheduleHelpers";
 
 // ==================== SERVICE INSTANCE ====================
 const videoScheduleService = new VideoScheduleService();
 
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id;
-}
-
-/**
- * Parse post ID to extract schedule ID and index
- */
-function parsePostId(postId: string): { scheduleId: string; index: number } {
-  if (!postId.includes(POST_ID_SEPARATOR)) {
-    throw new Error(
-      "Invalid post ID format. Expected format: scheduleId_index"
-    );
-  }
-
-  const parts = postId.split(POST_ID_SEPARATOR);
-  const index = parseInt(parts[1]);
-
-  if (isNaN(index)) {
-    throw new Error("Invalid post index in post ID");
-  }
-
-  return {
-    scheduleId: parts[0],
-    index,
-  };
-}
-
-/**
- * Format post data for response
- */
-function formatPostData(
-  post: any,
-  postId: string,
-  timezone: string,
-  includeVideoId: boolean = false
-) {
-  return {
-    id: postId,
-    description: post.description,
-    keypoints: post.keypoints,
-    scheduledFor: post.scheduledFor,
-    status: post.status,
-    scheduledForLocal: TimezoneService.convertFromUTC(
-      post.scheduledFor,
-      timezone
-    ),
-    captions: {
-      instagram: post.instagram_caption,
-      facebook: post.facebook_caption,
-      linkedin: post.linkedin_caption,
-      twitter: post.twitter_caption,
-      tiktok: post.tiktok_caption,
-      youtube: post.youtube_caption,
-    },
-    ...(includeVideoId && { videoId: post.videoId }),
-  };
-}
-
-/**
- * Format schedule info for response
- */
-function formatScheduleInfo(schedule: any) {
-  return {
-    frequency: schedule.frequency,
-    days: schedule.schedule?.days || [],
-    times: schedule.schedule?.times || [],
-    startDate: schedule.startDate,
-    endDate: schedule.endDate,
-    isActive: schedule.isActive,
-    status: schedule.status,
-    totalVideos: schedule.generatedTrends?.length || 0,
-    pendingVideos:
-      schedule.generatedTrends?.filter((t: any) => t.status === "pending")
-        .length || 0,
-    completedVideos:
-      schedule.generatedTrends?.filter((t: any) => t.status === "completed")
-        .length || 0,
-    processingVideos:
-      schedule.generatedTrends?.filter((t: any) => t.status === "processing")
-        .length || 0,
-    failedVideos:
-      schedule.generatedTrends?.filter((t: any) => t.status === "failed")
-        .length || 0,
-  };
-}
-
-/**
- * Convert scheduledFor to UTC with timezone handling
- */
-function convertScheduledForToUTC(
-  scheduledFor: string | Date,
-  timezone: string
-): Date {
-  if (typeof scheduledFor === "string") {
-    return TimezoneService.ensureUTCDate(scheduledFor, timezone);
-  } else if (scheduledFor instanceof Date) {
-    const dateString = scheduledFor
-      .toISOString()
-      .replace("T", " ")
-      .replace("Z", "")
-      .split(".")[0];
-    return TimezoneService.ensureUTCDate(dateString, timezone);
-  }
-  throw new Error("Invalid scheduledFor format");
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (message.includes("token") || message.includes("not authenticated")) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (
-    message.includes("invalid") ||
-    message.includes("out of range") ||
-    message.includes("can only")
-  ) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Get all pending schedule posts
  */
@@ -261,69 +131,35 @@ export async function editSchedulePost(
     const timezone = TimezoneService.detectTimezone(req);
 
     // Validate postId format
-    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    const postIdValidation = validateSchedulePostId({ postId });
     if (!postIdValidation.success) {
-      const errors = postIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        postIdValidation.errors
+      );
     }
 
     // Validate request body
-    const validationResult = editSchedulePostSchema.safeParse(req.body);
+    const validationResult = validateEditSchedulePost(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
-
-    const { description, keypoints, scheduledFor, captions } =
-      validationResult.data;
 
     // Prepare update data
-    const updateData: any = {};
-    if (description !== undefined) updateData.description = description;
-    if (keypoints !== undefined) updateData.keypoints = keypoints;
-
-    // Convert scheduledFor to UTC if provided
-    if (scheduledFor !== undefined) {
-      try {
-        const scheduledForUTC = convertScheduledForToUTC(
-          scheduledFor,
-          timezone
-        );
-        if (isNaN(scheduledForUTC.getTime())) {
-          return ResponseHelper.badRequest(
-            res,
-            "Invalid scheduledFor date format"
-          );
-        }
-        updateData.scheduledFor = scheduledForUTC;
-      } catch (error: any) {
-        return ResponseHelper.badRequest(
-          res,
+    let updateData: any;
+    try {
+      updateData = prepareUpdateData(validationResult.data!, timezone);
+    } catch (error: any) {
+      return ResponseHelper.badRequest(
+        res,
+        error.message ||
           "Invalid scheduledFor date format or timezone conversion failed"
-        );
-      }
-    }
-
-    // Handle captions object
-    if (captions !== undefined) {
-      if (captions.instagram !== undefined)
-        updateData.instagram_caption = captions.instagram;
-      if (captions.facebook !== undefined)
-        updateData.facebook_caption = captions.facebook;
-      if (captions.linkedin !== undefined)
-        updateData.linkedin_caption = captions.linkedin;
-      if (captions.twitter !== undefined)
-        updateData.twitter_caption = captions.twitter;
-      if (captions.tiktok !== undefined)
-        updateData.tiktok_caption = captions.tiktok;
-      if (captions.youtube !== undefined)
-        updateData.youtube_caption = captions.youtube;
+      );
     }
 
     // Update the post
@@ -371,13 +207,13 @@ export async function deleteSchedulePost(
     const { scheduleId, postId } = req.params;
 
     // Validate postId format
-    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    const postIdValidation = validateSchedulePostId({ postId });
     if (!postIdValidation.success) {
-      const errors = postIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        postIdValidation.errors
+      );
     }
 
     const updatedSchedule = await videoScheduleService.deleteSchedulePostById(
@@ -419,13 +255,13 @@ export async function getSchedulePost(
     const timezone = TimezoneService.detectTimezone(req);
 
     // Validate postId format
-    const postIdValidation = schedulePostIdSchema.safeParse({ postId });
+    const postIdValidation = validateSchedulePostId({ postId });
     if (!postIdValidation.success) {
-      const errors = postIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        postIdValidation.errors
+      );
     }
 
     const result = await videoScheduleService.getSchedulePostById(
@@ -470,13 +306,13 @@ export async function deleteEntireSchedule(
     const { scheduleId } = req.params;
 
     // Validate scheduleId
-    const validationResult = scheduleIdSchema.safeParse({ scheduleId });
+    const validationResult = validateScheduleId({ scheduleId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const deleted = await videoScheduleService.deleteEntireSchedule(

@@ -8,158 +8,28 @@ import TimezoneService from "../utils/timezone";
 import { SubscriptionService } from "../services/subscription.service";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  createScheduleSchema,
-  scheduleIdParamSchema,
-  updateScheduleSchema,
+  validateCreateSchedule,
+  validateScheduleIdParam,
+  validateUpdateSchedule,
 } from "../validations/videoSchedule.validations";
-
-// ==================== CONSTANTS ====================
-const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const DEFAULT_DURATION = "1 month";
-
-// Video statuses
-const VIDEO_STATUSES = {
-  COMPLETED: "completed",
-  PENDING: "pending",
-  PROCESSING: "processing",
-  FAILED: "failed",
-} as const;
+import {
+  getUserIdFromRequest,
+  convertDateToUTC,
+  formatScheduleResponse,
+  formatVideoTrend,
+  calculateCompletionRate,
+  getUpcomingVideos,
+  calculateScheduleStats,
+  prepareUpdateData,
+  getErrorStatus,
+} from "../utils/videoScheduleHelpers";
+import { DEFAULT_DURATION } from "../constants/videoSchedule.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const videoScheduleService = new VideoScheduleService();
 
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Convert date from user's timezone to UTC
- */
-function convertDateToUTC(
-  date: string | Date,
-  timezone: string,
-  isEndDate: boolean = false
-): Date {
-  if (typeof date === "string") {
-    // If date is just a date (YYYY-MM-DD), treat it as start/end of day in user's timezone
-    if (date.match(DATE_ONLY_REGEX)) {
-      const time = isEndDate ? "23:59:59" : "00:00:00";
-      return TimezoneService.ensureUTCDate(`${date} ${time}`, timezone);
-    } else {
-      // If it includes time, use as is
-      return TimezoneService.ensureUTCDate(date, timezone);
-    }
-  } else {
-    return new Date(date);
-  }
-}
-
-/**
- * Format schedule response data
- */
-function formatScheduleResponse(schedule: any) {
-  return {
-    scheduleId: schedule._id.toString(),
-    frequency: schedule.frequency,
-    schedule: schedule.schedule,
-    days: schedule.schedule?.days || [],
-    times: schedule.schedule?.times || [],
-    startDate: schedule.startDate,
-    endDate: schedule.endDate,
-    isActive: schedule.isActive,
-    totalVideos: schedule.generatedTrends?.length || 0,
-    completedVideos:
-      schedule.generatedTrends?.filter(
-        (t: any) => t.status === VIDEO_STATUSES.COMPLETED
-      ).length || 0,
-    pendingVideos:
-      schedule.generatedTrends?.filter(
-        (t: any) => t.status === VIDEO_STATUSES.PENDING
-      ).length || 0,
-    processingVideos:
-      schedule.generatedTrends?.filter(
-        (t: any) => t.status === VIDEO_STATUSES.PROCESSING
-      ).length || 0,
-    failedVideos:
-      schedule.generatedTrends?.filter(
-        (t: any) => t.status === VIDEO_STATUSES.FAILED
-      ).length || 0,
-  };
-}
-
-/**
- * Format video trend data
- */
-function formatVideoTrend(trend: any, index: number) {
-  return {
-    index,
-    description: trend.description,
-    keypoints: trend.keypoints,
-    scheduledFor: trend.scheduledFor,
-    status: trend.status,
-    videoId: trend.videoId,
-    caption_status: trend.caption_status || "ready",
-    enhanced_with_dynamic_posts: trend.enhanced_with_dynamic_posts || false,
-    caption_processed_at: trend.caption_processed_at,
-    caption_error: trend.caption_error,
-    socialCaptions: {
-      instagram: trend.instagram_caption,
-      facebook: trend.facebook_caption,
-      linkedin: trend.linkedin_caption,
-      twitter: trend.twitter_caption,
-      tiktok: trend.tiktok_caption,
-      youtube: trend.youtube_caption,
-    },
-  };
-}
-
-/**
- * Calculate completion rate
- */
-function calculateCompletionRate(
-  total: number,
-  completed: number
-): number {
-  if (total === 0) return 0;
-  return Math.round((completed / total) * 100 * 100) / 100;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("subscription")) {
-    return 403;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("already exists")) {
-    return 409;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Create a new video schedule
  * POST /api/video-schedule
@@ -173,17 +43,17 @@ export async function createSchedule(
     const timezone = TimezoneService.detectTimezone(req);
 
     // Validate request body
-    const validationResult = createScheduleSchema.safeParse(req.body);
+    const validationResult = validateCreateSchedule(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const { frequency, schedule, startDate, endDate, email: bodyEmail } =
-      validationResult.data;
+      validationResult.data!;
 
     // Check for active subscription
     const subscriptionService = new SubscriptionService();
@@ -278,20 +148,7 @@ export async function getSchedule(req: AuthenticatedRequest, res: Response) {
     }
 
     const scheduleData = formatScheduleResponse(schedule);
-
-    // Get upcoming videos
-    const upcomingVideos = schedule.generatedTrends
-      .filter(
-        (t: any) =>
-          t.status === VIDEO_STATUSES.PENDING &&
-          new Date(t.scheduledFor) > new Date()
-      )
-      .slice(0, 5)
-      .map((t: any) => ({
-        description: t.description,
-        scheduledFor: t.scheduledFor,
-        status: t.status,
-      }));
+    const upcomingVideos = getUpcomingVideos(schedule, 5);
 
     return ResponseHelper.success(res, "Schedule retrieved successfully", {
       ...scheduleData,
@@ -320,41 +177,30 @@ export async function updateSchedule(
     const { scheduleId } = req.params;
 
     // Validate scheduleId parameter
-    const scheduleIdValidation = scheduleIdParamSchema.safeParse({
-      scheduleId,
-    });
+    const scheduleIdValidation = validateScheduleIdParam({ scheduleId });
     if (!scheduleIdValidation.success) {
-      const errors = scheduleIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        scheduleIdValidation.errors
+      );
     }
 
     // Validate request body
-    const validationResult = updateScheduleSchema.safeParse(req.body);
+    const validationResult = validateUpdateSchedule(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const rawUpdateData = validationResult.data;
     const timezone = TimezoneService.detectTimezone(req);
-
-    // Convert date strings to Date objects if provided
-    const updateData: any = { ...rawUpdateData };
-    if (updateData.startDate) {
-      updateData.startDate = convertDateToUTC(updateData.startDate, timezone, false);
-    }
-    if (updateData.endDate) {
-      updateData.endDate = convertDateToUTC(updateData.endDate, timezone, true);
-    }
+    const updateData = prepareUpdateData(validationResult.data!, timezone);
 
     const updatedSchedule = await videoScheduleService.updateSchedule(
-      scheduleId,
+      scheduleIdValidation.data!.scheduleId,
       userId,
       updateData
     );
@@ -394,17 +240,17 @@ export async function deactivateSchedule(
     const { scheduleId } = req.params;
 
     // Validate scheduleId parameter
-    const validationResult = scheduleIdParamSchema.safeParse({ scheduleId });
+    const validationResult = validateScheduleIdParam({ scheduleId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const success = await videoScheduleService.deactivateSchedule(
-      scheduleId,
+      validationResult.data!.scheduleId,
       userId
     );
 
@@ -441,12 +287,16 @@ export async function getScheduleDetails(
 
     const scheduleData = formatScheduleResponse(schedule);
 
-    return ResponseHelper.success(res, "Schedule details retrieved successfully", {
-      ...scheduleData,
-      videos: schedule.generatedTrends.map((trend: any, index: number) =>
-        formatVideoTrend(trend, index)
-      ),
-    });
+    return ResponseHelper.success(
+      res,
+      "Schedule details retrieved successfully",
+      {
+        ...scheduleData,
+        videos: schedule.generatedTrends.map((trend: any, index: number) =>
+          formatVideoTrend(trend, index)
+        ),
+      }
+    );
   } catch (error: any) {
     console.error("Error in getScheduleDetails:", error);
     const status = getErrorStatus(error);
@@ -473,40 +323,23 @@ export async function getScheduleStats(
       return ResponseHelper.notFound(res, "No active schedule found");
     }
 
-    const total = schedule.generatedTrends.length;
-    const completed = schedule.generatedTrends.filter(
-      (t: any) => t.status === VIDEO_STATUSES.COMPLETED
-    ).length;
-    const pending = schedule.generatedTrends.filter(
-      (t: any) => t.status === VIDEO_STATUSES.PENDING
-    ).length;
-    const processing = schedule.generatedTrends.filter(
-      (t: any) => t.status === VIDEO_STATUSES.PROCESSING
-    ).length;
-    const failed = schedule.generatedTrends.filter(
-      (t: any) => t.status === VIDEO_STATUSES.FAILED
-    ).length;
+    const stats = calculateScheduleStats(schedule);
+    const completionRate = calculateCompletionRate(stats.total, stats.completed);
 
-    const stats = {
-      total,
-      completed,
-      pending,
-      processing,
-      failed,
-    };
-
-    const completionRate = calculateCompletionRate(total, completed);
-
-    return ResponseHelper.success(res, "Schedule statistics retrieved successfully", {
-      stats,
-      completionRate,
-      scheduleInfo: {
-        frequency: schedule.frequency,
-        startDate: schedule.startDate,
-        endDate: schedule.endDate,
-        isActive: schedule.isActive,
-      },
-    });
+    return ResponseHelper.success(
+      res,
+      "Schedule statistics retrieved successfully",
+      {
+        stats,
+        completionRate,
+        scheduleInfo: {
+          frequency: schedule.frequency,
+          startDate: schedule.startDate,
+          endDate: schedule.endDate,
+          isActive: schedule.isActive,
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Error in getScheduleStats:", error);
     const status = getErrorStatus(error);

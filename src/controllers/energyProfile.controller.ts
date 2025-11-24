@@ -8,34 +8,19 @@ import {
 } from "../constants/voiceEnergy";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  setPresetProfileSchema,
-  setCustomVoiceMusicSchema,
+  validateSetPresetProfile,
+  validateSetCustomVoiceMusic,
 } from "../validations/energyProfile.validations";
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user email from authenticated request
- */
-function getUserEmail(req: AuthenticatedRequest | Request): string | null {
-  return (req as AuthenticatedRequest).user?.email || null;
-}
-
-/**
- * Format energy profile response data
- */
-function formatEnergyProfileResponse(settings: any) {
-  return {
-    voiceEnergy: settings.voiceEnergy,
-    musicEnergy: settings.musicEnergy,
-    customVoiceMusic: settings.customVoiceMusic,
-    selectedMusicTrackId: settings.selectedMusicTrackId,
-  };
-}
+import {
+  getUserEmail,
+  formatEnergyProfileResponse,
+} from "../utils/energyProfileHelpers";
 
 // ==================== SERVICE INSTANCE ====================
 const userVideoSettingsService = new UserVideoSettingsService();
 
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Set energy profile preset (updates both voice and music energy)
  */
@@ -51,16 +36,16 @@ export async function setPresetProfile(
     }
 
     // Validate request body
-    const validationResult = setPresetProfileSchema.safeParse(req.body);
+    const validationResult = validateSetPresetProfile(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const { energyLevel } = validationResult.data;
+    const { energyLevel } = validationResult.data!;
 
     // Set energy profile
     const settings = await userVideoSettingsService.setEnergyProfile(
@@ -98,17 +83,17 @@ export async function setCustomVoiceMusic(
     }
 
     // Validate request body
-    const validationResult = setCustomVoiceMusicSchema.safeParse(req.body);
+    const validationResult = validateSetCustomVoiceMusic(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const { voiceEnergy, musicEnergy, selectedMusicTrackId } =
-      validationResult.data;
+      validationResult.data!;
 
     // Set custom voice and music settings
     const settings = await userVideoSettingsService.setCustomVoiceMusic(

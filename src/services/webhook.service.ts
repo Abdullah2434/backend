@@ -11,7 +11,7 @@ import PostWebhookDynamicGenerationService from "./postWebhookDynamicGeneration.
 import VideoWebhookStatus from "../models/VideoWebhookStatus";
 import { generateFromDescription } from "./trends.service";
 import {
-  buildWebhookPayload,
+  buildWebhookPayloadWithUser,
   buildWebhookHeaders,
   buildSuccessWebhookResponse,
   buildErrorWebhookResponse,
@@ -43,7 +43,7 @@ export class WebhookService {
     user?: any
   ): Promise<WebhookResponse> {
     try {
-      const webhookPayload = buildWebhookPayload(payload, user);
+      const webhookPayload = buildWebhookPayloadWithUser(payload, user);
       const headers = buildWebhookHeaders(webhookPayload);
 
       const response = await fetch(webhookUrl, {

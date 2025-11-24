@@ -1,9 +1,6 @@
 import { Response } from "express";
-import multer from "multer";
-import fs from "fs";
 import VideoAvatarService from "../services/videoAvatar.service";
 import { getS3 } from "../services/s3";
-import { notificationService } from "../services/notification.service";
 import { SubscriptionService } from "../services/subscription.service";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
@@ -12,154 +9,32 @@ import {
   AuthenticatedRequest,
 } from "../types";
 import {
-  createVideoAvatarSchema,
-  avatarIdParamSchema,
-  s3KeyParamSchema,
+  validateCreateVideoAvatar,
+  validateAvatarIdParam,
+  validateS3KeyParam,
 } from "../validations/videoAvatar.validations";
-
-// ==================== CONSTANTS ====================
-const TEMP_DIR = "/tmp/";
-const MAX_FILE_SIZE = 1000 * 1024 * 1024; // 1GB
-const MAX_FIELD_SIZE = 1000 * 1024 * 1024; // 1GB
-const MAX_FILES = 10;
-const MAX_FIELDS = 20;
-const SIGNED_URL_EXPIRY_SECONDS = 3600; // 1 hour
-
-const TEMP_AVATAR_ID = "temp-avatar-id";
-
-// Socket notification statuses
-const NOTIFICATION_STATUSES = {
-  VALIDATION: "validation",
-  PROGRESS: "progress",
-  COMPLETED: "completed",
-  ERROR: "error",
-  FINAL_RESULT: "final_result",
-} as const;
+import {
+  getUserIdFromRequest,
+  extractAccessToken,
+  isValidUrl,
+  cleanupTempFiles,
+  validateFileNotEmpty,
+  getErrorStatus,
+  extractFilesFromRequest,
+  validateFilesOrUrls,
+  emitInitialNotification,
+  emitFinalNotification,
+  emitErrorNotification,
+  tryGetMovSignedUrl,
+} from "../utils/videoAvatarHelpers";
+import { videoAvatarUploadMiddleware } from "../config/multer.videoAvatar.config";
+import { SIGNED_URL_EXPIRY_SECONDS } from "../constants/videoAvatar.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const videoAvatarService = new VideoAvatarService();
 
-// ==================== MULTER CONFIGURATION ====================
-// Configure multer for file uploads with streaming to avoid memory issues
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, TEMP_DIR);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, file.fieldname + "-" + uniqueSuffix);
-    },
-  }),
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-    fieldSize: MAX_FIELD_SIZE,
-    files: MAX_FILES,
-    fields: MAX_FIELDS,
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("video/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only video files are allowed") as any);
-    }
-  },
-});
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: AuthenticatedRequest): string | undefined {
-  return req.headers.authorization?.replace("Bearer ", "");
-}
-
-/**
- * Validate URL format
- */
-function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Clean up temporary files
- */
-function cleanupTempFiles(files: (Express.Multer.File | undefined)[]): void {
-  files.forEach((file) => {
-    if (file?.path && fs.existsSync(file.path)) {
-      try {
-        fs.unlinkSync(file.path);
-      } catch (error) {
-        console.warn(`Failed to clean up temp file ${file.path}:`, error);
-      }
-    }
-  });
-}
-
-/**
- * Validate file is not empty
- */
-function validateFileNotEmpty(
-  file: Express.Multer.File | undefined,
-  fieldName: string
-): void {
-  if (file && (!file.path || file.size === 0)) {
-    throw new Error(`Empty ${fieldName} file`);
-  }
-}
-
-/**
- * Get final notification status from result status
- */
-function getFinalNotificationStatus(
-  status: string | undefined
-): "completed" | "error" | "progress" {
-  if (status === "completed") return "completed";
-  if (status === "failed") return "error";
-  return "progress";
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("subscription")) {
-    return 403;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Submit Video Avatar Creation Request (with file uploads)
  * POST /v2/video_avatar
@@ -172,7 +47,6 @@ export async function createVideoAvatar(
   let consentStatementFile: Express.Multer.File | undefined;
 
   try {
-    const rawFiles: any = (req as any).files || {};
     const {
       avatar_name,
       avatar_group_id,
@@ -183,20 +57,19 @@ export async function createVideoAvatar(
     } = req.body;
 
     // Validate request body
-    const validationResult = createVideoAvatarSchema.safeParse(req.body);
+    const validationResult = validateCreateVideoAvatar(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     // Get files from multer
-    trainingFootageFile =
-      (rawFiles?.training_footage?.[0] as Express.Multer.File) || undefined;
-    consentStatementFile =
-      (rawFiles?.consent_statement?.[0] as Express.Multer.File) || undefined;
+    const files = extractFilesFromRequest(req);
+    trainingFootageFile = files.trainingFootageFile;
+    consentStatementFile = files.consentStatementFile;
 
     // Get user ID and token
     const userId = req.user?._id;
@@ -222,18 +95,14 @@ export async function createVideoAvatar(
     }
 
     // Validate files or URLs are provided
-    if (!trainingFootageFile && !training_footage_url) {
-      return ResponseHelper.badRequest(
-        res,
-        "Either training_footage file or training_footage_url is required"
-      );
-    }
-
-    if (!consentStatementFile && !consent_statement_url) {
-      return ResponseHelper.badRequest(
-        res,
-        "Either consent_statement file or consent_statement_url is required"
-      );
+    const filesValidation = validateFilesOrUrls(
+      trainingFootageFile,
+      training_footage_url,
+      consentStatementFile,
+      consent_statement_url
+    );
+    if (!filesValidation.isValid) {
+      return ResponseHelper.badRequest(res, filesValidation.error!);
     }
 
     // Validate files are not empty
@@ -250,16 +119,7 @@ export async function createVideoAvatar(
     }
 
     // Emit initial socket notification
-    notificationService.notifyVideoAvatarProgress(
-      userId,
-      TEMP_AVATAR_ID,
-      NOTIFICATION_STATUSES.VALIDATION,
-      NOTIFICATION_STATUSES.PROGRESS,
-      {
-        avatar_name,
-        message: "Validating files and preparing avatar creation...",
-      }
-    );
+    emitInitialNotification(userId.toString(), avatar_name);
 
     // Create video avatar
     const request: CreateVideoAvatarWithFilesRequest = {
@@ -285,24 +145,7 @@ export async function createVideoAvatar(
     cleanupTempFiles([trainingFootageFile, consentStatementFile]);
 
     // Emit final socket notification
-    const finalStatus = getFinalNotificationStatus(result.status);
-    notificationService.notifyVideoAvatarProgress(
-      userId,
-      result.avatar_id,
-      NOTIFICATION_STATUSES.FINAL_RESULT,
-      finalStatus,
-      {
-        avatar_name: result.avatar_name || avatar_name,
-        avatar_id: result.avatar_id,
-        avatar_group_id: result.avatar_group_id,
-        status: result.status,
-        message: result.message,
-        preview_image_url: result.preview_image_url,
-        preview_video_url: result.preview_video_url,
-        default_voice_id: result.default_voice_id,
-        error: result.error,
-      }
-    );
+    emitFinalNotification(userId.toString(), result, avatar_name);
 
     return res.status(202).json(result);
   } catch (error: any) {
@@ -310,19 +153,11 @@ export async function createVideoAvatar(
 
     // Emit error socket notification
     const userId = req.user?._id;
-    if (userId) {
-      notificationService.notifyVideoAvatarProgress(
-        userId,
-        TEMP_AVATAR_ID,
-        NOTIFICATION_STATUSES.ERROR,
-        NOTIFICATION_STATUSES.ERROR,
-        {
-          avatar_name: req.body.avatar_name,
-          error: error.message || "Internal server error",
-          message: "Failed to create video avatar",
-        }
-      );
-    }
+    emitErrorNotification(
+      userId?.toString(),
+      req.body.avatar_name,
+      error.message || "Internal server error"
+    );
 
     // Clean up temporary files on error
     cleanupTempFiles([trainingFootageFile, consentStatementFile]);
@@ -338,22 +173,7 @@ export async function createVideoAvatar(
 /**
  * Multer middleware for file uploads
  */
-export const uploadMiddleware = (req: any, res: any, next: any) => {
-  const mw = upload.fields([
-    { name: "training_footage", maxCount: 1 },
-    { name: "consent_statement", maxCount: 1 },
-  ]);
-  mw(req, res, (err: any) => {
-    if (err) {
-      return res.status(400).json({
-        success: false,
-        message: "Upload error",
-        error: String(err),
-      });
-    }
-    next();
-  });
-};
+export const uploadMiddleware = videoAvatarUploadMiddleware;
 
 /**
  * Check Video Avatar Generation Status
@@ -364,20 +184,20 @@ export async function getVideoAvatarStatus(
   res: Response
 ) {
   try {
-    const { id } = req.params;
-
     // Validate avatar ID parameter
-    const validationResult = avatarIdParamSchema.safeParse({ id });
+    const validationResult = validateAvatarIdParam(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { id } = validationResult.data!;
+
     const result: VideoAvatarStatusResponse =
-      await videoAvatarService.getAvatarStatus(validationResult.data.id);
+      await videoAvatarService.getAvatarStatus(id);
 
     return ResponseHelper.success(
       res,
@@ -424,33 +244,24 @@ export async function healthCheck(req: AuthenticatedRequest, res: Response) {
  */
 export async function proxyVideoFile(req: AuthenticatedRequest, res: Response) {
   try {
-    const { s3Key } = req.params;
-
     // Validate s3Key parameter
-    const validationResult = s3KeyParamSchema.safeParse({ s3Key });
+    const validationResult = validateS3KeyParam(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { s3Key } = validationResult.data!;
     const s3Service = getS3();
-    let actualS3Key = decodeURIComponent(validationResult.data.s3Key);
+    let actualS3Key = decodeURIComponent(s3Key);
 
     // If the URL has .mp4 but the actual file is .mov, try the original .mov file first
-    if (actualS3Key.endsWith(".mp4")) {
-      const movS3Key = actualS3Key.replace(/\.mp4$/i, ".mov");
-      try {
-        const signedUrl = await s3Service.getSignedVideoUrl(
-          movS3Key,
-          SIGNED_URL_EXPIRY_SECONDS
-        );
-        return res.redirect(signedUrl);
-      } catch (error) {
-        // If .mov doesn't exist, try the .mp4 version
-      }
+    const movSignedUrl = await tryGetMovSignedUrl(s3Service, actualS3Key);
+    if (movSignedUrl) {
+      return res.redirect(movSignedUrl);
     }
 
     // Generate a signed URL for the S3 object

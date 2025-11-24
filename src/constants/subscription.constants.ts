@@ -1,73 +1,42 @@
 /**
- * Constants for subscription service
+ * Subscription service constants
  */
 
 import { SubscriptionPlan } from "../types";
 
-// Stripe API version
+export const DEFAULT_BILLING_HISTORY_LIMIT = 20;
+export const MAX_BILLING_HISTORY_LIMIT = 100;
+export const DEFAULT_CURRENCY = "usd";
 export const STRIPE_API_VERSION = "2023-10-16";
 
-// Default monthly plan price (in cents)
-export const DEFAULT_MONTHLY_PRICE = 99700; // $997.00
-
-// Default video limit for monthly plan
-export const DEFAULT_MONTHLY_VIDEO_LIMIT = 30;
-
-// Default billing period in days
-export const DEFAULT_BILLING_PERIOD_DAYS = 30;
-
 /**
- * Get subscription plans configuration
+ * Get all available subscription plans
  */
 export function getSubscriptionPlans(): SubscriptionPlan[] {
   return [
     {
-      id: "monthly",
-      name: "Monthly Plan",
-      price: parseInt(
-        process.env.STRIPE_MONTHLY_PRICE || String(DEFAULT_MONTHLY_PRICE),
-        10
-      ), // $997.00 in cents, configurable via env
-      videoLimit: DEFAULT_MONTHLY_VIDEO_LIMIT,
-      stripePriceId:
-        process.env.STRIPE_MONTHLY_PRICE_ID ||
-        process.env.STRIPE_PRICE_ID ||
-        "price_monthly",
-      features: [
-        "30 videos per month",
-        "Unlimited photo avatars",
-        "Unlimited video avatars",
-        "Unlimited custom voices",
-        "Monthly renewal",
-      ],
+      id: "basic",
+      name: "Basic Plan",
+      price: 99,
+      videoLimit: 1,
+      stripePriceId: process.env.STRIPE_BASIC_PRICE_ID || "",
+      features: ["1 video per month", "Basic support"],
+    },
+    {
+      id: "growth",
+      name: "Growth Plan",
+      price: 199,
+      videoLimit: 4,
+      stripePriceId: process.env.STRIPE_GROWTH_PRICE_ID || "",
+      features: ["4 videos per month", "Priority support"],
+    },
+    {
+      id: "professional",
+      name: "Professional Plan",
+      price: 399,
+      videoLimit: 12,
+      stripePriceId: process.env.STRIPE_PROFESSIONAL_PRICE_ID || "",
+      features: ["12 videos per month", "Premium support", "Advanced features"],
     },
   ];
 }
-
-// Subscription status constants
-export const VALID_SUBSCRIPTION_STATUSES = [
-  "active",
-  "canceled",
-  "past_due",
-  "unpaid",
-  "pending",
-  "incomplete",
-] as const;
-
-export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "pending"] as const;
-
-export const INCOMPLETE_SUBSCRIPTION_STATUSES = [
-  "pending",
-  "incomplete",
-  "past_due",
-] as const;
-
-// Billing status mappings
-export const INVOICE_STATUS_TO_BILLING_STATUS: Record<string, string> = {
-  paid: "succeeded",
-  open: "open",
-  void: "failed",
-  uncollectible: "failed",
-  draft: "pending",
-};
-

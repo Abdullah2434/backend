@@ -1,18 +1,33 @@
 import { Request, Response } from "express";
 import AuthService from "../services/auth.service";
 import { SubscriptionService } from "../services/subscription.service";
-import { ApiResponse } from "../types";
+import { ResponseHelper } from "../utils/responseHelper";
+import {
+  validateCreateSubscription,
+  validateCreatePaymentIntent,
+  validateConfirmPaymentIntent,
+  validatePaymentIntentIdParam,
+  validateGetPaymentIntentStatusQuery,
+  validateChangePlan,
+  validateGetBillingHistoryQuery,
+  validateSyncSubscriptionFromStripe,
+  validateAutoSyncOnPaymentSuccess,
+  validateDebugWebhook,
+} from "../validations/subscription.validations";
+import {
+  requireAuth,
+  extractToken,
+  getErrorStatus,
+  prepareBillingHistoryOptions,
+  getSyncIdentifier,
+} from "../utils/subscriptionHelpers";
+import { DEFAULT_CURRENCY, STRIPE_API_VERSION } from "../constants/subscription.constants";
 
+// ==================== SERVICE INSTANCES ====================
 const authService = new AuthService();
 const subscriptionService = new SubscriptionService();
 
-function requireAuth(req: Request) {
-  const token = (req.headers.authorization || "").replace("Bearer ", "");
-  if (!token) throw new Error("Access token is required");
-  const payload = authService.verifyToken(token);
-  if (!payload) throw new Error("Invalid or expired access token");
-  return payload;
-}
+// ==================== CONTROLLER FUNCTIONS ====================
 
 /**
  * Get all available subscription plans
@@ -21,11 +36,11 @@ export async function getPlans(req: Request, res: Response) {
   try {
     const plans = subscriptionService.getPlans();
 
-    return res.json({
-      success: true,
-      message: "Subscription plans retrieved successfully",
-      data: { plans },
-    });
+    return ResponseHelper.success(
+      res,
+      "Subscription plans retrieved successfully",
+      { plans }
+    );
   } catch (e: any) {
     return res.status(500).json({
       success: false,
@@ -41,25 +56,23 @@ export async function getPlans(req: Request, res: Response) {
 export async function getCurrentSubscription(req: Request, res: Response) {
   try {
     // Try to get authentication, but don't require it
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = extractToken(req);
 
     if (!token) {
       // No token provided - return no subscription (guest user)
-      return res.json({
-        success: true,
-        message: "No authentication provided - guest user",
-        data: { subscription: null },
-      });
+      return ResponseHelper.success(
+        res,
+        "No authentication provided - guest user",
+        { subscription: null }
+      );
     }
 
     // Verify token if provided
     const payload = authService.verifyToken(token);
     if (!payload) {
       // Invalid token - return no subscription
-      return res.json({
-        success: true,
-        message: "Invalid token - guest user",
-        data: { subscription: null },
+      return ResponseHelper.success(res, "Invalid token - guest user", {
+        subscription: null,
       });
     }
 
@@ -69,25 +82,20 @@ export async function getCurrentSubscription(req: Request, res: Response) {
     );
 
     if (!subscription) {
-      return res.json({
-        success: true,
-        message: "No active subscription found",
-        data: { subscription: null },
+      return ResponseHelper.success(res, "No active subscription found", {
+        subscription: null,
       });
     }
 
-    return res.json({
-      success: true,
-      message: "Subscription retrieved successfully",
-      data: { subscription },
+    return ResponseHelper.success(res, "Subscription retrieved successfully", {
+      subscription,
     });
   } catch (e: any) {
-
-    return res.json({
-      success: true,
-      message: "Error retrieving subscription - guest user",
-      data: { subscription: null },
-    });
+    return ResponseHelper.success(
+      res,
+      "Error retrieving subscription - guest user",
+      { subscription: null }
+    );
   }
 }
 
@@ -97,14 +105,18 @@ export async function getCurrentSubscription(req: Request, res: Response) {
 export async function createSubscription(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { planId, paymentMethodId } = req.body;
 
-    if (!planId || !paymentMethodId) {
-      return res.status(400).json({
-        success: false,
-        message: "Plan ID and payment method ID are required",
-      });
+    // Validate request body
+    const validationResult = validateCreateSubscription(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { planId, paymentMethodId } = validationResult.data!;
 
     const subscription = await subscriptionService.createSubscription({
       userId: payload.userId,
@@ -112,13 +124,11 @@ export async function createSubscription(req: Request, res: Response) {
       paymentMethodId,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Subscription created successfully",
-      data: { subscription },
+    return ResponseHelper.created(res, "Subscription created successfully", {
+      subscription,
     });
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -135,12 +145,12 @@ export async function cancelSubscription(req: Request, res: Response) {
 
     await subscriptionService.cancelSubscription(payload.userId);
 
-    return res.json({
-      success: true,
-      message: "Subscription will be canceled at the end of the current period",
-    });
+    return ResponseHelper.success(
+      res,
+      "Subscription will be canceled at the end of the current period"
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -157,12 +167,9 @@ export async function reactivateSubscription(req: Request, res: Response) {
 
     await subscriptionService.reactivateSubscription(payload.userId);
 
-    return res.json({
-      success: true,
-      message: "Subscription reactivated successfully",
-    });
+    return ResponseHelper.success(res, "Subscription reactivated successfully");
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -180,13 +187,13 @@ export async function getPaymentMethods(req: Request, res: Response) {
       payload.userId
     );
 
-    return res.json({
-      success: true,
-      message: "Payment methods retrieved successfully",
-      data: { paymentMethods },
-    });
+    return ResponseHelper.success(
+      res,
+      "Payment methods retrieved successfully",
+      { paymentMethods }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -200,15 +207,13 @@ export async function getPaymentMethods(req: Request, res: Response) {
 export async function checkVideoLimit(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const videoLimit = await subscriptionService.canCreateVideo(payload.userId);
+    const videoLimit = await subscriptionService.canCreateVideo(
+      payload.userId
+    );
 
-    return res.json({
-      success: true,
-      message: "Video limit check completed",
-      data: videoLimit,
-    });
+    return ResponseHelper.success(res, "Video limit check completed", videoLimit);
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -222,32 +227,29 @@ export async function checkVideoLimit(req: Request, res: Response) {
 export async function createPaymentIntent(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { planId } = req.body;
-    if (!planId) {
-      return res.status(400).json({
-        success: false,
-        message: "Plan ID is required",
-      });
+
+    // Validate request body
+    const validationResult = validateCreatePaymentIntent(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { planId } = validationResult.data!;
 
     const plan = subscriptionService.getPlan(planId);
     if (!plan) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid plan ID",
-      });
+      return ResponseHelper.badRequest(res, "Invalid plan ID");
     }
 
     // Get user information
-    const user = await authService.getCurrentUser(
-      req.headers.authorization?.replace("Bearer ", "") || ""
-    );
+    const user = await authService.getCurrentUser(extractToken(req));
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
+      return ResponseHelper.unauthorized(res, "User not found");
     }
 
     // Check for existing incomplete payment intents for this user and plan
@@ -258,11 +260,11 @@ export async function createPaymentIntent(req: Request, res: Response) {
       );
 
     if (existingSubs.hasPending || existingSubs.hasIncomplete) {
-      return res.status(400).json({
-        success: false,
-        message: "You already have a pending or incomplete subscription for this plan",
-        data: existingSubs
-      });
+      return ResponseHelper.badRequest(
+        res,
+        "You already have a pending or incomplete subscription for this plan",
+        existingSubs
+      );
     }
 
     // Create payment intent (service handles all validation and cleanup automatically)
@@ -272,19 +274,20 @@ export async function createPaymentIntent(req: Request, res: Response) {
       customerEmail: user.email,
       customerName: `${user.firstName} ${user.lastName}`,
     });
-    return res.json({
-      success: true,
-      message: "Payment intent and subscription created successfully",
-      data: {
+
+    return ResponseHelper.success(
+      res,
+      "Payment intent and subscription created successfully",
+      {
         paymentIntent: result.paymentIntent,
         subscription: result.subscription,
         plan,
         amount: plan.price,
-        currency: "usd",
-      },
-    });
+        currency: DEFAULT_CURRENCY,
+      }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -298,14 +301,18 @@ export async function createPaymentIntent(req: Request, res: Response) {
 export async function confirmPaymentIntent(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { paymentIntentId, paymentMethodId } = req.body;
 
-    if (!paymentIntentId || !paymentMethodId) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment intent ID and payment method ID are required",
-      });
+    // Validate request body
+    const validationResult = validateConfirmPaymentIntent(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { paymentIntentId, paymentMethodId } = validationResult.data!;
 
     // Confirm payment intent and create subscription
     const subscription =
@@ -314,13 +321,13 @@ export async function confirmPaymentIntent(req: Request, res: Response) {
         paymentMethodId
       );
 
-    return res.status(201).json({
-      success: true,
-      message: "Payment confirmed and subscription created successfully",
-      data: { subscription },
-    });
+    return ResponseHelper.created(
+      res,
+      "Payment confirmed and subscription created successfully",
+      { subscription }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -334,22 +341,35 @@ export async function confirmPaymentIntent(req: Request, res: Response) {
 export async function getPaymentIntentStatus(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { id } = req.params;
-    const { autoSync } = req.query; // Optional: autoSync=true to automatically sync on success
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment intent ID is required",
-      });
+    // Validate route parameter
+    const paramValidation = validatePaymentIntentIdParam(req.params);
+    if (!paramValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        paramValidation.errors
+      );
     }
+
+    // Validate query parameters
+    const queryValidation = validateGetPaymentIntentStatusQuery(req.query);
+    if (!queryValidation.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        queryValidation.errors
+      );
+    }
+
+    const { id } = paramValidation.data!;
+    const { autoSync } = queryValidation.data!;
 
     // Get payment intent status from Stripe
     const paymentIntent = await subscriptionService.getPaymentIntentStatus(id);
 
     // If payment succeeded and autoSync is enabled, automatically sync subscription
     if (paymentIntent.status === "succeeded" && autoSync === "true") {
-  
       try {
         const subscription =
           await subscriptionService.syncSubscriptionFromStripe(
@@ -357,32 +377,31 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
             payload.userId
           );
 
-        return res.json({
-          success: true,
-          message:
-            "Payment intent status retrieved and subscription synced successfully",
-          data: {
+        return ResponseHelper.success(
+          res,
+          "Payment intent status retrieved and subscription synced successfully",
+          {
             paymentIntent,
             subscription, // Auto-synced subscription
             autoSynced: true,
-          },
-        });
+          }
+        );
       } catch (syncError: any) {
         console.error("Failed to auto-sync subscription:", syncError);
         // Still return payment intent status even if sync fails
       }
     }
 
-    return res.json({
-      success: true,
-      message: "Payment intent status retrieved successfully",
-      data: {
+    return ResponseHelper.success(
+      res,
+      "Payment intent status retrieved successfully",
+      {
         paymentIntent,
         autoSynced: false,
-      },
-    });
+      }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -396,14 +415,18 @@ export async function getPaymentIntentStatus(req: Request, res: Response) {
 export async function changePlan(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { newPlanId } = req.body;
 
-    if (!newPlanId) {
-      return res.status(400).json({
-        success: false,
-        message: "New plan ID is required",
-      });
+    // Validate request body
+    const validationResult = validateChangePlan(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { newPlanId } = validationResult.data!;
 
     // Change the plan
     const subscription = await subscriptionService.changePlan(
@@ -411,13 +434,11 @@ export async function changePlan(req: Request, res: Response) {
       newPlanId
     );
 
-    return res.json({
-      success: true,
-      message: "Plan changed successfully",
-      data: { subscription },
+    return ResponseHelper.success(res, "Plan changed successfully", {
+      subscription,
     });
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -438,10 +459,7 @@ export async function getPlanChangeOptions(req: Request, res: Response) {
     );
 
     if (!currentSubscription) {
-      return res.status(400).json({
-        success: false,
-        message: "No active subscription found",
-      });
+      return ResponseHelper.badRequest(res, "No active subscription found");
     }
 
     // Get upgrade/downgrade options
@@ -449,13 +467,13 @@ export async function getPlanChangeOptions(req: Request, res: Response) {
       currentSubscription.planId
     );
 
-    return res.json({
-      success: true,
-      message: "Plan change options retrieved successfully",
-      data: options,
-    });
+    return ResponseHelper.success(
+      res,
+      "Plan change options retrieved successfully",
+      options
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -469,35 +487,31 @@ export async function getPlanChangeOptions(req: Request, res: Response) {
 export async function getBillingHistory(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { limit = 20, offset = 0, status, startDate, endDate } = req.query;
 
-    // Parse query parameters
-    const options: any = {
-      limit: parseInt(limit as string) || 20,
-      offset: parseInt(offset as string) || 0,
-    };
-
-    if (status) options.status = status as string;
-    if (startDate) options.startDate = new Date(startDate as string);
-    if (endDate) options.endDate = new Date(endDate as string);
-
-    // Validate limit
-    if (options.limit > 100) {
-      options.limit = 100; // Max 100 records per request
+    // Validate query parameters
+    const validationResult = validateGetBillingHistoryQuery(req.query);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const options = prepareBillingHistoryOptions(validationResult.data!);
 
     const result = await subscriptionService.getBillingHistory(
       payload.userId,
       options
     );
 
-    return res.json({
-      success: true,
-      message: "Billing history retrieved successfully",
-      data: result,
-    });
+    return ResponseHelper.success(
+      res,
+      "Billing history retrieved successfully",
+      result
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -514,13 +528,13 @@ export async function getBillingSummary(req: Request, res: Response) {
 
     const summary = await subscriptionService.getBillingSummary(payload.userId);
 
-    return res.json({
-      success: true,
-      message: "Billing summary retrieved successfully",
-      data: summary,
-    });
+    return ResponseHelper.success(
+      res,
+      "Billing summary retrieved successfully",
+      summary
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -536,19 +550,21 @@ export async function getBillingSummary(req: Request, res: Response) {
 export async function syncSubscriptionFromStripe(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { stripeSubscriptionId, paymentIntentId } = req.body;
 
-    if (!stripeSubscriptionId && !paymentIntentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Either stripeSubscriptionId or paymentIntentId is required",
-      });
+    // Validate request body
+    const validationResult = validateSyncSubscriptionFromStripe(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    // Use payment intent ID if provided, otherwise use subscription ID
-    const identifier = paymentIntentId || stripeSubscriptionId;
+    const { stripeSubscriptionId, paymentIntentId } = validationResult.data!;
 
-   
+    // Use payment intent ID if provided, otherwise use subscription ID
+    const identifier = getSyncIdentifier(paymentIntentId, stripeSubscriptionId);
 
     // Sync subscription (creates if doesn't exist, updates if exists)
     // The service will automatically detect if it's a payment intent ID or subscription ID
@@ -557,15 +573,15 @@ export async function syncSubscriptionFromStripe(req: Request, res: Response) {
       payload.userId
     );
 
-    return res.json({
-      success: true,
-      message: "Subscription synced successfully from Stripe",
-      data: {
+    return ResponseHelper.success(
+      res,
+      "Subscription synced successfully from Stripe",
+      {
         subscription,
-      },
-    });
+      }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -580,49 +596,57 @@ export async function syncSubscriptionFromStripe(req: Request, res: Response) {
 export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
   try {
     const payload = requireAuth(req);
-    const { paymentIntentId } = req.body;
 
-    if (!paymentIntentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment intent ID is required",
-      });
+    // Validate request body
+    const validationResult = validateAutoSyncOnPaymentSuccess(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { paymentIntentId } = validationResult.data!;
+
     // Check payment intent status first
     const paymentIntent = await subscriptionService.getPaymentIntentStatus(
       paymentIntentId
     );
+
     if (paymentIntent.status !== "succeeded") {
-      return res.status(400).json({
-        success: false,
-        message: `Payment intent status is ${paymentIntent.status}, not succeeded. Cannot sync subscription.`,
-        data: {
+      return ResponseHelper.badRequest(
+        res,
+        `Payment intent status is ${paymentIntent.status}, not succeeded. Cannot sync subscription.`,
+        {
           paymentIntent: {
             id: paymentIntent.id,
             status: paymentIntent.status,
             metadata: paymentIntent.metadata,
           },
-        },
-      });
+        }
+      );
     }
+
     // Automatically sync subscription
     const subscription = await subscriptionService.syncSubscriptionFromStripe(
       paymentIntentId,
       payload.userId
     );
-    return res.json({
-      success: true,
-      message: "Payment succeeded and subscription synced successfully",
-      data: {
+
+    return ResponseHelper.success(
+      res,
+      "Payment succeeded and subscription synced successfully",
+      {
         paymentIntent: {
           id: paymentIntent.id,
           status: paymentIntent.status,
         },
         subscription,
-      },
-    });
+      }
+    );
   } catch (e: any) {
-    const status = e.message.includes("Access token") ? 401 : 500;
+    const status = getErrorStatus(e);
     return res.status(status).json({
       success: false,
       message: e.message || "Internal server error",
@@ -636,19 +660,22 @@ export async function autoSyncOnPaymentSuccess(req: Request, res: Response) {
  */
 export async function debugWebhook(req: Request, res: Response) {
   try {
-    const { paymentIntentId, subscriptionId } = req.body;
-
-    if (!paymentIntentId && !subscriptionId) {
-      return res.status(400).json({
-        success: false,
-        message: "Either paymentIntentId or subscriptionId is required",
-      });
+    // Validate request body
+    const validationResult = validateDebugWebhook(req.body);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
+
+    const { paymentIntentId, subscriptionId } = validationResult.data!;
 
     const stripe = new (await import("stripe")).default(
       process.env.STRIPE_SECRET_KEY!,
       {
-        apiVersion: "2023-10-16",
+        apiVersion: STRIPE_API_VERSION,
       }
     );
 
@@ -676,11 +703,7 @@ export async function debugWebhook(req: Request, res: Response) {
       };
     }
 
-    return res.json({
-      success: true,
-      message: "Debug information retrieved",
-      data: debugInfo,
-    });
+    return ResponseHelper.success(res, "Debug information retrieved", debugInfo);
   } catch (e: any) {
     return res.status(500).json({
       success: false,

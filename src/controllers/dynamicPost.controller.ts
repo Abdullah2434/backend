@@ -4,11 +4,19 @@ import { DynamicPostGenerationService } from "../services/dynamicPostGeneration.
 import UserVideoSettings from "../models/UserVideoSettings";
 import UserPostHistory from "../models/UserPostHistory";
 import ContentTemplate from "../models/ContentTemplate";
+import { DEFAULT_PLATFORMS } from "../constants/dynamicPostGeneration.constants";
+import {
+  validateGenerateDynamicPosts,
+  validateTestDynamicPosts,
+  validateGetPostHistoryQuery,
+  validateGetPostAnalyticsQuery,
+  validateGetTemplatesQuery,
+  validateScheduleIdParam,
+} from "../validations/dynamicPost.validations";
 
 export const generateDynamicPosts = asyncHandler(
   async (req: Request, res: Response) => {
     try {
-      const { topic, keyPoints, platforms, userContext } = req.body;
       const userId = req.user?._id;
 
       if (!userId) {
@@ -18,12 +26,19 @@ export const generateDynamicPosts = asyncHandler(
         });
       }
 
-      if (!topic || !keyPoints) {
+      // Validate request body
+      const validationResult = validateGenerateDynamicPosts(req.body);
+
+      if (!validationResult.success) {
         return res.status(400).json({
           success: false,
-          message: "Topic and keyPoints are required",
+          message: "Validation failed",
+          errors: validationResult.errors,
         });
       }
+
+      const { topic, keyPoints, platforms, userContext } =
+        validationResult.data!;
 
       // Get agent information from UserVideoSettings
       let agentInfo = {
@@ -44,7 +59,6 @@ export const generateDynamicPosts = asyncHandler(
             city: userSettings.city,
             socialHandles: userSettings.socialHandles,
           };
-        
         } else {
           console.log(
             `⚠️ No UserVideoSettings found for user ${userId}, using default agent info`
@@ -67,10 +81,8 @@ export const generateDynamicPosts = asyncHandler(
           keyPoints,
           finalUserContext,
           userId,
-          platforms
+          platforms || [...DEFAULT_PLATFORMS]
         );
-
-
 
       res.status(200).json({
         success: true,
@@ -97,7 +109,6 @@ export const getPostHistory = asyncHandler(
   async (req: Request, res: Response) => {
     try {
       const userId = req.user?._id;
-      const { platform, limit = 10 } = req.query;
 
       if (!userId) {
         return res.status(401).json({
@@ -106,6 +117,19 @@ export const getPostHistory = asyncHandler(
         });
       }
 
+      // Validate query parameters
+      const validationResult = validateGetPostHistoryQuery(req.query);
+
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validationResult.errors,
+        });
+      }
+
+      const { platform, limit } = validationResult.data!;
+
       const query: any = { userId };
       if (platform) {
         query.platform = platform;
@@ -113,7 +137,7 @@ export const getPostHistory = asyncHandler(
 
       const posts = await UserPostHistory.find(query)
         .sort({ createdAt: -1 })
-        .limit(Number(limit))
+        .limit(limit)
         .lean();
 
       res.status(200).json({
@@ -139,7 +163,6 @@ export const getPostAnalytics = asyncHandler(
   async (req: Request, res: Response) => {
     try {
       const userId = req.user?._id;
-      const { platform, days = 30 } = req.query;
 
       if (!userId) {
         return res.status(401).json({
@@ -148,6 +171,19 @@ export const getPostAnalytics = asyncHandler(
         });
       }
 
+      // Validate query parameters
+      const validationResult = validateGetPostAnalyticsQuery(req.query);
+
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validationResult.errors,
+        });
+      }
+
+      const { platform, days } = validationResult.data!;
+
       const query: any = { userId };
       if (platform) {
         query.platform = platform;
@@ -155,7 +191,7 @@ export const getPostAnalytics = asyncHandler(
 
       // Get posts from last N days
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - Number(days));
+      startDate.setDate(startDate.getDate() - days);
       query.createdAt = { $gte: startDate };
 
       const posts = await UserPostHistory.find(query).lean();
@@ -240,14 +276,25 @@ export const getPostAnalytics = asyncHandler(
 export const getTemplates = asyncHandler(
   async (req: Request, res: Response) => {
     try {
-      const { platform, variant } = req.query;
+      // Validate query parameters
+      const validationResult = validateGetTemplatesQuery(req.query);
+
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validationResult.errors,
+        });
+      }
+
+      const { platform, variant } = validationResult.data!;
 
       const query: any = { isActive: true };
       if (platform) {
         query.platform = platform;
       }
-      if (variant) {
-        query.variant = Number(variant);
+      if (variant !== undefined) {
+        query.variant = variant;
       }
 
       const templates = await ContentTemplate.find(query).lean();
@@ -274,14 +321,19 @@ export const getTemplates = asyncHandler(
 export const testDynamicPosts = asyncHandler(
   async (req: Request, res: Response) => {
     try {
-      const { topic, keyPoints, platforms, userContext } = req.body;
+      // Validate request body
+      const validationResult = validateTestDynamicPosts(req.body);
 
-      if (!topic || !keyPoints) {
+      if (!validationResult.success) {
         return res.status(400).json({
           success: false,
-          message: "Topic and keyPoints are required",
+          message: "Validation failed",
+          errors: validationResult.errors,
         });
       }
+
+      const { topic, keyPoints, platforms, userContext } =
+        validationResult.data!;
 
       const testUserId = "507f1f77bcf86cd799439011"; // Test user ID
       const testUserContext = {
@@ -293,15 +345,6 @@ export const testDynamicPosts = asyncHandler(
         ...userContext,
       };
 
-  
-
-      // Ensure platforms is an array
-      const platformsArray = Array.isArray(platforms)
-        ? platforms
-        : platforms
-        ? [platforms]
-        : ["instagram", "facebook", "linkedin"];
-
       // Generate dynamic posts
       const generatedPosts =
         await DynamicPostGenerationService.generateDynamicPosts(
@@ -309,10 +352,8 @@ export const testDynamicPosts = asyncHandler(
           keyPoints,
           testUserContext,
           testUserId,
-          platformsArray
+          platforms || [...DEFAULT_PLATFORMS]
         );
-
-
 
       res.status(200).json({
         success: true,
@@ -320,7 +361,7 @@ export const testDynamicPosts = asyncHandler(
         data: {
           posts: generatedPosts,
           totalPosts: generatedPosts.length,
-          platforms: platformsArray,
+          platforms: platforms,
           topic: topic,
           userContext: testUserContext,
         },
@@ -338,7 +379,6 @@ export const testDynamicPosts = asyncHandler(
 export const enhanceScheduleWithDynamicPosts = asyncHandler(
   async (req: Request, res: Response) => {
     try {
-      const { scheduleId } = req.params;
       const userId = req.user?._id;
 
       if (!userId) {
@@ -347,6 +387,19 @@ export const enhanceScheduleWithDynamicPosts = asyncHandler(
           message: "User not authenticated",
         });
       }
+
+      // Validate route parameters
+      const validationResult = validateScheduleIdParam(req.params);
+
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validationResult.errors,
+        });
+      }
+
+      const { scheduleId } = validationResult.data!;
       res.status(200).json({
         success: true,
         message: "Schedule enhancement endpoint ready",

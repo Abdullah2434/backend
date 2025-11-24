@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import CronMonitoringService from "../services/cronMonitoring.service";
+import { validateResetCronStats } from "../validations/cronHealth.validations";
 
 const cronMonitor = CronMonitoringService.getInstance();
 
@@ -59,7 +60,18 @@ export async function getCronHealth(req: Request, res: Response) {
  */
 export async function resetCronStats(req: Request, res: Response) {
   try {
-    const { jobName } = req.body;
+    // Validate request body
+    const validationResult = validateResetCronStats(req.body);
+
+    if (!validationResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: validationResult.errors,
+      });
+    }
+
+    const { jobName } = validationResult.data || {};
 
     cronMonitor.resetStats(jobName);
 

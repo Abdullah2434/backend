@@ -1,18 +1,8 @@
 import { z } from "zod";
+import { ValidationError } from "../types";
+import { VALID_DAYS, VALID_FREQUENCIES } from "../constants/videoSchedule.constants";
 
-// ==================== VIDEO SCHEDULE VALIDATIONS ====================
-
-const VALID_DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-] as const;
-
-const VALID_FREQUENCIES = ["once_week", "twice_week", "three_week", "daily"] as const;
+// ==================== VALIDATION SCHEMAS ====================
 
 export const scheduleObjectSchema = z.object({
   days: z
@@ -76,4 +66,117 @@ export const updateScheduleSchema = z.object({
     message: "At least one field must be provided for update",
   }
 );
+
+// ==================== TYPE INFERENCES ====================
+
+export type ScheduleObjectData = z.infer<typeof scheduleObjectSchema>;
+export type CreateScheduleData = z.infer<typeof createScheduleSchema>;
+export type ScheduleIdParamData = z.infer<typeof scheduleIdParamSchema>;
+export type UpdateScheduleData = z.infer<typeof updateScheduleSchema>;
+
+// ==================== VALIDATION RESULT INTERFACES ====================
+
+export interface CreateScheduleValidationResult {
+  success: boolean;
+  data?: CreateScheduleData;
+  errors?: ValidationError[];
+}
+
+export interface ScheduleIdParamValidationResult {
+  success: boolean;
+  data?: ScheduleIdParamData;
+  errors?: ValidationError[];
+}
+
+export interface UpdateScheduleValidationResult {
+  success: boolean;
+  data?: UpdateScheduleData;
+  errors?: ValidationError[];
+}
+
+// ==================== VALIDATION FUNCTIONS ====================
+
+/**
+ * Validate create schedule request data
+ */
+export function validateCreateSchedule(
+  data: unknown
+): CreateScheduleValidationResult {
+  const validationResult = createScheduleSchema.safeParse(data);
+
+  if (!validationResult.success) {
+    const errors: ValidationError[] = validationResult.error.errors.map(
+      (err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      })
+    );
+
+    return {
+      success: false,
+      errors,
+    };
+  }
+
+  return {
+    success: true,
+    data: validationResult.data,
+  };
+}
+
+/**
+ * Validate schedule ID parameter
+ */
+export function validateScheduleIdParam(
+  data: unknown
+): ScheduleIdParamValidationResult {
+  const validationResult = scheduleIdParamSchema.safeParse(data);
+
+  if (!validationResult.success) {
+    const errors: ValidationError[] = validationResult.error.errors.map(
+      (err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      })
+    );
+
+    return {
+      success: false,
+      errors,
+    };
+  }
+
+  return {
+    success: true,
+    data: validationResult.data,
+  };
+}
+
+/**
+ * Validate update schedule request data
+ */
+export function validateUpdateSchedule(
+  data: unknown
+): UpdateScheduleValidationResult {
+  const validationResult = updateScheduleSchema.safeParse(data);
+
+  if (!validationResult.success) {
+    const errors: ValidationError[] = validationResult.error.errors.map(
+      (err) => ({
+        field: err.path.join("."),
+        message: err.message,
+      })
+    );
+
+    return {
+      success: false,
+      errors,
+    };
+  }
+
+  return {
+    success: true,
+    data: validationResult.data,
+  };
+}
 

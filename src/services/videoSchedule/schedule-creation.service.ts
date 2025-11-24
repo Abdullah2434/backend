@@ -57,7 +57,8 @@ export class VideoScheduleCreation {
     );
 
     // Get user's existing video titles to filter out duplicates
-    const existingTitles = await getUserExistingVideoTitles(userId, email);
+    const existingTitlesArray = await getUserExistingVideoTitles(userId, email);
+    const existingTitles = new Set(existingTitlesArray);
 
     const allTrends = [];
     const chunkSize = 5;
@@ -84,7 +85,7 @@ export class VideoScheduleCreation {
         // Filter out trends that already have videos
         const filteredTrends = filterExistingTrends(
           chunkTrends,
-          existingTitles
+          Array.from(existingTitles)
         );
 
         if (filteredTrends.length === 0) {
@@ -228,7 +229,8 @@ export class VideoScheduleCreation {
     );
 
     // Get user's existing video titles to filter out duplicates
-    const existingTitles = await getUserExistingVideoTitles(userId, email);
+    const existingTitlesArray = await getUserExistingVideoTitles(userId, email);
+    const existingTitles = new Set(existingTitlesArray);
 
     const allTrends = [];
     const chunkSize = 5;
@@ -255,7 +257,7 @@ export class VideoScheduleCreation {
         // Filter out trends that already have videos
         const filteredTrends = filterExistingTrends(
           chunkTrends,
-          existingTitles
+          Array.from(existingTitles)
         );
 
         if (filteredTrends.length === 0) {

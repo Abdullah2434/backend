@@ -1,10 +1,8 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
 import { AuthenticatedRequest } from "../types";
 import AuthService from "../modules/auth/services/auth.service";
 import { generateSpeech } from "../services/elevenLabsTTS.service";
 import ElevenLabsVoice from "../models/elevenLabsVoice";
-import UserVideoSettings from "../models/UserVideoSettings";
 import {
   fetchAndSyncElevenLabsVoices,
   addCustomVoice,
@@ -12,159 +10,27 @@ import {
 import { SubscriptionService } from "../services/subscription.service";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
-  textToSpeechSchema,
-  addCustomVoiceSchema,
+  validateTextToSpeech,
+  validateAddCustomVoice,
+  validateGetVoicesQuery,
+  validateVoiceIdParam,
 } from "../validations/elevenLabs.validations";
+import {
+  extractAccessToken,
+  getUserIdFromRequest,
+  buildVoiceFilter,
+  validateClonedVoiceAccess,
+  extractFilesFromRequest,
+} from "../utils/elevenLabsHelpers";
+import {
+  DEFAULT_OUTPUT_FORMAT,
+  DEFAULT_LANGUAGE,
+} from "../constants/elevenLabs.constants";
 
-// ==================== CONSTANTS ====================
-const ELEVEN_LABS_MODELS = [
-  "eleven_multilingual_v1",
-  "eleven_multilingual_v2",
-  "eleven_turbo_v2",
-  "eleven_turbo_v2_5",
-  "eleven_flash_v2",
-  "eleven_flash_v2_5",
-  "eleven_english_v1",
-  "eleven_english_v2",
-] as const;
-
-const MODEL_CHARACTER_LIMITS: Record<string, string> = {
-  eleven_multilingual_v1: "10,000 characters",
-  eleven_multilingual_v2: "10,000 characters",
-  eleven_turbo_v2: "30,000 characters",
-  eleven_turbo_v2_5: "40,000 characters",
-  eleven_flash_v2: "30,000 characters",
-  eleven_flash_v2_5: "40,000 characters",
-  eleven_english_v1: "10,000 characters",
-  eleven_english_v2: "10,000 characters",
-};
-
-const VALID_ENERGY_CATEGORIES = ["low", "medium", "high"] as const;
-const VALID_GENDERS = ["male", "female", "unknown"] as const;
-const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
-const DEFAULT_LANGUAGE = "en";
-
-// Voice preset configurations - optimized for natural speech
-// Lower stability = more emotional range and natural variation
-// Higher similarity_boost = closer to original voice
-// Style controls exaggeration (0 = natural, higher = more dramatic)
-// Speed: 0.9-1.1 range for natural pacing
-const VOICE_PRESETS = {
-  low: {
-    stability: 0.75, // Lower for more natural variation
-    similarity_boost: 0.8, // Higher for better voice match
-    style: 0.0, // Lower for more natural delivery
-    use_speaker_boost: true,
-    speed: 0.85, // Slightly faster but still natural
-  },
-  medium: {
-    stability: 0.5, // Balanced for natural speech
-    similarity_boost: 0.75, // Higher for better voice match
-    style: 0.2, // Lower for natural delivery
-    use_speaker_boost: true,
-    speed: 1.0, // Natural pace
-  },
-  mid: {
-    stability: 0.5, // Balanced for natural speech
-    similarity_boost: 0.75, // Higher for better voice match
-    style: 0.2, // Lower for natural delivery
-    use_speaker_boost: true,
-    speed: 1.0, // Natural pace
-  },
-  high: {
-    stability: 0.25, // Slightly higher but still allows variation
-    similarity_boost: 0.7, // Higher for better voice match
-    style: 0.5, // Very low for most natural delivery
-    use_speaker_boost: true,
-    speed: 1.15, // Slightly slower for emphasis
-  },
-} as const;
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get voice settings based on preset (case insensitive)
- */
-function getVoiceSettingsByPreset(preset: string): {
-  stability: number;
-  similarity_boost: number;
-  style: number;
-  use_speaker_boost: boolean;
-  speed: number;
-} | null {
-  const presetLower = preset?.toLowerCase().trim();
-  const presetKey = presetLower as keyof typeof VOICE_PRESETS;
-  return VOICE_PRESETS[presetKey] || null;
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: Request): string | null {
-  const authHeader = req.headers.authorization;
-  return authHeader?.replace("Bearer ", "") || null;
-}
-
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(
-  req: AuthenticatedRequest | Request
-): string | undefined {
-  if ("user" in req && req.user?._id) {
-    return req.user._id.toString();
-  }
-  return (
-    (req as any).user?._id || (req as any).user?.userId || (req as any).user?.id
-  );
-}
-
-/**
- * Build voice filter for database query
- */
-function buildVoiceFilter(userId?: string): mongoose.FilterQuery<any> {
-  const baseFilter = {
-    $or: [{ userId: { $exists: false } }, { userId: null }],
-  };
-
-  if (userId) {
-    return {
-      $or: [...baseFilter.$or, { userId: new mongoose.Types.ObjectId(userId) }],
-    };
-  }
-
-  return baseFilter;
-}
-
-/**
- * Validate and get user for cloned voice access
- */
-async function validateClonedVoiceAccess(
-  accessToken: string,
-  authService: AuthService
-): Promise<{ user: any; voiceSettings: any } | null> {
-  try {
-    const user = await authService.getCurrentUser(accessToken);
-    if (!user) {
-      return null;
-    }
-
-    const userVideoSettings = await UserVideoSettings.findOne({
-      userId: user._id,
-    });
-
-    let voiceSettings = null;
-    if (userVideoSettings?.preset) {
-      voiceSettings = getVoiceSettingsByPreset(userVideoSettings.preset);
-    }
-
-    return { user, voiceSettings };
-  } catch (error) {
-    return null;
-  }
-}
+// ==================== SERVICE INSTANCES ====================
+const authService = new AuthService();
 
 // ==================== CONTROLLER FUNCTIONS ====================
-const authService = new AuthService();
 
 /**
  * Generate text-to-speech audio using ElevenLabs API
@@ -172,13 +38,13 @@ const authService = new AuthService();
 export async function textToSpeech(req: Request, res: Response) {
   try {
     // Validate request body
-    const validationResult = textToSpeechSchema.safeParse(req.body);
+    const validationResult = validateTextToSpeech(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
     const {
@@ -191,19 +57,7 @@ export async function textToSpeech(req: Request, res: Response) {
       apply_text_normalization,
       seed,
       pronunciation_dictionary_locators,
-    } = validationResult.data;
-
-    // Validate model_id if provided
-    if (model_id && !ELEVEN_LABS_MODELS.includes(model_id as any)) {
-      return ResponseHelper.badRequest(
-        res,
-        `Invalid model_id. Valid models: ${ELEVEN_LABS_MODELS.join(", ")}`,
-        {
-          valid_models: ELEVEN_LABS_MODELS,
-          model_limits: MODEL_CHARACTER_LIMITS,
-        }
-      );
-    }
+    } = validationResult.data!;
 
     // Fetch voice from database
     const voice = await ElevenLabsVoice.findOne({ voice_id });
@@ -244,7 +98,7 @@ export async function textToSpeech(req: Request, res: Response) {
       output_format: output_format || DEFAULT_OUTPUT_FORMAT,
       model_id: model_id || undefined,
       voice_settings: voice_settings || undefined,
-      apply_text_normalization: apply_text_normalization || "auto", // Default to "auto" for better pronunciation
+      apply_text_normalization: apply_text_normalization || "auto",
       seed: seed || undefined,
       pronunciation_dictionary_locators:
         pronunciation_dictionary_locators || undefined,
@@ -272,7 +126,15 @@ export async function textToSpeech(req: Request, res: Response) {
  */
 export async function getVoices(req: AuthenticatedRequest, res: Response) {
   try {
-    const { energyCategory, gender } = req.query;
+    // Validate query parameters
+    const validationResult = validateGetVoicesQuery(req.query);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
+    }
 
     // Get userId from request (optional authentication)
     let userId: string | undefined = getUserIdFromRequest(req);
@@ -293,28 +155,13 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
 
     // Build filter
     const filter = buildVoiceFilter(userId);
+    const { energyCategory, gender } = validationResult.data || {};
 
-    // Add energy category filter
+    // Add filters if provided
     if (energyCategory) {
-      if (!VALID_ENERGY_CATEGORIES.includes(energyCategory as any)) {
-        return ResponseHelper.badRequest(
-          res,
-          `Invalid energy category. Must be one of: ${VALID_ENERGY_CATEGORIES.join(
-            ", "
-          )}`
-        );
-      }
       filter.energy = energyCategory;
     }
-
-    // Add gender filter
     if (gender) {
-      if (!VALID_GENDERS.includes(gender as any)) {
-        return ResponseHelper.badRequest(
-          res,
-          `Invalid gender. Must be one of: ${VALID_GENDERS.join(", ")}`
-        );
-      }
       filter.gender = gender;
     }
 
@@ -351,14 +198,20 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
  */
 export async function getVoiceById(req: Request, res: Response) {
   try {
-    const { voice_id } = req.params;
-
-    if (!voice_id) {
-      return ResponseHelper.badRequest(res, "voice_id is required");
+    // Validate route parameters
+    const validationResult = validateVoiceIdParam(req.params);
+    if (!validationResult.success) {
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { voice_id } = validationResult.data!;
     const userId = getUserIdFromRequest(req);
 
+    // Fetch voice
     const voice = await ElevenLabsVoice.findOne({ voice_id }).select(
       "voice_id preview_url name energy description userId"
     );
@@ -367,7 +220,7 @@ export async function getVoiceById(req: Request, res: Response) {
       return ResponseHelper.notFound(res, "Voice not found");
     }
 
-    // Check access permissions
+    // Check access permissions for custom voices
     if (voice.userId) {
       if (!userId) {
         return ResponseHelper.unauthorized(
@@ -439,20 +292,8 @@ export async function addCustomVoiceEndpoint(
   res: Response
 ) {
   try {
-    // Handle multer's file array type - upload.array() returns File[] or object with fieldname keys
-    let files: Express.Multer.File[] | undefined;
-    if (req.files) {
-      if (Array.isArray(req.files)) {
-        // upload.array() returns File[] directly
-        files = req.files;
-      } else {
-        // Fallback: if it's an object with fieldname keys, extract the array
-        const fileArray = Object.values(req.files).flat();
-        files = fileArray.length > 0 ? fileArray : undefined;
-      }
-    }
+    // Get user ID
     const userId = getUserIdFromRequest(req);
-
     if (!userId) {
       return ResponseHelper.unauthorized(
         res,
@@ -461,27 +302,25 @@ export async function addCustomVoiceEndpoint(
     }
 
     // Validate request body
-    const validationResult = addCustomVoiceSchema.safeParse(req.body);
+    const validationResult = validateAddCustomVoice(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
-    const { name, description, language, gender } = validationResult.data;
+    const { name, description, language, gender } = validationResult.data!;
 
-    // Validate files - support both single file and array
-    if (!files || (Array.isArray(files) && files.length === 0)) {
+    // Extract and validate files
+    const files = extractFilesFromRequest(req);
+    if (!files || files.length === 0) {
       return ResponseHelper.badRequest(
         res,
         "At least one audio file is required"
       );
     }
-
-    // Ensure files is an array
-    const filesArray = Array.isArray(files) ? files : [files];
 
     // Check for active subscription
     const subscriptionService = new SubscriptionService();
@@ -498,7 +337,7 @@ export async function addCustomVoiceEndpoint(
 
     // Add custom voice
     const voice = await addCustomVoice({
-      files: filesArray,
+      files,
       name: name.trim(),
       description: description?.trim(),
       language: language || DEFAULT_LANGUAGE,

@@ -4,63 +4,18 @@ import { asyncHandler } from "../middleware/asyncHandler";
 import { ResponseHelper } from "../utils/responseHelper";
 import { userConnectedAccountService } from "../services/userConnectedAccount.service";
 import {
-  accountTypeParamSchema,
-  socialbuAccountIdParamSchema,
+  validateAccountTypeParam,
+  validateSocialbuAccountIdParam,
 } from "../validations/userConnectedAccount.validations";
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: AuthenticatedRequest): string | null {
-  const authHeader = req.headers.authorization;
-  return authHeader?.replace("Bearer ", "") || null;
-}
-
-/**
- * Parse socialbuAccountId from string to number
- */
-function parseSocialbuAccountId(socialbuAccountId: string): number {
-  const parsed = parseInt(socialbuAccountId, 10);
-  if (isNaN(parsed)) {
-    throw new Error("SocialBu account ID must be a valid number");
-  }
-  return parsed;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
+import {
+  getUserIdFromRequest,
+  extractAccessToken,
+  parseSocialbuAccountId,
+  getErrorStatus,
+} from "../utils/userConnectedAccountHelpers";
 
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Get all connected accounts for the authenticated user
  * GET /api/user-connected-accounts
@@ -98,27 +53,28 @@ export const getUserConnectedAccountsByType = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = getUserIdFromRequest(req);
-      const { type } = req.params;
 
       // Validate type parameter
-      const validationResult = accountTypeParamSchema.safeParse({ type });
+      const validationResult = validateAccountTypeParam(req.params);
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
-        return ResponseHelper.badRequest(res, "Validation failed", errors);
+        return ResponseHelper.badRequest(
+          res,
+          "Validation failed",
+          validationResult.errors
+        );
       }
+
+      const { type } = validationResult.data!;
 
       const accounts =
         await userConnectedAccountService.getUserConnectedAccountsByType(
           userId,
-          validationResult.data.type
+          type
         );
 
       return ResponseHelper.success(
         res,
-        `User connected ${validationResult.data.type} accounts retrieved successfully`,
+        `User connected ${type} accounts retrieved successfully`,
         accounts
       );
     } catch (error: any) {
@@ -228,23 +184,19 @@ export const deactivateConnectedAccount = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = getUserIdFromRequest(req);
-      const { socialbuAccountId } = req.params;
 
       // Validate socialbuAccountId parameter
-      const validationResult = socialbuAccountIdParamSchema.safeParse({
-        socialbuAccountId,
-      });
+      const validationResult = validateSocialbuAccountIdParam(req.params);
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
-        return ResponseHelper.badRequest(res, "Validation failed", errors);
+        return ResponseHelper.badRequest(
+          res,
+          "Validation failed",
+          validationResult.errors
+        );
       }
 
-      const accountId = parseSocialbuAccountId(
-        validationResult.data.socialbuAccountId
-      );
+      const { socialbuAccountId } = validationResult.data!;
+      const accountId = parseSocialbuAccountId(socialbuAccountId);
 
       const success =
         await userConnectedAccountService.deactivateUserConnectedAccount(
@@ -281,23 +233,19 @@ export const deleteConnectedAccount = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = getUserIdFromRequest(req);
-      const { socialbuAccountId } = req.params;
 
       // Validate socialbuAccountId parameter
-      const validationResult = socialbuAccountIdParamSchema.safeParse({
-        socialbuAccountId,
-      });
+      const validationResult = validateSocialbuAccountIdParam(req.params);
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
-        return ResponseHelper.badRequest(res, "Validation failed", errors);
+        return ResponseHelper.badRequest(
+          res,
+          "Validation failed",
+          validationResult.errors
+        );
       }
 
-      const accountId = parseSocialbuAccountId(
-        validationResult.data.socialbuAccountId
-      );
+      const { socialbuAccountId } = validationResult.data!;
+      const accountId = parseSocialbuAccountId(socialbuAccountId);
 
       const success =
         await userConnectedAccountService.deleteUserConnectedAccount(
@@ -334,23 +282,19 @@ export const updateAccountLastUsed = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = getUserIdFromRequest(req);
-      const { socialbuAccountId } = req.params;
 
       // Validate socialbuAccountId parameter
-      const validationResult = socialbuAccountIdParamSchema.safeParse({
-        socialbuAccountId,
-      });
+      const validationResult = validateSocialbuAccountIdParam(req.params);
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
-        return ResponseHelper.badRequest(res, "Validation failed", errors);
+        return ResponseHelper.badRequest(
+          res,
+          "Validation failed",
+          validationResult.errors
+        );
       }
 
-      const accountId = parseSocialbuAccountId(
-        validationResult.data.socialbuAccountId
-      );
+      const { socialbuAccountId } = validationResult.data!;
+      const accountId = parseSocialbuAccountId(socialbuAccountId);
 
       const success = await userConnectedAccountService.updateLastUsed(
         userId,

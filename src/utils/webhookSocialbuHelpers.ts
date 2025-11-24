@@ -1,8 +1,73 @@
+import { Request } from "express";
 import { SocialBuWebhookData, WebhookResponse, AccountAction } from "../types/services/webhookSocialbu.types";
+import { VALID_ACCOUNT_ACTIONS } from "../constants/socialbu.constants";
 
 // ==================== CONSTANTS ====================
-export const VALID_ACCOUNT_ACTIONS: AccountAction[] = ["added", "updated", "removed"];
 export const ALL_USERS_TARGET = "all_users";
+
+// ==================== CONTROLLER HELPER FUNCTIONS ====================
+
+/**
+ * Parse JSON body if it's a string
+ */
+export function parseJsonBody(body: any): any {
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch (error) {
+      console.error("Failed to parse JSON body:", error);
+      return body;
+    }
+  }
+  return body;
+}
+
+/**
+ * Extract user ID from query parameters
+ */
+export function getUserIdFromQuery(req: Request): string | undefined {
+  return req.query.user_id as string | undefined;
+}
+
+/**
+ * Build SocialBu webhook payload
+ */
+export function buildSocialBuWebhookPayload(data: {
+  account_action: string;
+  account_id: number;
+  account_type: string;
+  account_name: string;
+}): SocialBuWebhookData {
+  return {
+    account_action: data.account_action as AccountAction,
+    account_id: data.account_id,
+    account_type: data.account_type,
+    account_name: data.account_name,
+  };
+}
+
+/**
+ * Format webhook debug information
+ */
+export function formatWebhookDebug(req: Request, parsedBody?: any) {
+  return {
+    requestMethod: req.method,
+    requestUrl: req.url,
+    hasBody: !!req.body,
+    bodyType: typeof req.body,
+    parsedBody: parsedBody || req.body,
+  };
+}
+
+/**
+ * Get error status code based on error type
+ */
+export function getErrorStatus(error: any): number {
+  if (error?.name === "ValidationError" || error?.name === "ZodError") {
+    return 400;
+  }
+  return 500;
+}
 
 // ==================== QUERY BUILDING ====================
 /**
@@ -124,6 +189,8 @@ export function buildUnknownActionResponse(
 ): WebhookResponse {
   return buildErrorWebhookResponse(`Unknown account action: ${accountAction}`);
 }
+
+// ==================== SERVICE-LEVEL UTILITY FUNCTIONS ====================
 
 // ==================== VALIDATION ====================
 /**

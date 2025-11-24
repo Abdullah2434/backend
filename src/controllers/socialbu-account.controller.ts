@@ -3,53 +3,15 @@ import { AuthenticatedRequest } from "../types";
 import webhookService from "../services/webhooksocialbu.service";
 import { userConnectedAccountService } from "../services/userConnectedAccount.service";
 import { ResponseHelper } from "../utils/responseHelper";
-import { accountIdParamSchema } from "../validations/socialbuAccount.validations";
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Parse account ID from string to number
- */
-function parseAccountId(accountId: string): number {
-  const accountIdNumber = parseInt(accountId, 10);
-  if (isNaN(accountIdNumber)) {
-    throw new Error("Invalid account ID format. Must be a valid number");
-  }
-  return accountIdNumber;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("user not found")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
+import { validateAccountIdParam } from "../validations/socialbuAccount.validations";
+import {
+  getUserIdFromRequest,
+  parseAccountId,
+  getErrorStatus,
+} from "../utils/socialbuAccountHelpers";
 
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Disconnect a user's SocialBu account by account ID
  * DELETE /api/socialbu-account/:accountId
@@ -60,18 +22,18 @@ export const disconnectAccount = async (
 ) => {
   try {
     const userId = getUserIdFromRequest(req);
-    const { accountId } = req.params;
 
     // Validate accountId parameter
-    const validationResult = accountIdParamSchema.safeParse({ accountId });
+    const validationResult = validateAccountIdParam(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { accountId } = validationResult.data!;
     const accountIdNumber = parseAccountId(accountId);
 
     // Check if user has this account
@@ -169,18 +131,18 @@ export const checkAccount = async (
 ) => {
   try {
     const userId = getUserIdFromRequest(req);
-    const { accountId } = req.params;
 
     // Validate accountId parameter
-    const validationResult = accountIdParamSchema.safeParse({ accountId });
+    const validationResult = validateAccountIdParam(req.params);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        validationResult.errors
+      );
     }
 
+    const { accountId } = validationResult.data!;
     const accountIdNumber = parseAccountId(accountId);
 
     // Check if user has this account
