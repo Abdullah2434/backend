@@ -1343,25 +1343,20 @@ export async function generateVideo(req: Request, res: Response) {
       }
     } catch (capGenErr) {}
 
-    // Save videoCaption to user settings if provided
-    if (body.videoCaption && typeof body.videoCaption === 'string') {
-      try {
-        const userVideoSettingsService = new UserVideoSettingsService();
-        const userSettings = await userVideoSettingsService.getUserVideoSettings(body.email);
-        
-        if (userSettings) {
-          // Update existing settings
-          userSettings.videoCaption = body.videoCaption.trim();
-          await userSettings.save();
-        } else {
-          // Create new settings with videoCaption if user doesn't have settings yet
-          // Note: This requires other required fields, so we'll just log if settings don't exist
-          console.warn(`Cannot save videoCaption: User settings not found for ${body.email}`);
-        }
-      } catch (captionSaveError: any) {
-        // Don't fail the request if caption saving fails
-        console.error("Failed to save videoCaption to user settings:", captionSaveError);
+    // Get userSettings for videoCaption (and save videoCaption if provided in body)
+    let userSettings: any = null;
+    try {
+      const userVideoSettingsService = new UserVideoSettingsService();
+      userSettings = await userVideoSettingsService.getUserVideoSettings(body.email);
+      
+      // Save videoCaption to user settings if provided in body
+      if (body.videoCaption && typeof body.videoCaption === 'string' && userSettings) {
+        userSettings.videoCaption = body.videoCaption.trim();
+        await userSettings.save();
       }
+    } catch (captionSaveError: any) {
+      // Don't fail the request if userSettings fetch or caption saving fails
+      console.error("Failed to fetch userSettings or save videoCaption:", captionSaveError);
     }
 
     const webhookData = {
@@ -1391,7 +1386,7 @@ export async function generateVideo(req: Request, res: Response) {
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
       fullAudio: body.full_audio_url,
-      videoCaption: body.videoCaption || "true",
+      videoCaption: userSettings?.videoCaption || "true",
       ...(languageCode ? { language: languageCode } : {}), // Add language code if available
       // New voice energy parameters
       voiceEnergy: {
