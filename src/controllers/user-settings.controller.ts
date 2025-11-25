@@ -265,6 +265,15 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       );
     }
 
+    // Normalize videoCaption: convert yes/no/true/false to yes/no format
+    const normalizeVideoCaptionForStorage = (value: string | undefined | null): string | undefined => {
+      if (!value) return undefined;
+      const normalized = String(value).toLowerCase().trim();
+      if (normalized === "yes" || normalized === "true") return "yes";
+      if (normalized === "no" || normalized === "false") return "no";
+      return normalized; // Return as-is if not recognized
+    };
+
     // Save or update user video settings
     const savedSettings = await userVideoSettingsService.saveUserVideoSettings({
       prompt,
@@ -289,7 +298,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       preset,
       selectedVoicePreset,
       selectedMusicPreset,
-      videoCaption,
+      videoCaption: normalizeVideoCaptionForStorage(videoCaption),
     });
 
     return ResponseHelper.success(

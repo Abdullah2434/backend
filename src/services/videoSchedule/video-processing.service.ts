@@ -479,6 +479,15 @@ export class VideoScheduleProcessing {
         languageCode = languageMap[languageLower] || languageLower; // Use mapped code or original if not found
       }
 
+      // Helper function to convert videoCaption value to boolean
+      const convertVideoCaptionToBoolean = (
+        value: string | undefined | null
+      ): boolean => {
+        if (!value) return true; // Default to true if not set
+        const normalized = String(value).toLowerCase().trim();
+        return normalized === "yes" || normalized === "true";
+      };
+
       // Generate Video API accepts flat format and converts internally
       // Use TTS audio URLs if available, otherwise fall back to text
       const videoGenerationData = {
@@ -502,7 +511,7 @@ export class VideoScheduleProcessing {
         trendIndex: trendIndex,
         _captions: captions,
         ...(languageCode ? { language: languageCode } : {}), // Add language code if available
-        videoCaption: userSettings.videoCaption,
+        videoCaption: convertVideoCaptionToBoolean(userSettings?.videoCaption),
 
         ...(musicUrl ? { music: musicUrl } : {}),
       };

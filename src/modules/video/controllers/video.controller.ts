@@ -1343,20 +1343,51 @@ export async function generateVideo(req: Request, res: Response) {
       }
     } catch (capGenErr) {}
 
+    // Helper function to convert videoCaption value to boolean
+    const convertVideoCaptionToBoolean = (
+      value: string | undefined | null
+    ): boolean => {
+      if (!value) return true; // Default to true if not set
+      const normalized = String(value).toLowerCase().trim();
+      return normalized === "yes" || normalized === "true";
+    };
+
+    // Helper function to normalize videoCaption for storage (yes/no)
+    const normalizeVideoCaptionForStorage = (
+      value: string | undefined | null
+    ): string => {
+      if (!value) return "yes"; // Default to "yes" if not set
+      const normalized = String(value).toLowerCase().trim();
+      if (normalized === "yes" || normalized === "true") return "yes";
+      if (normalized === "no" || normalized === "false") return "no";
+      return normalized; // Return as-is if not recognized
+    };
+
     // Get userSettings for videoCaption (and save videoCaption if provided in body)
     let userSettings: any = null;
     try {
       const userVideoSettingsService = new UserVideoSettingsService();
-      userSettings = await userVideoSettingsService.getUserVideoSettings(body.email);
-      
+      userSettings = await userVideoSettingsService.getUserVideoSettings(
+        body.email
+      );
+
       // Save videoCaption to user settings if provided in body
-      if (body.videoCaption && typeof body.videoCaption === 'string' && userSettings) {
-        userSettings.videoCaption = body.videoCaption.trim();
+      if (
+        body.videoCaption &&
+        typeof body.videoCaption === "string" &&
+        userSettings
+      ) {
+        userSettings.videoCaption = normalizeVideoCaptionForStorage(
+          body.videoCaption
+        );
         await userSettings.save();
       }
     } catch (captionSaveError: any) {
       // Don't fail the request if userSettings fetch or caption saving fails
-      console.error("Failed to fetch userSettings or save videoCaption:", captionSaveError);
+      console.error(
+        "Failed to fetch userSettings or save videoCaption:",
+        captionSaveError
+      );
     }
 
     const webhookData = {
@@ -1386,7 +1417,7 @@ export async function generateVideo(req: Request, res: Response) {
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
       fullAudio: body.full_audio_url,
-      videoCaption: userSettings?.videoCaption || "true",
+      videoCaption: convertVideoCaptionToBoolean(userSettings?.videoCaption),
       ...(languageCode ? { language: languageCode } : {}), // Add language code if available
       // New voice energy parameters
       voiceEnergy: {
