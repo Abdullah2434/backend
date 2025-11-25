@@ -214,7 +214,8 @@ export class VideoSchedulePostManagement {
               "twitter",
               "tiktok",
               "youtube",
-            ]
+            ],
+            userSettings?.language
           );
 
         // Extract captions using the helper method

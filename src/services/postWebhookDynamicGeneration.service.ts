@@ -1,4 +1,5 @@
 import PendingCaptions from "../models/PendingCaptions";
+import UserVideoSettings from "../models/UserVideoSettings";
 import VideoService from "./video.service";
 
 export class PostWebhookDynamicGenerationService {
@@ -49,6 +50,12 @@ export class PostWebhookDynamicGenerationService {
       // Generate DYNAMIC posts using Smart Memory System if dynamic is enabled
       if (pendingCaption.isDynamic && pendingCaption.userId && pendingCaption.platforms) {
         try {
+          // Get user settings to retrieve language preference
+          const userSettings = await UserVideoSettings.findOne({
+            email: email,
+          });
+          const language = userSettings?.language;
+
           const { DynamicPostGenerationService } = await import(
             "./dynamicPostGeneration.service"
           );
@@ -59,7 +66,8 @@ export class PostWebhookDynamicGenerationService {
               pendingCaption.keyPoints!,
               pendingCaption.userContext!,
               pendingCaption.userId!,
-              pendingCaption.platforms!
+              pendingCaption.platforms!,
+              language
             );
 
 
@@ -92,7 +100,8 @@ export class PostWebhookDynamicGenerationService {
               companyName: "Real Estate Company",
               city: "Your City",
               socialHandles: "@realestate",
-            }
+            },
+            email
           );
         }
       } else {
@@ -106,7 +115,8 @@ export class PostWebhookDynamicGenerationService {
             companyName: "Real Estate Company",
             city: "Your City",
             socialHandles: "@realestate",
-          }
+          },
+          email
         );
       }
 
@@ -168,7 +178,8 @@ export class PostWebhookDynamicGenerationService {
             companyName: "Real Estate Company",
             city: "Your City",
             socialHandles: "@realestate",
-          }
+          },
+          email
         );
 
         // Try to update video captions, but don't fail if video is still processing
@@ -200,8 +211,15 @@ export class PostWebhookDynamicGenerationService {
   private async generateFallbackCaptions(
     topic: string,
     keyPoints: string,
-    userContext: any
+    userContext: any,
+    email: string
   ): Promise<any> {
+    // Get user settings to retrieve language preference
+    const userSettings = await UserVideoSettings.findOne({
+      email: email,
+    });
+    const language = userSettings?.language;
+
     const { CaptionGenerationService } = await import(
       "./captionGeneration.service"
     );
@@ -210,7 +228,8 @@ export class PostWebhookDynamicGenerationService {
     const captions = await CaptionGenerationService.generateCaptions(
       topic,
       keyPoints,
-      userContext
+      userContext,
+      language
     );
     
     

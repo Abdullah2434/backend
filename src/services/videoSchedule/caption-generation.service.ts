@@ -39,7 +39,8 @@ export class VideoScheduleCaptionGeneration {
               "twitter",
               "tiktok",
               "youtube",
-            ]
+            ],
+            userSettings.language
           );
 
         // Create enhanced trend with dynamic captions
@@ -223,7 +224,8 @@ export class VideoScheduleCaptionGeneration {
           trend.keypoints,
           userContext,
           userId,
-          ["instagram", "facebook", "linkedin", "twitter", "tiktok", "youtube"]
+          ["instagram", "facebook", "linkedin", "twitter", "tiktok", "youtube"],
+          userSettings.language
         );
 
       // Update captions with dynamic content
@@ -350,7 +352,8 @@ export class VideoScheduleCaptionGeneration {
               "twitter",
               "tiktok",
               "youtube",
-            ]
+            ],
+            userSettings.language
           );
 
         // Update trend with dynamic captions

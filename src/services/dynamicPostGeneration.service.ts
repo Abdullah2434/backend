@@ -43,7 +43,8 @@ export class DynamicPostGenerationService {
     keyPoints: string,
     userContext: UserContext,
     userId: string,
-    platforms: string[] = [...DEFAULT_PLATFORMS]
+    platforms: string[] = [...DEFAULT_PLATFORMS],
+    language?: string
   ): Promise<GeneratedPost[]> {
     // Step 1: Analyze topic
     const topicAnalysis = analyzeTopic(topic, keyPoints);
@@ -61,7 +62,8 @@ export class DynamicPostGenerationService {
           topicAnalysis,
           userContext,
           userHistory[platform] || [],
-          userId
+          userId,
+          language
         );
         generatedPosts.push(post);
       } catch (error) {
@@ -108,7 +110,8 @@ export class DynamicPostGenerationService {
     topicAnalysis: TopicAnalysis,
     userContext: UserContext,
     userHistory: any[],
-    userId: string
+    userId: string,
+    language?: string
   ): Promise<GeneratedPost> {
     // Step 1: Get available templates
     const availableTemplates = await ContentTemplate.find({
@@ -172,7 +175,8 @@ export class DynamicPostGenerationService {
       tone,
       ctaType,
       platform,
-      userHistory
+      userHistory,
+      language
     );
 
     // Step 6: Extract metadata
@@ -214,7 +218,8 @@ export class DynamicPostGenerationService {
     tone: string,
     ctaType: string,
     platform: string,
-    userHistory: any[] = []
+    userHistory: any[] = [],
+    language?: string
   ): Promise<string> {
     // Build memory context
     const patterns = analyzePostPatterns(userHistory);
@@ -241,7 +246,8 @@ export class DynamicPostGenerationService {
       hookType,
       ctaType,
       memoryContext,
-      platformGuidelines
+      platformGuidelines,
+      language
     );
 
     // Build system message

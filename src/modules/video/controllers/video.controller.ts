@@ -19,6 +19,7 @@ import mongoose from "mongoose";
 import { SubscriptionService } from "../../../services/subscription.service";
 import { EmailService } from "../../../services/email";
 import PendingCaptions from "../../../models/PendingCaptions";
+import UserVideoSettings from "../../../models/UserVideoSettings";
 import CaptionGenerationService from "../../../services/captionGeneration.service";
 import { text } from "stream/consumers";
 import {
@@ -970,6 +971,12 @@ export async function createVideo(req: Request, res: Response) {
             { upsert: true, new: true }
           );
         } else {
+          // Get user settings to retrieve language preference
+          const userSettings = await UserVideoSettings.findOne({
+            email: body.email,
+          });
+          const language = userSettings?.language;
+
           // Fallback to traditional captions
           const captions = await CaptionGenerationService.generateCaptions(
             topic,
@@ -980,7 +987,8 @@ export async function createVideo(req: Request, res: Response) {
               companyName: body.companyName,
               city: body.city,
               socialHandles: body.socialHandles,
-            }
+            },
+            language
           );
 
           await PendingCaptions.findOneAndUpdate(

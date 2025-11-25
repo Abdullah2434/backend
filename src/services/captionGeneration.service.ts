@@ -33,12 +33,16 @@ export class CaptionGenerationService {
       companyName?: string;
       city?: string;
       socialHandles?: string;
-    }
+    },
+    language?: string
   ): Promise<SocialMediaCaptions> {
     try {
       if (!OPENAI_API_KEY) {
         throw new Error("OPENAI_API_KEY environment variable is not set");
       }
+
+      // Default to English if language is not provided or empty
+      const captionLanguage = language && language.trim() ? language.trim() : "English";
 
       const userContextText = userContext
         ? `\n\nUser Context:
@@ -49,7 +53,17 @@ export class CaptionGenerationService {
 - Social Handles: ${userContext.socialHandles || "Not provided"}`
         : "";
 
+      // Language instruction for the prompt
+      const languageInstruction = captionLanguage === "Spanish" 
+        ? "Generate all captions in Spanish (Español). All text, hashtags, and content must be in Spanish."
+        : "Generate all captions in English.";
+
       const prompt = `Generate comprehensive social media captions for a real estate video based on the following information:
+
+LANGUAGE REQUIREMENT: ${languageInstruction}
+
+TOPIC: ${topic}
+KEY POINTS: ${keyPoints}${userContextText}
 
 TOPIC: ${topic}
 KEY POINTS: ${keyPoints}${userContextText}
@@ -192,12 +206,13 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
       companyName?: string;
       city?: string;
       socialHandles?: string;
-    }
+    },
+    language?: string
   ): Promise<SocialMediaCaptions> {
     const topic = hook;
     const keyPoints = `${body} ${conclusion}`.trim();
 
-    return this.generateCaptions(topic, keyPoints, userContext);
+    return this.generateCaptions(topic, keyPoints, userContext, language);
   }
 
   /**
@@ -212,9 +227,10 @@ Make sure each caption is unique, detailed, and tailored to the platform's audie
       companyName?: string;
       city?: string;
       socialHandles?: string;
-    }
+    },
+    language?: string
   ): Promise<SocialMediaCaptions> {
-    return this.generateCaptions(description, keypoints, userContext);
+    return this.generateCaptions(description, keypoints, userContext, language);
   }
 }
 

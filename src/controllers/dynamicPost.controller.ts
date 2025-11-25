@@ -60,6 +60,17 @@ export const generateDynamicPosts = asyncHandler(
       // Merge with provided userContext (form data takes priority)
       const finalUserContext = { ...agentInfo, ...userContext };
 
+      // Get language from user settings
+      let language: string | undefined = undefined;
+      try {
+        const userSettings = await UserVideoSettings.findOne({ userId });
+        if (userSettings) {
+          language = userSettings.language;
+        }
+      } catch (error) {
+        // Continue without language, will default to English
+      }
+
       // Generate dynamic posts
       const generatedPosts =
         await DynamicPostGenerationService.generateDynamicPosts(
@@ -67,7 +78,8 @@ export const generateDynamicPosts = asyncHandler(
           keyPoints,
           finalUserContext,
           userId,
-          platforms
+          platforms,
+          language
         );
 
 
