@@ -35,5 +35,6 @@ export interface UserVideoSettingsData {
   selectedVoicePreset?: string;
   selectedMusicPreset?: string;
   customVoiceMusic?: boolean;
+  videoCaption?: string;
 }
 

@@ -502,6 +502,7 @@ export class VideoScheduleProcessing {
         trendIndex: trendIndex,
         _captions: captions,
         ...(languageCode ? { language: languageCode } : {}), // Add language code if available
+        videoCaption: userSettings.videoCaption,
 
         ...(musicUrl ? { music: musicUrl } : {}),
       };

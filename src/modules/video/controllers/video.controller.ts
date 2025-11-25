@@ -1343,6 +1343,27 @@ export async function generateVideo(req: Request, res: Response) {
       }
     } catch (capGenErr) {}
 
+    // Save videoCaption to user settings if provided
+    if (body.videoCaption && typeof body.videoCaption === 'string') {
+      try {
+        const userVideoSettingsService = new UserVideoSettingsService();
+        const userSettings = await userVideoSettingsService.getUserVideoSettings(body.email);
+        
+        if (userSettings) {
+          // Update existing settings
+          userSettings.videoCaption = body.videoCaption.trim();
+          await userSettings.save();
+        } else {
+          // Create new settings with videoCaption if user doesn't have settings yet
+          // Note: This requires other required fields, so we'll just log if settings don't exist
+          console.warn(`Cannot save videoCaption: User settings not found for ${body.email}`);
+        }
+      } catch (captionSaveError: any) {
+        // Don't fail the request if caption saving fails
+        console.error("Failed to save videoCaption to user settings:", captionSaveError);
+      }
+    }
+
     const webhookData = {
       hook: {
         audio: body.hook,
@@ -1369,6 +1390,8 @@ export async function generateVideo(req: Request, res: Response) {
       voice_id: voice_id,
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
+      fullAudio: body.full_audio_url,
+      caption: body.caption,
       ...(languageCode ? { language: languageCode } : {}), // Add language code if available
       // New voice energy parameters
       voiceEnergy: {

@@ -58,6 +58,11 @@ export function buildUpdateData(data: UserVideoSettingsData) {
     updateData.language = data.language || null;
   }
   
+  // Include videoCaption if provided
+  if (data.videoCaption !== undefined) {
+    updateData.videoCaption = data.videoCaption || null;
+  }
+  
   return updateData;
 }
 
@@ -95,6 +100,7 @@ export function buildNewSettingsData(
     selectedVoicePreset: data.selectedVoicePreset,
     selectedMusicPreset: data.selectedMusicPreset,
     customVoiceMusic: data.customVoiceMusic,
+    videoCaption: data.videoCaption,
   };
 }
 

@@ -33,6 +33,7 @@ export interface IUserVideoSettings extends Document {
   selectedVoicePreset?: string;
   selectedMusicPreset?: string;
   customVoiceMusic?: boolean;
+  videoCaption?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -165,6 +166,11 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
     customVoiceMusic: {
       type: Boolean,
       default: false,
+    },
+    videoCaption: {
+      type: String,
+      required: false,
+      trim: true,
     },
   },
   {

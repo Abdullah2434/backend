@@ -53,5 +53,6 @@ export const saveUserVideoSettingsSchema = z.object({
   preset: z.string().optional(),
   selectedVoicePreset: z.string().optional(),
   selectedMusicPreset: z.string().optional(),
+  videoCaption: z.string().optional(),
 });
 

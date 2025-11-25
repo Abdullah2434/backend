@@ -121,6 +121,7 @@ function formatUserVideoSettingsResponse(userSettings: any) {
     preset: userSettings.preset,
     selectedVoicePreset: userSettings.selectedVoicePreset,
     selectedMusicPreset: userSettings.selectedMusicPreset,
+    videoCaption: userSettings.videoCaption,
     updatedAt: userSettings.updatedAt,
   };
 }
@@ -229,6 +230,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       preset,
       selectedVoicePreset,
       selectedMusicPreset,
+      videoCaption,
     } = validationResult.data;
 
     // Normalize avatar array
@@ -287,6 +289,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       preset,
       selectedVoicePreset,
       selectedMusicPreset,
+      videoCaption,
     });
 
     return ResponseHelper.success(
