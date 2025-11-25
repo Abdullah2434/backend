@@ -1391,7 +1391,7 @@ export async function generateVideo(req: Request, res: Response) {
       isDefault: avatarDoc?.default,
       timestamp: new Date().toISOString(),
       fullAudio: body.full_audio_url,
-      caption: body.caption,
+      videoCaption: body.videoCaption || "true",
       ...(languageCode ? { language: languageCode } : {}), // Add language code if available
       // New voice energy parameters
       voiceEnergy: {
