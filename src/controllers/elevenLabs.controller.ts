@@ -254,7 +254,6 @@ export async function textToSpeech(req: Request, res: Response) {
       hook_url: result.hook_url,
       body_url: result.body_url,
       conclusion_url: result.conclusion_url,
-      full_audio_url: result.full_audio_url,
       model_id: result.model_id,
     });
   } catch (error: any) {

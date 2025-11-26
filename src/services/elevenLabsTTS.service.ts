@@ -569,52 +569,10 @@ export async function generateSpeech(options: TextToSpeechOptions) {
       ),
     ]);
 
-    // Concatenate all three parts into full audio
-    const fullAudioBuffer = await concatenateAudioChunks([
-      hookResult.buffer,
-      bodyResult.buffer,
-      conclusionResult.buffer,
-    ]);
-
-    // Upload full audio to S3
-    const timestamp = Date.now();
-    const fullAudioHash = crypto.createHash("md5")
-      .update(`${options.hook}_${options.body}_${options.conclusion}_full`)
-      .digest("hex")
-      .substring(0, 8);
-    const fullAudioS3Key = `voices/${options.voice_id}/full_audio/${timestamp}_${fullAudioHash}.mp3`;
-
-    const s3Client = getVoiceS3Client();
-    const fullAudioPutCommand = new PutObjectCommand({
-      Bucket: VOICE_S3_BUCKET,
-      Key: fullAudioS3Key,
-      Body: fullAudioBuffer,
-      ContentType: "audio/mpeg",
-      Metadata: {
-        voice_id: options.voice_id,
-        model_id: model_id,
-        part: "full_audio",
-        text_hash: fullAudioHash,
-      },
-    });
-
-    await s3Client.send(fullAudioPutCommand);
-
-    // Generate signed URL for full audio
-    const expiresIn = parseInt(process.env.VOICE_AUDIO_URL_EXPIRY_SECONDS || "604800");
-    const fullAudioGetCommand = new GetObjectCommand({
-      Bucket: VOICE_S3_BUCKET,
-      Key: fullAudioS3Key,
-    });
-
-    const fullAudioSignedUrl = await getSignedUrl(s3Client, fullAudioGetCommand, { expiresIn });
-    const fullAudioUrl = fullAudioSignedUrl.split('?')[0];
-
     return {
       hook_url: hookResult.url,
       body_url: bodyResult.url,
       conclusion_url: conclusionResult.url,
-      full_audio_url: fullAudioUrl,
       model_id: model_id,
       contentType: "audio/mpeg",
     };
