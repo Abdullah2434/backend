@@ -287,7 +287,7 @@ export class VideoService {
             !video.socialMediaCaptions.youtube_caption) // ✅ Also check for youtube_caption
         ) {
           try {
-            // Get user settings to retrieve language preference
+            // Get user settings to retrieve language preference and user context
             const userSettings = await UserVideoSettings.findOne({
               email: video.email,
             });
@@ -301,11 +301,11 @@ export class VideoService {
               video.title, // Use video title as topic
               video.title, // Use title as key points too
               {
-                name: "Real Estate Professional",
-                position: "Real Estate Professional",
-                companyName: "Real Estate Company",
-                city: "Your City",
-                socialHandles: "@realestate",
+                name: userSettings?.name || "Real Estate Professional",
+                position: userSettings?.position || "Real Estate Professional",
+                companyName: userSettings?.companyName || "Real Estate Company",
+                city: userSettings?.city || "Your City",
+                socialHandles: userSettings?.socialHandles || "@realestate",
               },
               language
             );
@@ -323,7 +323,7 @@ export class VideoService {
           // Check if youtube_caption is missing even if other captions exist
           if (!video.socialMediaCaptions.youtube_caption) {
             try {
-              // Get user settings to retrieve language preference
+              // Get user settings to retrieve language preference and user context
               const userSettings = await UserVideoSettings.findOne({
                 email: video.email,
               });
@@ -337,11 +337,11 @@ export class VideoService {
                 video.title,
                 video.title,
                 {
-                  name: "Real Estate Professional",
-                  position: "Real Estate Professional",
-                  companyName: "Real Estate Company",
-                  city: "Your City",
-                  socialHandles: "@realestate",
+                  name: userSettings?.name || "Real Estate Professional",
+                  position: userSettings?.position || "Real Estate Professional",
+                  companyName: userSettings?.companyName || "Real Estate Company",
+                  city: userSettings?.city || "Your City",
+                  socialHandles: userSettings?.socialHandles || "@realestate",
                 },
                 language
               );
