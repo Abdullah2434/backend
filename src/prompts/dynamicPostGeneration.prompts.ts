@@ -68,9 +68,21 @@ export function buildGenerationPrompt(
   hookType: string,
   ctaType: string,
   memoryContext: string,
-  platformGuidelines: string
+  platformGuidelines: string,
+  language?: string
 ): string {
+  // Default to English if language is not provided or empty
+  const captionLanguage = language && language.trim() ? language.trim() : "English";
+  
+  // Language instruction for the prompt
+  const languageInstruction = captionLanguage === "Spanish" 
+    ? "Generate all content in Spanish (Español). All text, hashtags, and content must be in Spanish."
+    : "Generate all content in English.";
+
   return `You are an expert social media copywriter specializing in real estate content for ${platform}.
+
+LANGUAGE REQUIREMENT: ${languageInstruction}
+
 
 VIDEO CONTEXT:
 - Topic: ${topicAnalysis.topic}

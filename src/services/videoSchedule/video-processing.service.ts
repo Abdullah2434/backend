@@ -236,7 +236,8 @@ export class VideoScheduleProcessing {
             companyName: userSettings.companyName,
             city: userSettings.city,
             socialHandles: userSettings.socialHandles,
-          }
+          },
+          userSettings.language
         );
 
       // ✅ Helper functions to extract clean IDs and types

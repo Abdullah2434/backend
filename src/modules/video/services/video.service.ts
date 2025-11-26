@@ -2,6 +2,7 @@ import crypto from "crypto";
 import Video, { IVideo } from "../../../models/Video";
 import User from "../../../models/User";
 import Topic, { ITopic } from "../../../models/Topic";
+import UserVideoSettings from "../../../models/UserVideoSettings";
 import { getS3 } from "../../../services/s3";
 import { SubscriptionService } from "../../../services/subscription.service";
 import {
@@ -286,7 +287,12 @@ export class VideoService {
             !video.socialMediaCaptions.youtube_caption) // ✅ Also check for youtube_caption
         ) {
           try {
-        
+            // Get user settings to retrieve language preference
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
+
             // Generate captions using the video title as topic
             const { CaptionGenerationService } = await import(
               "../../../services/captionGeneration.service"
@@ -300,7 +306,8 @@ export class VideoService {
                 companyName: "Real Estate Company",
                 city: "Your City",
                 socialHandles: "@realestate",
-              }
+              },
+              language
             );
 
             // Update the video with generated captions
@@ -316,6 +323,12 @@ export class VideoService {
           // Check if youtube_caption is missing even if other captions exist
           if (!video.socialMediaCaptions.youtube_caption) {
             try {
+              // Get user settings to retrieve language preference
+              const userSettings = await UserVideoSettings.findOne({
+                email: video.email,
+              });
+              const language = userSettings?.language;
+
               // Generate captions using the video title as topic
               const { CaptionGenerationService } = await import(
                 "../../../services/captionGeneration.service"
@@ -329,7 +342,8 @@ export class VideoService {
                   companyName: "Real Estate Company",
                   city: "Your City",
                   socialHandles: "@realestate",
-                }
+                },
+                language
               );
 
               // Update the video with generated captions
