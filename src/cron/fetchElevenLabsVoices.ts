@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import cron from "node-cron";
-import { fetchAndSyncElevenLabsVoices } from "../services/elevenLabsVoice.service";
+import { fetchAndSyncElevenLabsVoices } from "../services/elevenLabs";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
   executeWithOverallTimeout,

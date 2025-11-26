@@ -1,5 +1,5 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
-import { generateRealEstateTrends } from "../trends.service";
+import { generateRealEstateTrends } from "../content";
 import { VideoScheduleUtils } from "./utils.service";
 import { ScheduleData } from "./types";
 

@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import webhookService from "../services/webhooksocialbu.service";
-import { userConnectedAccountService } from "../services/userConnectedAccount.service";
+import { webhookService } from "../services/socialbu";
+import { userConnectedAccountService } from "../services/user";
 import { ResponseHelper } from "../utils/responseHelper";
 import { accountIdParamSchema } from "../validations/socialbuAccount.validations";
 
@@ -97,8 +97,7 @@ export const disconnectAccount = async (
 
     // Call SocialBu API to disconnect the account
     try {
-      const socialBuService = (await import("../services/socialbu.service"))
-        .default;
+      const { socialBuService } = await import("../services/socialbu");
       await socialBuService.makeAuthenticatedRequest(
         "DELETE",
         `/accounts/${accountIdNumber}`

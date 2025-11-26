@@ -24,7 +24,7 @@ export class VideoScheduleCaptionGeneration {
 
         // Generate dynamic posts for this trend
         const { DynamicPostGenerationService } = await import(
-          "../dynamicPostGeneration.service"
+          "../content"
         );
         const dynamicPosts =
           await DynamicPostGenerationService.generateDynamicPosts(
@@ -216,7 +216,7 @@ export class VideoScheduleCaptionGeneration {
 
       // Generate dynamic posts for this trend
       const { DynamicPostGenerationService } = await import(
-        "../dynamicPostGeneration.service"
+        "../content"
       );
       const dynamicPosts =
         await DynamicPostGenerationService.generateDynamicPosts(
@@ -337,7 +337,7 @@ export class VideoScheduleCaptionGeneration {
         };
 
         const { DynamicPostGenerationService } = await import(
-          "../dynamicPostGeneration.service"
+          "../content"
         );
         const dynamicPosts =
           await DynamicPostGenerationService.generateDynamicPosts(

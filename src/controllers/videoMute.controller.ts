@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { VideoMuteService } from "../services/videoMute.service";
+import { VideoMuteService } from "../services/video";
 import { ResponseHelper } from "../utils/responseHelper";
 import { muteVideoSchema } from "../validations/videoMute.validations";
 

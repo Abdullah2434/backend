@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import VideoScheduleService from "../services/videoSchedule.service";
+import VideoScheduleService from "../services/videoSchedule";
 import TimezoneService from "../utils/timezone";
 import { ResponseHelper } from "../utils/responseHelper";
 import {

@@ -3,7 +3,7 @@ import {
   generateRealEstateTrends,
   generateCityBasedTrends,
   generateFromDescription,
-} from "../services/trends.service";
+} from "../services/content";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   getCityBasedTrendsSchema,

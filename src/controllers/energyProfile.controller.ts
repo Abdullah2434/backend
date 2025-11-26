@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { AuthenticatedRequest } from "../types";
-import { UserVideoSettingsService } from "../services/userVideoSettings.service";
+import { AuthenticatedRequest, ValidationError } from "../types";
+import { UserVideoSettingsService } from "../services/user";
 import {
   VoiceEnergyLevel,
   MusicEnergyLevel,
@@ -11,8 +11,24 @@ import {
   setPresetProfileSchema,
   setCustomVoiceMusicSchema,
 } from "../validations/energyProfile.validations";
+import { ZodError } from "zod";
+import {
+  EnergyProfileResponse,
+  PresetConfiguration,
+} from "../types/energyProfile.types";
 
 // ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Format validation errors from Zod
+ */
+function formatValidationErrors(error: ZodError): ValidationError[] {
+  return error.errors.map((err) => ({
+    field: err.path.join("."),
+    message: err.message,
+  }));
+}
+
 /**
  * Get user email from authenticated request
  */
@@ -21,9 +37,20 @@ function getUserEmail(req: AuthenticatedRequest | Request): string | null {
 }
 
 /**
+ * Validate user authentication
+ */
+function requireUserEmail(req: AuthenticatedRequest | Request): string {
+  const email = getUserEmail(req);
+  if (!email) {
+    throw new Error("User not authenticated");
+  }
+  return email;
+}
+
+/**
  * Format energy profile response data
  */
-function formatEnergyProfileResponse(settings: any) {
+function formatEnergyProfileResponse(settings: any): EnergyProfileResponse {
   return {
     voiceEnergy: settings.voiceEnergy,
     musicEnergy: settings.musicEnergy,
@@ -32,10 +59,21 @@ function formatEnergyProfileResponse(settings: any) {
   };
 }
 
+/**
+ * Transform preset descriptions to configuration format
+ */
+function transformPresetConfigurations(): PresetConfiguration[] {
+  return Object.entries(ENERGY_PROFILE_DESCRIPTIONS).map(([key, value]) => ({
+    energyLevel: key,
+    ...value,
+  }));
+}
+
 // ==================== SERVICE INSTANCE ====================
 const userVideoSettingsService = new UserVideoSettingsService();
 
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Set energy profile preset (updates both voice and music energy)
  */
@@ -44,20 +82,16 @@ export async function setPresetProfile(
   res: Response
 ) {
   try {
-    const email = getUserEmail(req);
-
-    if (!email) {
-      return ResponseHelper.unauthorized(res, "User not authenticated");
-    }
+    const email = requireUserEmail(req);
 
     // Validate request body
     const validationResult = setPresetProfileSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const { energyLevel } = validationResult.data;
@@ -75,6 +109,11 @@ export async function setPresetProfile(
     );
   } catch (error: any) {
     console.error("Error in setPresetProfile:", error);
+
+    if (error.message === "User not authenticated") {
+      return ResponseHelper.unauthorized(res, error.message);
+    }
+
     return ResponseHelper.serverError(
       res,
       error.message || "Failed to set energy profile",
@@ -91,20 +130,16 @@ export async function setCustomVoiceMusic(
   res: Response
 ) {
   try {
-    const email = getUserEmail(req);
-
-    if (!email) {
-      return ResponseHelper.unauthorized(res, "User not authenticated");
-    }
+    const email = requireUserEmail(req);
 
     // Validate request body
     const validationResult = setCustomVoiceMusicSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const { voiceEnergy, musicEnergy, selectedMusicTrackId } =
@@ -125,6 +160,11 @@ export async function setCustomVoiceMusic(
     );
   } catch (error: any) {
     console.error("Error in setCustomVoiceMusic:", error);
+
+    if (error.message === "User not authenticated") {
+      return ResponseHelper.unauthorized(res, error.message);
+    }
+
     return ResponseHelper.serverError(
       res,
       error.message || "Failed to set custom voice and music settings",
@@ -141,15 +181,10 @@ export async function getCurrentProfile(
   res: Response
 ) {
   try {
-    const email = getUserEmail(req);
-
-    if (!email) {
-      return ResponseHelper.unauthorized(res, "User not authenticated");
-    }
+    const email = requireUserEmail(req);
 
     // Get energy profile
     const profile = await userVideoSettingsService.getEnergyProfile(email);
-
     if (!profile) {
       return ResponseHelper.notFound(res, "User video settings not found");
     }
@@ -161,6 +196,11 @@ export async function getCurrentProfile(
     );
   } catch (error: any) {
     console.error("Error in getCurrentProfile:", error);
+
+    if (error.message === "User not authenticated") {
+      return ResponseHelper.unauthorized(res, error.message);
+    }
+
     return ResponseHelper.serverError(
       res,
       error.message || "Failed to get energy profile"
@@ -173,12 +213,7 @@ export async function getCurrentProfile(
  */
 export async function getPresetConfigurations(req: Request, res: Response) {
   try {
-    const presets = Object.entries(ENERGY_PROFILE_DESCRIPTIONS).map(
-      ([key, value]) => ({
-        energyLevel: key,
-        ...value,
-      })
-    );
+    const presets = transformPresetConfigurations();
 
     return ResponseHelper.success(
       res,

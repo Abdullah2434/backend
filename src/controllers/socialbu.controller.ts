@@ -1,12 +1,13 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import socialBuService from "../services/socialbu.service";
-import webhookService from "../services/webhooksocialbu.service";
+import socialBuService, {
+  socialBuAccountService,
+  socialBuPostsService,
+  socialBuInsightsService,
+  webhookService,
+} from "../services/socialbu";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ResponseHelper } from "../utils/responseHelper";
-import { socialBuAccountService } from "../services/socialbu-account.service";
-import { socialBuPostsService } from "../services/socialbu-posts.service";
-import { socialBuInsightsService } from "../services/socialbu-insights.service";
 import {
   saveTokenSchema,
   connectAccountSchema,

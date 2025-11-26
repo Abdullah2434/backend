@@ -2,21 +2,21 @@ import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import ScheduleEmailService, {
   VideoGeneratedEmailData,
   VideoProcessingEmailData,
-} from "../scheduleEmail.service";
-import CaptionGenerationService from "../captionGeneration.service";
+} from "./scheduleEmail.service";
+import { CaptionGenerationService } from "../content";
 import { notificationService } from "../notification.service";
-import { generateSpeech } from "../elevenLabsTTS.service";
+import { generateSpeech } from "../elevenLabs";
 import MusicTrack from "../../models/MusicTrack";
-import { S3Service } from "../s3";
+import { S3Service } from "../s3.service";
 import { VideoScheduleAPICalls } from "./api-calls.service";
 import { text } from "stream/consumers";
-import { SubscriptionService } from "../subscription.service";
+import { SubscriptionService } from "../payment";
 import ElevenLabsVoice from "../../models/elevenLabsVoice";
-import { EmailService } from "../email";
+import { EmailService } from "../email.service";
 import {
   generateVideoLimitReachedEmail,
   generateSubscriptionExpiredEmail,
-} from "../videoScheduleFailureEmails";
+} from "./videoScheduleFailureEmails";
 
 /**
  * Get voice settings based on preset (case insensitive)

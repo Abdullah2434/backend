@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import webhookService from "../services/webhooksocialbu.service";
+import { webhookService } from "../services/socialbu";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   socialBuWebhookSchema,

@@ -1,7 +1,6 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import socialBuMediaService from "../services/socialbu-media.service";
-import socialBuService from "../services/socialbu.service";
+import { socialBuMediaService, socialBuService } from "../services/socialbu";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   uploadMediaSchema,

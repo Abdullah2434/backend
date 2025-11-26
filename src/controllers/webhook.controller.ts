@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import WebhookService from "../services/webhook.service";
-import VideoScheduleService from "../services/videoSchedule.service";
+import { WebhookService } from "../services/webhook";
+import VideoScheduleService from "../services/videoSchedule";
 import { WebhookRequest } from "../types";
 import WorkflowHistory from "../models/WorkflowHistory";
 import { notificationService } from "../services/notification.service";

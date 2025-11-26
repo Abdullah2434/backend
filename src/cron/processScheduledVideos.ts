@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import VideoScheduleService from "../services/videoSchedule.service";
+import VideoScheduleService from "../services/videoSchedule";
 import VideoSchedule, { IVideoSchedule } from "../models/VideoSchedule";
 import UserVideoSettings, {
   IUserVideoSettings,

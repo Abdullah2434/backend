@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ctrl from '../../controllers/videoAvatar.controller';
-import { authenticate } from '../../modules/auth/middleware/auth';
+import { authenticate } from '../../middleware/auth';
 
 const router = Router();
 

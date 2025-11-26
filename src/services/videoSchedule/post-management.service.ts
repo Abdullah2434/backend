@@ -1,7 +1,6 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
-import { generateFromDescription } from "../trends.service";
+import { generateFromDescription, DynamicPostGenerationService } from "../content";
 import UserVideoSettings from "../../models/UserVideoSettings";
-import { DynamicPostGenerationService } from "../dynamicPostGeneration.service";
 import { VideoScheduleCaptionGeneration } from "./caption-generation.service";
 
 export class VideoSchedulePostManagement {

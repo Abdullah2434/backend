@@ -2,10 +2,10 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
 import VideoScheduleService, {
   ScheduleData,
-} from "../services/videoSchedule.service";
+} from "../services/videoSchedule";
 import UserVideoSettings from "../models/UserVideoSettings";
 import TimezoneService from "../utils/timezone";
-import { SubscriptionService } from "../services/subscription.service";
+import { SubscriptionService } from "../services/payment";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   createScheduleSchema,

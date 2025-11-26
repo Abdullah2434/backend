@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import { UserVideoSettingsService } from "../services/userVideoSettings.service";
+import { UserVideoSettingsService } from "../services/user";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   getUserVideoSettingsSchema,

@@ -1,7 +1,6 @@
 import UserConnectedAccount from "../models/UserConnectedAccount";
 import VideoSchedule from "../models/VideoSchedule";
-import socialBuService from "./socialbu.service";
-import socialBuMediaService from "./socialbu-media.service";
+import { socialBuService, socialBuMediaService } from "./socialbu";
 import { notificationService } from "./notification.service";
 import SocialBuToken from "../models/SocialBuToken";
 
@@ -30,7 +29,6 @@ export class AutoSocialPostingService {
     data: AutoPostingData
   ): Promise<SocialPostResult[]> {
     try {
-   
       // Preflight: ensure active SocialBu token exists
       const activeToken = await SocialBuToken.findOne({ isActive: true });
       if (!activeToken || !activeToken.authToken) {
@@ -63,7 +61,6 @@ export class AutoSocialPostingService {
       });
 
       if (connectedAccounts.length === 0) {
-    
         notificationService.notifyAutoPostAlert(data.userId, "failure", {
           scheduleId: data.scheduleId,
           trendIndex: data.trendIndex,
@@ -75,13 +72,8 @@ export class AutoSocialPostingService {
         return [];
       }
 
-     
+      connectedAccounts.forEach((account, index) => {});
 
-      connectedAccounts.forEach((account, index) => {
-       
-      });
-
-  
       const uploadResult = await socialBuMediaService.uploadMedia(data.userId, {
         name: data.videoTitle.replace(/[^a-zA-Z0-9]/g, "_") + ".mp4",
         mime_type: "video/mp4",
@@ -99,8 +91,6 @@ export class AutoSocialPostingService {
       if (!socialbuResponse || !socialbuResponse.key) {
         throw new Error("Failed to get upload key from SocialBu response");
       }
-
- 
 
       // Step 1.1: Fetch upload_token from SocialBu using the key (align with manual flow)
       const key = socialbuResponse.key;
@@ -123,7 +113,6 @@ export class AutoSocialPostingService {
         throw new Error("Missing upload_token in SocialBu status response");
       }
 
-
       // Send socket notification - Video uploaded
       notificationService.notifyAutoPostProgress(
         data.userId,
@@ -142,25 +131,17 @@ export class AutoSocialPostingService {
 
       for (const account of connectedAccounts) {
         try {
-     
-
-          // Show which caption will be used for this platform
-          const caption = this.getPlatformCaption(account.accountType, trend);
-      
-
           const result = await this.postToPlatform(account, trend, uploadToken);
 
           results.push(result);
 
           if (result.success) {
-   
           } else {
             console.log(
               `❌ Failed to post to ${account.accountName}: ${result.error}`
             );
           }
         } catch (error: any) {
-
           results.push({
             platform: account.accountType,
             accountName: account.accountName,
@@ -172,7 +153,6 @@ export class AutoSocialPostingService {
 
       const successfulPosts = results.filter((r) => r.success);
       const failedPosts = results.filter((r) => !r.success);
-
 
       // Send enhanced alert notifications based on results
       if (successfulPosts.length === results.length) {
@@ -287,7 +267,6 @@ export class AutoSocialPostingService {
         : new Date();
       const publishAt = formatDateTimeUTC(publishDate);
       try {
-
       } catch {}
       const postData = {
         accounts: [account.socialbuAccountId], // Use socialbuAccountId like manual posting
@@ -303,7 +282,6 @@ export class AutoSocialPostingService {
 
       // Debug: Log full SocialBu post body
       try {
-     
       } catch {}
 
       // Use existing socialBuService.makeAuthenticatedRequest (same as manual posting)
@@ -374,36 +352,7 @@ export class AutoSocialPostingService {
       return trend.youtube_caption || null;
     }
 
-
     return null;
-  }
-
-  /**
-   * Get user's connected accounts summary
-   */
-  async getUserConnectedAccountsSummary(userId: string): Promise<{
-    totalAccounts: number;
-    platforms: string[];
-    accounts: Array<{
-      name: string;
-      type: string;
-      isActive: boolean;
-    }>;
-  }> {
-    const accounts = await UserConnectedAccount.find({
-      userId,
-      isActive: true,
-    });
-
-    return {
-      totalAccounts: accounts.length,
-      platforms: [...new Set(accounts.map((acc) => acc.accountType))],
-      accounts: accounts.map((acc) => ({
-        name: acc.accountName,
-        type: acc.accountType,
-        isActive: acc.isActive,
-      })),
-    };
   }
 }
 

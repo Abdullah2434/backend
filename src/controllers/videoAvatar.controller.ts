@@ -1,10 +1,10 @@
 import { Response } from "express";
 import multer from "multer";
 import fs from "fs";
-import VideoAvatarService from "../services/videoAvatar.service";
-import { getS3 } from "../services/s3";
+import { VideoAvatarService } from "../services/video";
+import { getS3 } from "../services/s3.service";
 import { notificationService } from "../services/notification.service";
-import { SubscriptionService } from "../services/subscription.service";
+import { SubscriptionService } from "../services/payment";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   CreateVideoAvatarWithFilesRequest,

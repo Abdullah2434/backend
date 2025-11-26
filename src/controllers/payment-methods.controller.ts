@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import { PaymentMethodsService } from "../services/payment-methods.service";
+import { PaymentMethodsService } from "../services/payment";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   updatePaymentMethodSchema,

@@ -1,9 +1,9 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import UserVideoSettings from "../../models/UserVideoSettings";
-import { generateRealEstateTrends } from "../trends.service";
+import { generateRealEstateTrends } from "../content";
 import ScheduleEmailService, {
   ScheduleEmailData,
-} from "../scheduleEmail.service";
+} from "./scheduleEmail.service";
 import { VideoScheduleUtils } from "./utils.service";
 import { VideoScheduleCaptionGeneration } from "./caption-generation.service";
 import { ScheduleData } from "./types";

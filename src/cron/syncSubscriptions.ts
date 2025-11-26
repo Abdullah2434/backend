@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { SubscriptionService } from "../services/subscription.service";
+import { SubscriptionService } from "../services/payment";
 import Subscription, { ISubscription } from "../models/Subscription";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {

@@ -2,7 +2,7 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ResponseHelper } from "../utils/responseHelper";
-import { userConnectedAccountService } from "../services/userConnectedAccount.service";
+import { userConnectedAccountService } from "../services/user";
 import {
   accountTypeParamSchema,
   socialbuAccountIdParamSchema,
@@ -181,7 +181,7 @@ export const syncUserConnectedAccounts = asyncHandler(
 
       // Get user's accounts from SocialBu API
       const { socialBuAccountService } = await import(
-        "../services/socialbu-account.service"
+        "../services/socialbu"
       );
       const result = await socialBuAccountService.getUserAccounts(token);
 
