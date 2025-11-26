@@ -1,7 +1,7 @@
 export const VOICE_ENERGY_PRESETS = {
    low: {
-    stability: 0.75, // Lower for more natural variation
-    similarity_boost: 0.8, // Higher for better voice match
+    stability: 0.70, // Lower for more natural variation
+    similarity_boost: 0.80, // Higher for better voice match
     style: 0.0, // Lower for more natural delivery
     use_speaker_boost: true,
     speed: 0.85, // Slightly faster but still natural
@@ -9,23 +9,23 @@ export const VOICE_ENERGY_PRESETS = {
   medium: {
     stability: 0.5, // Balanced for natural speech
     similarity_boost: 0.75, // Higher for better voice match
-    style: 0.2, // Lower for natural delivery
+    style: 0.0, // Lower for natural delivery
     use_speaker_boost: true,
     speed: 1.0, // Natural pace
   },
   mid: {
     stability: 0.5, // Balanced for natural speech
     similarity_boost: 0.75, // Higher for better voice match
-    style: 0.2, // Lower for natural delivery
+    style: 0.0, // Lower for natural delivery
     use_speaker_boost: true,
     speed: 1.0, // Natural pace
   },
   high: {
-    stability: 0.25, // Slightly higher but still allows variation
-    similarity_boost: 0.7, // Higher for better voice match
-    style: 0.5, // Very low for most natural delivery
+    stability: 0.35, // Slightly higher but still allows variation
+    similarity_boost: 0.75, // Higher for better voice match
+    style: 0.0, // Very low for most natural delivery
     use_speaker_boost: true,
-    speed: 1.15, // Slightly slower for emphasis
+    speed: 1.1, // Slightly slower for emphasis
   },
 } as const;
 

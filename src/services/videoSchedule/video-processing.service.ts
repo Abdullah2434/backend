@@ -32,7 +32,7 @@ function getVoiceSettingsByPreset(preset: string): {
 
   if (presetLower === "low") {
     return {
-      stability: 0.75, // Lower for more natural variation
+      stability: 0.70, // Lower for more natural variation
       similarity_boost: 0.8, // Higher for better voice match
       style: 0.0, // Lower for more natural delivery
       use_speaker_boost: true,
@@ -42,17 +42,17 @@ function getVoiceSettingsByPreset(preset: string): {
     return {
       stability: 0.5, // Balanced for natural speech
       similarity_boost: 0.75, // Higher for better voice match
-      style: 0.2, // Lower for natural delivery
+      style: 0.0, // Lower for natural delivery
       use_speaker_boost: true,
       speed: 1.0, // Natural pace
     };
   } else if (presetLower === "high") {
     return {
-      stability: 0.25, // Slightly higher but still allows variation
+      stability: 0.35, // Slightly higher but still allows variation
       similarity_boost: 0.7, // Higher for better voice match
-      style: 0.5, // Very low for most natural delivery
+      style: 0.0, // Very low for most natural delivery
       use_speaker_boost: true,
-      speed: 1.15, // Slightly slower for emphasis
+      speed: 1.1, // Slightly slower for emphasis
     };
   }
 
