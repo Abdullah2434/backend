@@ -7,26 +7,14 @@ import {
   accountTypeParamSchema,
   socialbuAccountIdParamSchema,
 } from "../validations/userConnectedAccount.validations";
+import {
+  getUserIdFromRequest,
+  extractAccessToken,
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
 
 // ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: AuthenticatedRequest): string | null {
-  const authHeader = req.headers.authorization;
-  return authHeader?.replace("Bearer ", "") || null;
-}
-
 /**
  * Parse socialbuAccountId from string to number
  */
@@ -38,35 +26,13 @@ function parseSocialbuAccountId(socialbuAccountId: string): number {
   return parsed;
 }
 
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Get all connected accounts for the authenticated user
  * GET /api/user-connected-accounts
  */
 export const getUserConnectedAccounts = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
 
@@ -78,14 +44,13 @@ export const getUserConnectedAccounts = asyncHandler(
         "User connected accounts retrieved successfully",
         accounts
       );
-    } catch (error: any) {
-      console.error("Error in getUserConnectedAccounts:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || "Failed to get user connected accounts",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "getUserConnectedAccounts",
+        "Failed to get user connected accounts"
+      );
     }
   }
 );
@@ -95,7 +60,7 @@ export const getUserConnectedAccounts = asyncHandler(
  * GET /api/user-connected-accounts/type/:type
  */
 export const getUserConnectedAccountsByType = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
       const { type } = req.params;
@@ -103,10 +68,7 @@ export const getUserConnectedAccountsByType = asyncHandler(
       // Validate type parameter
       const validationResult = accountTypeParamSchema.safeParse({ type });
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
+        const errors = formatValidationErrors(validationResult.error);
         return ResponseHelper.badRequest(res, "Validation failed", errors);
       }
 
@@ -121,15 +83,13 @@ export const getUserConnectedAccountsByType = asyncHandler(
         `User connected ${validationResult.data.type} accounts retrieved successfully`,
         accounts
       );
-    } catch (error: any) {
-      console.error("Error in getUserConnectedAccountsByType:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message:
-          error.message || "Failed to get user connected accounts by type",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "getUserConnectedAccountsByType",
+        "Failed to get user connected accounts by type"
+      );
     }
   }
 );
@@ -139,7 +99,7 @@ export const getUserConnectedAccountsByType = asyncHandler(
  * GET /api/user-connected-accounts/stats
  */
 export const getUserAccountStats = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
 
@@ -152,14 +112,13 @@ export const getUserAccountStats = asyncHandler(
         "User account statistics retrieved successfully",
         stats
       );
-    } catch (error: any) {
-      console.error("Error in getUserAccountStats:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || "Failed to get user account statistics",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "getUserAccountStats",
+        "Failed to get user account statistics"
+      );
     }
   }
 );
@@ -169,7 +128,7 @@ export const getUserAccountStats = asyncHandler(
  * POST /api/user-connected-accounts/sync
  */
 export const syncUserConnectedAccounts = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
 
@@ -208,14 +167,13 @@ export const syncUserConnectedAccounts = asyncHandler(
           accounts: updatedAccounts,
         }
       );
-    } catch (error: any) {
-      console.error("Error in syncUserConnectedAccounts:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || "Failed to sync user connected accounts",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "syncUserConnectedAccounts",
+        "Failed to sync user connected accounts"
+      );
     }
   }
 );
@@ -225,7 +183,7 @@ export const syncUserConnectedAccounts = asyncHandler(
  * PUT /api/user-connected-accounts/:socialbuAccountId/deactivate
  */
 export const deactivateConnectedAccount = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
       const { socialbuAccountId } = req.params;
@@ -235,10 +193,7 @@ export const deactivateConnectedAccount = asyncHandler(
         socialbuAccountId,
       });
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
+        const errors = formatValidationErrors(validationResult.error);
         return ResponseHelper.badRequest(res, "Validation failed", errors);
       }
 
@@ -261,14 +216,13 @@ export const deactivateConnectedAccount = asyncHandler(
         "Connected account deactivated successfully",
         { socialbuAccountId: accountId }
       );
-    } catch (error: any) {
-      console.error("Error in deactivateConnectedAccount:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || "Failed to deactivate connected account",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "deactivateConnectedAccount",
+        "Failed to deactivate connected account"
+      );
     }
   }
 );
@@ -278,7 +232,7 @@ export const deactivateConnectedAccount = asyncHandler(
  * DELETE /api/user-connected-accounts/:socialbuAccountId
  */
 export const deleteConnectedAccount = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
       const { socialbuAccountId } = req.params;
@@ -288,10 +242,7 @@ export const deleteConnectedAccount = asyncHandler(
         socialbuAccountId,
       });
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
+        const errors = formatValidationErrors(validationResult.error);
         return ResponseHelper.badRequest(res, "Validation failed", errors);
       }
 
@@ -314,14 +265,13 @@ export const deleteConnectedAccount = asyncHandler(
         "Connected account deleted successfully",
         { socialbuAccountId: accountId }
       );
-    } catch (error: any) {
-      console.error("Error in deleteConnectedAccount:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message: error.message || "Failed to delete connected account",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "deleteConnectedAccount",
+        "Failed to delete connected account"
+      );
     }
   }
 );
@@ -331,7 +281,7 @@ export const deleteConnectedAccount = asyncHandler(
  * PUT /api/user-connected-accounts/:socialbuAccountId/last-used
  */
 export const updateAccountLastUsed = asyncHandler(
-  async (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
       const userId = getUserIdFromRequest(req);
       const { socialbuAccountId } = req.params;
@@ -341,10 +291,7 @@ export const updateAccountLastUsed = asyncHandler(
         socialbuAccountId,
       });
       if (!validationResult.success) {
-        const errors = validationResult.error.errors.map((err) => ({
-          field: err.path.join("."),
-          message: err.message,
-        }));
+        const errors = formatValidationErrors(validationResult.error);
         return ResponseHelper.badRequest(res, "Validation failed", errors);
       }
 
@@ -366,15 +313,13 @@ export const updateAccountLastUsed = asyncHandler(
         "Account last used timestamp updated successfully",
         { socialbuAccountId: accountId }
       );
-    } catch (error: any) {
-      console.error("Error in updateAccountLastUsed:", error);
-      const status = getErrorStatus(error);
-      return res.status(status).json({
-        success: false,
-        message:
-          error.message || "Failed to update account last used timestamp",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+    } catch (error) {
+      return handleControllerError(
+        error,
+        res,
+        "updateAccountLastUsed",
+        "Failed to update account last used timestamp"
+      );
     }
   }
 );

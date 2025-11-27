@@ -1,6 +1,5 @@
 import DefaultAvatar, { IDefaultAvatar } from "../models/avatar";
 import axios, { AxiosResponse } from "axios";
-import dotenv from "dotenv";
 import { connectMongo } from "../config/mongoose";
 import { notificationService } from "../services/notification.service";
 import cron from "node-cron";
@@ -18,19 +17,16 @@ import {
   VALID_AVATAR_STATUSES,
   avatarStatusCheckResultSchema,
 } from "../validations/avatarStatus.validations";
-
-// ==================== CONSTANTS ====================
-dotenv.config();
-
-const CRON_JOB_NAME = "avatar-status-check";
-const CRON_SCHEDULE = "*/2 * * * *"; // Every 2 minutes
-const AVATAR_STATUS_PENDING = "pending";
-const AVATAR_STATUS_READY = "ready";
-const NOTIFICATION_STATUS_SUCCESS = "success";
-const NOTIFICATION_TYPE_READY = "ready";
-
-const API_KEY = process.env.HEYGEN_API_KEY;
-const STATUS_URL = `${process.env.HEYGEN_BASE_URL}/photo_avatar/train/status`;
+import {
+  CRON_JOB_NAME,
+  CRON_SCHEDULE,
+  AVATAR_STATUS_PENDING,
+  AVATAR_STATUS_READY,
+  NOTIFICATION_STATUS_SUCCESS,
+  NOTIFICATION_TYPE_READY,
+  API_KEY,
+  STATUS_URL,
+} from "../constants/avatarStatusCron.constants";
 
 // ==================== TYPES ====================
 interface AvatarStatusCheckResult {
@@ -109,7 +105,7 @@ async function checkAvatarStatusFromAPI(
       return { error: "API key not configured" };
     }
 
-    if (!STATUS_URL || STATUS_URL.includes("undefined")) {
+    if (!STATUS_URL) {
       console.error("HEYGEN_BASE_URL is not configured");
       return { error: "API base URL not configured" };
     }
@@ -269,7 +265,11 @@ async function processAvatarStatusCheck(
 /**
  * Check pending avatars and update their status
  */
-export async function checkPendingAvatarsAndUpdate() {
+export async function checkPendingAvatarsAndUpdate(): Promise<{
+  total: number;
+  updated: number;
+  errors: number;
+}> {
   const config = getCronConfig(CRON_JOB_NAME);
 
   try {

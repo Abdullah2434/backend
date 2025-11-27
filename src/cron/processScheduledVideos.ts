@@ -1,10 +1,7 @@
 import cron from "node-cron";
 import VideoScheduleService from "../services/videoSchedule";
-import VideoSchedule, { IVideoSchedule } from "../models/VideoSchedule";
-import UserVideoSettings, {
-  IUserVideoSettings,
-} from "../models/UserVideoSettings";
-import TimezoneService from "../utils/timezone";
+import VideoSchedule from "../models/VideoSchedule";
+import UserVideoSettings from "../models/UserVideoSettings";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
   executeWithOverallTimeout,
@@ -15,7 +12,6 @@ import {
 import { getCronConfig } from "../config/cron.config";
 import {
   VALID_TREND_STATUSES,
-  VALID_SCHEDULE_STATUSES,
   TREND_PROCESSING_WINDOW,
   RETRY_PROCESSING,
   TREND_GENERATION,
@@ -25,9 +21,7 @@ import {
 import {
   ProcessScheduleResult,
   ProcessTrendResult,
-  ScheduledVideoProcessorSummary,
   RetryFailedProcessingResult,
-  TrendGenerationResult,
   HealthCheckData,
   ProcessScheduledVideosConfig,
   TrendTimeWindow,
@@ -35,10 +29,10 @@ import {
   ScheduleWithTrends,
   UserSettings,
 } from "../types/cron/processScheduledVideos.types";
-
-// ==================== CONSTANTS ====================
-const CRON_JOB_NAME = "scheduled-video-processor";
-const TREND_GENERATION_JOB_NAME = "trend-generation";
+import {
+  CRON_JOB_NAME,
+  TREND_GENERATION_JOB_NAME,
+} from "../constants/processScheduledVideosCron.constants";
 
 // ==================== SERVICE INSTANCES ====================
 const videoScheduleService = new VideoScheduleService();
@@ -64,8 +58,7 @@ function isTrendDueForProcessing(
 
   return (
     timeDiff <= minutesBefore && // Within processing window before
-    timeDiff >= -minutesAfter && // Within grace period after
-    true
+    timeDiff >= -minutesAfter // Within grace period after
   );
 }
 
@@ -74,13 +67,6 @@ function isTrendDueForProcessing(
  */
 function isValidTrendStatus(status: string): boolean {
   return VALID_TREND_STATUSES.includes(status as any);
-}
-
-/**
- * Validate schedule status
- */
-function isValidScheduleStatus(status: string): boolean {
-  return VALID_SCHEDULE_STATUSES.includes(status as any);
 }
 
 /**
@@ -209,9 +195,7 @@ async function processScheduleWithTimeout(
     );
 
     if (!userSettings) {
-      console.warn(
-        `⚠️ User settings not found for schedule ${schedule._id}`
-      );
+      console.warn(`⚠️ User settings not found for schedule ${schedule._id}`);
       return {
         success: false,
         processed: 0,
@@ -306,7 +290,9 @@ async function retryFailedProcessing(): Promise<RetryFailedProcessingResult> {
           retriedCount++;
         }
       } catch (error: any) {
-        const errorMsg = `Error retrying schedule ${schedule._id}: ${error?.message || "Unknown error"}`;
+        const errorMsg = `Error retrying schedule ${schedule._id}: ${
+          error?.message || "Unknown error"
+        }`;
         console.error(`❌ ${errorMsg}`);
         errors.push(errorMsg);
       }
@@ -314,7 +300,9 @@ async function retryFailedProcessing(): Promise<RetryFailedProcessingResult> {
 
     return { retriedCount, errors };
   } catch (error: any) {
-    const errorMsg = `Error in retry processing: ${error?.message || "Unknown error"}`;
+    const errorMsg = `Error in retry processing: ${
+      error?.message || "Unknown error"
+    }`;
     console.error(`❌ ${errorMsg}`);
     errors.push(errorMsg);
     return { retriedCount, errors };
@@ -333,7 +321,6 @@ export function startScheduledVideoProcessor() {
   // Run every 5 minutes with improved error handling
   cron.schedule(CRON_SCHEDULES.VIDEO_PROCESSOR, async () => {
     const startTime = Date.now();
-    const currentUTC = TimezoneService.getCurrentUTC();
 
     // Prevent overlapping executions
     if (checkProcessingLock()) {
@@ -419,9 +406,7 @@ export function startScheduledVideoProcessor() {
       );
 
       const duration = Date.now() - startTime;
-      console.log(
-        `✅ Scheduled video processor completed in ${duration}ms`
-      );
+      console.log(`✅ Scheduled video processor completed in ${duration}ms`);
 
       // Mark job as completed
       cronMonitor.markJobCompleted(CRON_JOB_NAME, duration, true);
@@ -445,10 +430,7 @@ export function startScheduledVideoProcessor() {
             config.retryInitialDelayMs
           );
         } catch (retryError: any) {
-          console.error(
-            "❌ Retry failed:",
-            retryError?.message || retryError
-          );
+          console.error("❌ Retry failed:", retryError?.message || retryError);
         }
       }, config.retryInitialDelayMs);
     } finally {
@@ -466,7 +448,9 @@ export function startScheduledVideoProcessor() {
  */
 export function startScheduleCleanup() {
   // Schedule cleanup is disabled to keep all schedules for historical purposes
-  console.log("ℹ️ Schedule cleanup is disabled (keeping schedules for history)");
+  console.log(
+    "ℹ️ Schedule cleanup is disabled (keeping schedules for history)"
+  );
 }
 
 /**
@@ -522,7 +506,8 @@ export function startTrendGeneration() {
                   .map((trend: GeneratedTrend) => ({
                     ...trend,
                     scheduledFor: new Date(
-                      Date.now() + Math.random() * TREND_GENERATION.RANDOM_WEEK_MS
+                      Date.now() +
+                        Math.random() * TREND_GENERATION.RANDOM_WEEK_MS
                     ), // Random time in next week
                     status: "pending" as const,
                   }));
@@ -536,7 +521,9 @@ export function startTrendGeneration() {
                 totalTrendsAdded += additionalTrends.length;
               }
             } catch (error: any) {
-              const errorMsg = `Error generating trends for schedule ${schedule._id}: ${error?.message || "Unknown error"}`;
+              const errorMsg = `Error generating trends for schedule ${
+                schedule._id
+              }: ${error?.message || "Unknown error"}`;
               console.error(`❌ ${errorMsg}`);
               errors.push(errorMsg);
             }
@@ -546,7 +533,11 @@ export function startTrendGeneration() {
           console.log(
             `✅ Trend generation completed in ${duration}ms, processed ${processedSchedules} schedule(s), added ${totalTrendsAdded} trend(s)`
           );
-          cronMonitor.markJobCompleted(TREND_GENERATION_JOB_NAME, duration, true);
+          cronMonitor.markJobCompleted(
+            TREND_GENERATION_JOB_NAME,
+            duration,
+            true
+          );
         })(),
         config.overallTimeoutMs
       );
@@ -582,13 +573,14 @@ export function startHealthCheck() {
     };
 
     if (lastExecution) {
-      const timeSinceLastExecution =
-        Date.now() - lastExecution.getTime();
+      const timeSinceLastExecution = Date.now() - lastExecution.getTime();
       healthData.timeSinceLastExecution = timeSinceLastExecution;
 
       if (timeSinceLastExecution > HEALTH_CHECK.NO_EXECUTION_THRESHOLD_MS) {
         console.warn(
-          `⚠️ No cron execution in the last ${Math.round(timeSinceLastExecution / 60000)} minutes`
+          `⚠️ No cron execution in the last ${Math.round(
+            timeSinceLastExecution / 60000
+          )} minutes`
         );
       }
     }
@@ -601,9 +593,7 @@ export function startHealthCheck() {
     // Log memory usage if high
     const memUsageMB = memUsage.heapUsed / 1024 / 1024;
     if (memUsageMB > 500) {
-      console.warn(
-        `⚠️ High memory usage: ${Math.round(memUsageMB)} MB`
-      );
+      console.warn(`⚠️ High memory usage: ${Math.round(memUsageMB)} MB`);
     }
   });
 

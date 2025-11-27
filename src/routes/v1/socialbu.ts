@@ -10,7 +10,7 @@ import {
   getPosts,
   getInsights,
   getScheduledPosts,
-} from "../../controllers/socialbu.controller";
+} from "../../controllers/socialbu/socialbu.controller";
 
 const router = Router();
 

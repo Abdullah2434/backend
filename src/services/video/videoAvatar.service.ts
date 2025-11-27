@@ -1,5 +1,5 @@
 import VideoAvatar, { IVideoAvatar } from "../../models/VideoAvatar";
-import DefaultAvatar, { IDefaultAvatar } from "../../models/avatar";
+import DefaultAvatar from "../../models/avatar";
 import { getS3 } from "../s3.service";
 import { WebhookService } from "../webhook";
 import { notificationService } from "../notification.service";
@@ -41,14 +41,13 @@ import {
   generateS3Key,
   formatNotificationPayload,
 } from "../../utils/videoAvatarHelpers";
-
-// ==================== CONSTANTS ====================
-const HEYGEN_VIDEO_AVATAR_ENDPOINT = "/video_avatar";
+import { HEYGEN_VIDEO_AVATAR_ENDPOINT } from "../../constants/videoAvatarService.constants";
 
 export class VideoAvatarService {
   private s3Service = getS3();
   private webhookService = new WebhookService();
 
+  // ==================== S3 OPERATIONS ====================
   /**
    * Generate signed URL for S3 file
    */
@@ -128,6 +127,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== URL VALIDATION ====================
   /**
    * Validate video URLs are accessible
    */
@@ -183,6 +183,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== HEYGEN API INTEGRATION ====================
   /**
    * Submit payload to Heygen API using env HEYGEN_BASE_URL and HEYGEN_API_KEY
    */
@@ -241,9 +242,7 @@ export class VideoAvatarService {
       let finalUserId = userId;
       if (!finalUserId && authToken) {
         try {
-          const authService = new (
-            await import("../auth.service")
-          ).default();
+          const authService = new (await import("../auth.service")).default();
           const user = await authService.getCurrentUser(authToken);
           if (user) {
             finalUserId = user._id.toString();
@@ -449,6 +448,7 @@ export class VideoAvatarService {
     });
   }
 
+  // ==================== WEBHOOK CALLBACKS ====================
   /**
    * Send callback notification with user authentication
    */
@@ -489,6 +489,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== PUBLIC API METHODS ====================
   /**
    * Create a new video avatar request with file uploads
    */
@@ -664,6 +665,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== AVATAR STATUS MANAGEMENT ====================
   /**
    * Get avatar status by ID
    */
@@ -744,6 +746,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== AVATAR QUERIES ====================
   /**
    * Get all avatars by group ID
    */
@@ -775,6 +778,7 @@ export class VideoAvatarService {
     }
   }
 
+  // ==================== AVATAR DELETION ====================
   /**
    * Delete avatar
    */

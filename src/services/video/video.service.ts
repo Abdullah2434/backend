@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import Video, { IVideo } from "../../models/Video";
 import User from "../../models/User";
 import Topic, { ITopic } from "../../models/Topic";
@@ -12,6 +11,25 @@ import {
   VideoStats,
   VideoDownloadResult,
 } from "../../types";
+import {
+  VIDEO_STATUS_PROCESSING,
+  VIDEO_STATUS_READY,
+  VIDEO_STATUS_FAILED,
+  DOWNLOAD_URL_EXPIRY_SECONDS,
+  DEFAULT_CONTENT_TYPE,
+  DEFAULT_VIDEO_TITLE,
+  DEFAULT_USER_AGENT,
+  ERROR_MESSAGES,
+} from "../../constants/videoService.constants";
+import {
+  generateVideoId,
+  generateSecretKey,
+  cleanVideoTitle,
+  extractFilenameFromUrl,
+  generateCaptionsForVideo,
+  areCaptionsMissing,
+  isYoutubeCaptionMissing,
+} from "../../utils/videoServiceHelpers";
 
 export class VideoService {
   private s3Service = getS3();
@@ -24,7 +42,7 @@ export class VideoService {
     // Find user by email to get userId
     const user = await User.findOne({ email: videoData.email });
     if (!user) {
-      throw new Error("User not found");
+      throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
     }
 
     // Check subscription limits
@@ -32,16 +50,11 @@ export class VideoService {
       user._id.toString()
     );
     if (!videoLimit.canCreate) {
-      throw new Error(
-        `Video limit reached. You can create up to 30 videos per month. Your subscription will renew monthly.`
-      );
+      throw new Error(ERROR_MESSAGES.VIDEO_LIMIT_REACHED);
     }
 
-    const videoId = `video_${Date.now()}_${crypto
-      .randomBytes(8)
-      .toString("hex")}`;
-    const secretKey =
-      videoData.secretKey || crypto.randomBytes(32).toString("hex");
+    const videoId = generateVideoId();
+    const secretKey = videoData.secretKey || generateSecretKey();
 
     const video = new Video({
       videoId,
@@ -51,7 +64,7 @@ export class VideoService {
       secretKey,
       videoUrl: videoData.videoUrl,
       s3Key: videoData.s3Key,
-      status: videoData.status || "processing",
+      status: videoData.status || VIDEO_STATUS_PROCESSING,
       metadata: videoData.metadata,
     });
 
@@ -108,7 +121,10 @@ export class VideoService {
    */
   async updateVideoStatus(
     videoId: string,
-    status: "processing" | "ready" | "failed"
+    status:
+      | typeof VIDEO_STATUS_PROCESSING
+      | typeof VIDEO_STATUS_READY
+      | typeof VIDEO_STATUS_FAILED
   ): Promise<IVideo | null> {
     const video = await Video.findOneAndUpdate(
       { videoId },
@@ -228,7 +244,7 @@ export class VideoService {
   async getVideoWithDownloadUrl(videoId: string): Promise<IVideo | null> {
     const video = await Video.findOne({ videoId }).select("+secretKey");
 
-    if (!video || video.status !== "ready") {
+    if (!video || video.status !== VIDEO_STATUS_READY) {
       return video;
     }
 
@@ -237,13 +253,13 @@ export class VideoService {
       const downloadResult = await this.s3Service.createDownloadUrl(
         video.s3Key,
         video.secretKey,
-        3600 // 1 hour
+        DOWNLOAD_URL_EXPIRY_SECONDS
       );
 
       // Add download URL to video object (not saved to database)
       (video as any).downloadUrl = downloadResult.downloadUrl;
     } catch (s3Error) {
-  
+      // Continue without download URL
     }
 
     return video;
@@ -260,31 +276,23 @@ export class VideoService {
     // Add download URLs for ready videos
     const videosWithUrls = await Promise.all(
       videos.map(async (video) => {
-        if (video.status === "ready") {
+        if (video.status === VIDEO_STATUS_READY) {
           try {
             const downloadResult = await this.s3Service.createDownloadUrl(
               video.s3Key,
               video.secretKey,
-              3600 // 1 hour
+              DOWNLOAD_URL_EXPIRY_SECONDS
             );
             (video as any).downloadUrl = downloadResult.downloadUrl;
           } catch (s3Error) {
-        
             // Continue without download URL
           }
         }
 
         // Check if captions are missing and generate them on-the-fly
-        // Check if ANY caption is missing (not just instagram/facebook) to ensure youtube_caption is included
         if (
-          video.status === "ready" &&
-          (!video.socialMediaCaptions ||
-            !video.socialMediaCaptions.instagram_caption ||
-            !video.socialMediaCaptions.facebook_caption ||
-            !video.socialMediaCaptions.linkedin_caption ||
-            !video.socialMediaCaptions.twitter_caption ||
-            !video.socialMediaCaptions.tiktok_caption ||
-            !video.socialMediaCaptions.youtube_caption) // ✅ Also check for youtube_caption
+          video.status === VIDEO_STATUS_READY &&
+          areCaptionsMissing(video.socialMediaCaptions)
         ) {
           try {
             // Get user settings to retrieve language preference and user context
@@ -294,19 +302,9 @@ export class VideoService {
             const language = userSettings?.language;
 
             // Generate captions using the video title as topic
-            const { CaptionGenerationService } = await import(
-              "../content"
-            );
-            const captions = await CaptionGenerationService.generateCaptions(
-              video.title, // Use video title as topic
-              video.title, // Use title as key points too
-              {
-                name: userSettings?.name || "Real Estate Professional",
-                position: userSettings?.position || "Real Estate Professional",
-                companyName: userSettings?.companyName || "Real Estate Company",
-                city: userSettings?.city || "Your City",
-                socialHandles: userSettings?.socialHandles || "@realestate",
-              },
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
               language
             );
 
@@ -316,45 +314,35 @@ export class VideoService {
             // Update the video object for this response
             (video as any).socialMediaCaptions = captions;
           } catch (captionError) {
-         
             // Continue without captions
           }
-        } else if (video.status === "ready" && video.socialMediaCaptions) {
+        } else if (
+          video.status === VIDEO_STATUS_READY &&
+          video.socialMediaCaptions &&
+          isYoutubeCaptionMissing(video.socialMediaCaptions)
+        ) {
           // Check if youtube_caption is missing even if other captions exist
-          if (!video.socialMediaCaptions.youtube_caption) {
-            try {
-              // Get user settings to retrieve language preference and user context
-              const userSettings = await UserVideoSettings.findOne({
-                email: video.email,
-              });
-              const language = userSettings?.language;
+          try {
+            // Get user settings to retrieve language preference and user context
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
 
-              // Generate captions using the video title as topic
-              const { CaptionGenerationService } = await import(
-                "../content"
-              );
-              const captions = await CaptionGenerationService.generateCaptions(
-                video.title,
-                video.title,
-                {
-                  name: userSettings?.name || "Real Estate Professional",
-                  position: userSettings?.position || "Real Estate Professional",
-                  companyName: userSettings?.companyName || "Real Estate Company",
-                  city: userSettings?.city || "Your City",
-                  socialHandles: userSettings?.socialHandles || "@realestate",
-                },
-                language
-              );
+            // Generate captions using the video title as topic
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
+              language
+            );
 
-              // Update the video with generated captions
-              await this.updateVideoCaptions(video.videoId, captions);
+            // Update the video with generated captions
+            await this.updateVideoCaptions(video.videoId, captions);
 
-              // Update the video object for this response
-              (video as any).socialMediaCaptions = captions;
-
-            } catch (captionError) {
-           
-            }
+            // Update the video object for this response
+            (video as any).socialMediaCaptions = captions;
+          } catch (captionError) {
+            // Continue without captions
           }
         }
 
@@ -384,9 +372,9 @@ export class VideoService {
     const [totalCount, readyCount, processingCount, failedCount] =
       await Promise.all([
         Video.countDocuments({ userId }),
-        Video.countDocuments({ userId, status: "ready" }),
-        Video.countDocuments({ userId, status: "processing" }),
-        Video.countDocuments({ userId, status: "failed" }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_READY }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_PROCESSING }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_FAILED }),
       ]);
 
     return {
@@ -414,27 +402,21 @@ export class VideoService {
   ): Promise<VideoDownloadResult> {
     const user = await User.findOne({ email });
     if (!user) {
-      throw new Error("User not found");
+      throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
     }
 
     // Generate unique video ID
-    const videoId = `video_${Date.now()}_${crypto
-      .randomBytes(8)
-      .toString("hex")}`;
+    const videoId = generateVideoId();
 
     // Generate title from URL or use provided title
-    const urlParts = videoUrl.split("/");
-    const filename = urlParts[urlParts.length - 1] || `${videoId}.mp4`;
+    const filename = extractFilenameFromUrl(videoUrl, videoId);
     let baseTitle =
       title ||
       filename.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ") ||
-      "My Video";
+      DEFAULT_VIDEO_TITLE;
 
     // Clean the title (remove special characters, trim whitespace)
-    baseTitle = baseTitle
-      .trim()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, " ");
+    baseTitle = cleanVideoTitle(baseTitle);
 
     // Check for existing videos with same title and generate unique title
     let finalTitle = baseTitle;
@@ -448,21 +430,20 @@ export class VideoService {
     const videoResponse = await fetch(videoUrl, {
       method: "GET",
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": DEFAULT_USER_AGENT,
       },
     });
 
     if (!videoResponse.ok) {
       throw new Error(
-        `Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`
+        `${ERROR_MESSAGES.FAILED_TO_DOWNLOAD_VIDEO}: ${videoResponse.status} ${videoResponse.statusText}`
       );
     }
 
     // Get video content and content type
     const videoBuffer = await videoResponse.arrayBuffer();
     const contentType =
-      videoResponse.headers.get("content-type") || "video/mp4";
+      videoResponse.headers.get("content-type") || DEFAULT_CONTENT_TYPE;
 
     // Create S3 key and secret key
     const s3Key = this.s3Service.generateS3Key(
@@ -470,8 +451,7 @@ export class VideoService {
       videoId,
       filename
     );
-    const secretKey = crypto.randomBytes(32).toString("hex");
-
+    const secretKey = generateSecretKey();
 
     await this.s3Service.uploadVideoDirectly(
       s3Key,
@@ -484,8 +464,6 @@ export class VideoService {
       }
     );
 
- 
-
     // Create video record in database
     const video = await this.createVideo({
       email,
@@ -493,7 +471,7 @@ export class VideoService {
       s3Key,
       secretKey,
       videoUrl,
-      status: "ready",
+      status: VIDEO_STATUS_READY,
       metadata: {
         size: videoBuffer.byteLength,
         format: contentType,

@@ -1,53 +1,15 @@
 import { Response } from "express";
-import { AuthenticatedRequest } from "../types";
-import { webhookService } from "../services/socialbu";
-import { userConnectedAccountService } from "../services/user";
-import { ResponseHelper } from "../utils/responseHelper";
-import { accountIdParamSchema } from "../validations/socialbuAccount.validations";
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Parse account ID from string to number
- */
-function parseAccountId(accountId: string): number {
-  const accountIdNumber = parseInt(accountId, 10);
-  if (isNaN(accountIdNumber)) {
-    throw new Error("Invalid account ID format. Must be a valid number");
-  }
-  return accountIdNumber;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("user not found")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
+import { AuthenticatedRequest } from "../../types";
+import { webhookService } from "../../services/socialbu";
+import { userConnectedAccountService } from "../../services/user";
+import { ResponseHelper } from "../../utils/responseHelper";
+import { accountIdParamSchema } from "../../validations/socialbuAccount.validations";
+import {
+  getUserIdFromRequest,
+  formatValidationErrors,
+  handleControllerError,
+} from "../../utils/controllerHelpers";
+import { parseAccountId } from "../../utils/socialbuHelpers";
 
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
@@ -57,7 +19,7 @@ function getErrorStatus(error: Error): number {
 export const disconnectAccount = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
     const { accountId } = req.params;
@@ -65,10 +27,7 @@ export const disconnectAccount = async (
     // Validate accountId parameter
     const validationResult = accountIdParamSchema.safeParse({ accountId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -97,7 +56,7 @@ export const disconnectAccount = async (
 
     // Call SocialBu API to disconnect the account
     try {
-      const { socialBuService } = await import("../services/socialbu");
+      const { socialBuService } = await import("../../services/socialbu");
       await socialBuService.makeAuthenticatedRequest(
         "DELETE",
         `/accounts/${accountIdNumber}`
@@ -147,14 +106,13 @@ export const disconnectAccount = async (
         remainingAccounts: removeResult.data?.socialbu_account_ids || [],
       }
     );
-  } catch (error: any) {
-    console.error("Error in disconnectAccount:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to disconnect account",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "disconnectAccount",
+      "Failed to disconnect account"
+    );
   }
 };
 
@@ -165,7 +123,7 @@ export const disconnectAccount = async (
 export const checkAccount = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
     const { accountId } = req.params;
@@ -173,10 +131,7 @@ export const checkAccount = async (
     // Validate accountId parameter
     const validationResult = accountIdParamSchema.safeParse({ accountId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -193,13 +148,12 @@ export const checkAccount = async (
     }
 
     return ResponseHelper.success(res, result.message, result.data);
-  } catch (error: any) {
-    console.error("Error in checkAccount:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to check account",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "checkAccount",
+      "Failed to check account"
+    );
   }
 };

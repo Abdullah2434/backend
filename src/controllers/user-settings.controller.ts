@@ -1,29 +1,15 @@
 import { Request, Response } from "express";
-import { AuthenticatedRequest } from "../types";
 import { UserVideoSettingsService } from "../services/user";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   getUserVideoSettingsSchema,
   saveUserVideoSettingsSchema,
 } from "../validations/userSettings.validations";
-
-// ==================== CONSTANTS ====================
-const DEFAULT_AVATAR_TYPE = "video_avatar";
-
-// Required fields for validation
-const REQUIRED_FIELDS = [
-  "prompt",
-  "name",
-  "position",
-  "companyName",
-  "license",
-  "tailoredFit",
-  "socialHandles",
-  "city",
-  "preferredTone",
-  "callToAction",
-  "email",
-] as const;
+import {
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
+import { DEFAULT_AVATAR_TYPE } from "../constants/userSettings.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const userVideoSettingsService = new UserVideoSettingsService();
@@ -32,19 +18,26 @@ const userVideoSettingsService = new UserVideoSettingsService();
 /**
  * Parse avatar object (can be string or object)
  */
-function parseAvatarObject(fieldName: string, value: any): any {
+function parseAvatarObject(
+  _fieldName: string,
+  value: unknown
+): {
+  avatar_id: string;
+  avatarType: string;
+} | null {
   if (!value) return null;
 
   // If it's already an object with avatar_id and avatarType
   if (
     typeof value === "object" &&
     value !== null &&
-    value.avatar_id &&
-    value.avatarType
+    "avatar_id" in value &&
+    "avatarType" in value
   ) {
+    const avatarObj = value as { avatar_id: unknown; avatarType: unknown };
     return {
-      avatar_id: String(value.avatar_id).trim(),
-      avatarType: String(value.avatarType).trim(),
+      avatar_id: String(avatarObj.avatar_id).trim(),
+      avatarType: String(avatarObj.avatarType).trim(),
     };
   }
 
@@ -62,8 +55,8 @@ function parseAvatarObject(fieldName: string, value: any): any {
 /**
  * Normalize avatar array from various formats
  */
-function normalizeAvatarArray(avatar: any): string[] {
-  let avatarArray: any = avatar;
+function normalizeAvatarArray(avatar: unknown): string[] {
+  let avatarArray: unknown = avatar;
 
   if (typeof avatar === "string") {
     try {
@@ -83,8 +76,8 @@ function normalizeAvatarArray(avatar: any): string[] {
   }
 
   // Ensure all avatar IDs in array are strings and filter empty ones
-  const normalized = avatarArray
-    .map((id: any) => String(id).trim())
+  const normalized = (avatarArray as unknown[])
+    .map((id) => String(id).trim())
     .filter((id: string) => id.length > 0);
 
   if (normalized.length === 0) {
@@ -126,27 +119,15 @@ function formatUserVideoSettingsResponse(userSettings: any) {
   };
 }
 
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Get user video settings
  * GET /api/user-settings/video?email=user@example.com
  */
-export async function getUserVideoSettings(req: Request, res: Response) {
+export async function getUserVideoSettings(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate query parameters
     const validationResult = getUserVideoSettingsSchema.safeParse({
@@ -154,10 +135,7 @@ export async function getUserVideoSettings(req: Request, res: Response) {
     });
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -179,14 +157,13 @@ export async function getUserVideoSettings(req: Request, res: Response) {
       "User video settings retrieved successfully",
       formatUserVideoSettingsResponse(userSettings)
     );
-  } catch (error: any) {
-    console.error("Error in getUserVideoSettings:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get user video settings",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getUserVideoSettings",
+      "Failed to get user video settings"
+    );
   }
 }
 
@@ -194,16 +171,16 @@ export async function getUserVideoSettings(req: Request, res: Response) {
  * Save user video settings
  * POST /api/user-settings/video
  */
-export async function saveUserVideoSettings(req: Request, res: Response) {
+export async function saveUserVideoSettings(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = saveUserVideoSettingsSchema.safeParse(req.body);
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -237,8 +214,10 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
     let normalizedAvatarArray: string[];
     try {
       normalizedAvatarArray = normalizeAvatarArray(avatar);
-    } catch (error: any) {
-      return ResponseHelper.badRequest(res, error.message);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invalid avatar format";
+      return ResponseHelper.badRequest(res, message);
     }
 
     // Parse avatar objects
@@ -266,7 +245,9 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
     }
 
     // Normalize videoCaption: convert yes/no/true/false to yes/no format
-    const normalizeVideoCaptionForStorage = (value: string | undefined | null): string | undefined => {
+    const normalizeVideoCaptionForStorage = (
+      value: string | undefined | null
+    ): string | undefined => {
       if (!value) return undefined;
       const normalized = String(value).toLowerCase().trim();
       if (normalized === "yes" || normalized === "true") return "yes";
@@ -280,7 +261,7 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       avatar: normalizedAvatarArray,
       titleAvatar: parsedTitleAvatar,
       conclusionAvatar: parsedConclusionAvatar,
-      bodyAvatar: parsedBodyAvatar,
+      bodyAvatar: parsedBodyAvatar || undefined,
       name,
       position,
       companyName,
@@ -306,13 +287,12 @@ export async function saveUserVideoSettings(req: Request, res: Response) {
       "User video settings saved successfully",
       formatUserVideoSettingsResponse(savedSettings)
     );
-  } catch (error: any) {
-    console.error("Error in saveUserVideoSettings:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to save user video settings",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "saveUserVideoSettings",
+      "Failed to save user video settings"
+    );
   }
 }

@@ -1,63 +1,46 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
-import ScheduleEmailService, {
+import ScheduleEmailService from "./scheduleEmail.service";
+import {
   VideoGeneratedEmailData,
   VideoProcessingEmailData,
-} from "./scheduleEmail.service";
+  UserContext,
+  VideoCreationData,
+  VideoGenerationData,
+} from "../../types/videoScheduleService.types";
 import { CaptionGenerationService } from "../content";
 import { notificationService } from "../notification.service";
 import { generateSpeech } from "../elevenLabs";
-import MusicTrack from "../../models/MusicTrack";
-import { S3Service } from "../s3.service";
 import { VideoScheduleAPICalls } from "./api-calls.service";
-import { text } from "stream/consumers";
 import { SubscriptionService } from "../payment";
-import ElevenLabsVoice from "../../models/elevenLabsVoice";
 import { EmailService } from "../email.service";
 import {
   generateVideoLimitReachedEmail,
   generateSubscriptionExpiredEmail,
 } from "./videoScheduleFailureEmails";
-
-/**
- * Get voice settings based on preset (case insensitive)
- */
-function getVoiceSettingsByPreset(preset: string): {
-  stability: number;
-  similarity_boost: number;
-  style: number;
-  use_speaker_boost: boolean;
-  speed: number;
-} | null {
-  const presetLower = preset?.toLowerCase().trim();
-
-  if (presetLower === "low") {
-    return {
-      stability: 0.70, // Lower for more natural variation
-      similarity_boost: 0.8, // Higher for better voice match
-      style: 0.0, // Lower for more natural delivery
-      use_speaker_boost: true,
-      speed: 0.85, // Slightly faster but still natural
-    };
-  } else if (presetLower === "medium" || presetLower === "mid") {
-    return {
-      stability: 0.5, // Balanced for natural speech
-      similarity_boost: 0.75, // Higher for better voice match
-      style: 0.0, // Lower for natural delivery
-      use_speaker_boost: true,
-      speed: 1.0, // Natural pace
-    };
-  } else if (presetLower === "high") {
-    return {
-      stability: 0.35, // Slightly higher but still allows variation
-      similarity_boost: 0.7, // Higher for better voice match
-      style: 0.0, // Very low for most natural delivery
-      use_speaker_boost: true,
-      speed: 1.1, // Slightly slower for emphasis
-    };
-  }
-
-  return null;
-}
+import {
+  PROCESSING_BUFFER_MS,
+  STATUS_PENDING,
+  STATUS_PROCESSING,
+  STATUS_COMPLETED,
+  STATUS_FAILED,
+  ERROR_MESSAGES,
+  EMAIL_SUBJECTS,
+  FRONTEND_URL,
+  DEFAULT_ZIP_CODE,
+  DEFAULT_ZIP_KEYPOINTS,
+  DEFAULT_OUTPUT_FORMAT,
+  API_CALL_DELAY_MS,
+} from "../../constants/videoScheduleService.constants";
+import {
+  extractAvatarId,
+  extractAvatarType,
+  getVoiceIdFromAvatarGender,
+  getVoiceSettingsForClonedVoice,
+  getMusicUrlFromTrackId,
+  mapLanguageToCode,
+  convertVideoCaptionToBoolean,
+  generateScheduledVideoRequestId,
+} from "../../utils/videoScheduleServiceHelpers";
 
 export class VideoScheduleProcessing {
   private emailService = new ScheduleEmailService();
@@ -67,15 +50,15 @@ export class VideoScheduleProcessing {
    */
   async getPendingVideos(): Promise<IVideoSchedule[]> {
     const now = new Date();
-    const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
+    const processingTime = new Date(now.getTime() + PROCESSING_BUFFER_MS);
 
     return await VideoSchedule.find({
       isActive: true,
       "generatedTrends.scheduledFor": {
         $gte: now,
-        $lte: thirtyMinutesFromNow,
+        $lte: processingTime,
       },
-      "generatedTrends.status": "pending",
+      "generatedTrends.status": STATUS_PENDING,
     });
   }
 
@@ -88,27 +71,27 @@ export class VideoScheduleProcessing {
     userSettings: any
   ): Promise<void> {
     const schedule = await VideoSchedule.findById(scheduleId);
-    if (!schedule) throw new Error("Schedule not found");
+    if (!schedule) throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_FOUND);
 
     const trend = schedule.generatedTrends[trendIndex];
-    if (!trend) throw new Error("Trend not found");
+    if (!trend) throw new Error(ERROR_MESSAGES.TREND_NOT_FOUND);
 
     // ⚠️ CRITICAL: Check if video is already processing or completed to prevent duplicate processing
-    if (trend.status === "processing") {
-      throw new Error(`Video is already being processed for trend ${trendIndex}`);
+    if (trend.status === STATUS_PROCESSING) {
+      throw new Error(ERROR_MESSAGES.VIDEO_ALREADY_PROCESSING);
     }
 
-    if (trend.status === "completed") {
-      throw new Error(`Video is already completed for trend ${trendIndex}`);
+    if (trend.status === STATUS_COMPLETED) {
+      throw new Error(ERROR_MESSAGES.VIDEO_ALREADY_COMPLETED);
     }
 
     // Only process if status is "pending"
-    if (trend.status !== "pending") {
-      throw new Error(`Cannot process video with status: ${trend.status}. Expected: pending`);
+    if (trend.status !== STATUS_PENDING) {
+      throw new Error(`${ERROR_MESSAGES.CANNOT_PROCESS_STATUS}: ${trend.status}. ${ERROR_MESSAGES.EXPECTED_PENDING}`);
     }
 
     // Set status to processing atomically (prevents race conditions and duplicate processing)
-    schedule.generatedTrends[trendIndex].status = "processing";
+    schedule.generatedTrends[trendIndex].status = STATUS_PROCESSING;
     await schedule.save();
 
     // Check subscription status and limit before processing
@@ -122,9 +105,8 @@ export class VideoScheduleProcessing {
 
       if (!subscription) {
         // Update trend status to failed
-        const errorMessage =
-          "Active subscription required. Your subscription has expired or is not active.";
-        schedule.generatedTrends[trendIndex].status = "failed";
+        const errorMessage = ERROR_MESSAGES.SUBSCRIPTION_REQUIRED;
+        schedule.generatedTrends[trendIndex].status = STATUS_FAILED;
         schedule.generatedTrends[trendIndex].error = errorMessage;
         await schedule.save();
 
@@ -133,12 +115,11 @@ export class VideoScheduleProcessing {
           const emailService = new EmailService();
           const emailContent = generateSubscriptionExpiredEmail({
             videoTitle: trend.description,
-            frontendUrl:
-              process.env.FRONTEND_URL || "https://www.edgeairealty.com",
+            frontendUrl: FRONTEND_URL,
           });
           await emailService.send(
             schedule.email,
-            "⚠️ Scheduled Video Failed: Subscription Required",
+            EMAIL_SUBJECTS.SUBSCRIPTION_EXPIRED,
             emailContent
           );
         } catch (emailErr) {
@@ -155,12 +136,12 @@ export class VideoScheduleProcessing {
       );
       if (!videoLimit.canCreate) {
         // Update trend status to failed with detailed error message
-        const errorMessage = `Video limit reached. You have used ${
+        const errorMessage = `${ERROR_MESSAGES.VIDEO_LIMIT_REACHED}. You have used ${
           videoLimit.limit - videoLimit.remaining
         } out of ${
           videoLimit.limit
         } videos this month. Your subscription will renew monthly.`;
-        schedule.generatedTrends[trendIndex].status = "failed";
+        schedule.generatedTrends[trendIndex].status = STATUS_FAILED;
         schedule.generatedTrends[trendIndex].error = errorMessage;
         await schedule.save();
 
@@ -172,12 +153,11 @@ export class VideoScheduleProcessing {
             limit: videoLimit.limit,
             remaining: videoLimit.remaining,
             used: videoLimit.limit - videoLimit.remaining,
-            frontendUrl:
-              process.env.FRONTEND_URL || "https://www.edgeairealty.com",
+            frontendUrl: FRONTEND_URL,
           });
           await emailService.send(
             schedule.email,
-            "⚠️ Scheduled Video Failed: Video Limit Reached",
+            EMAIL_SUBJECTS.VIDEO_LIMIT_REACHED,
             emailContent
           );
         } catch (emailErr) {
@@ -226,36 +206,23 @@ export class VideoScheduleProcessing {
     );
 
     try {
+      const userContext: UserContext = {
+        name: userSettings.name,
+        position: userSettings.position,
+        companyName: userSettings.companyName,
+        city: userSettings.city,
+        socialHandles: userSettings.socialHandles,
+      };
+
       const captions =
         await CaptionGenerationService.generateScheduledVideoCaptions(
           trend.description,
           trend.keypoints,
-          {
-            name: userSettings.name,
-            position: userSettings.position,
-            companyName: userSettings.companyName,
-            city: userSettings.city,
-            socialHandles: userSettings.socialHandles,
-          },
+          userContext,
           userSettings.language
         );
 
-      // ✅ Helper functions to extract clean IDs and types
-      const extractAvatarId = (avatarValue: any): string => {
-        if (!avatarValue) return "";
-        if (typeof avatarValue === "string") return avatarValue.trim();
-        if (typeof avatarValue === "object" && avatarValue.avatar_id)
-          return String(avatarValue.avatar_id).trim();
-        return "";
-      };
-
-      const extractAvatarType = (avatarValue: any): string => {
-        if (typeof avatarValue === "object" && avatarValue.avatarType)
-          return String(avatarValue.avatarType).trim();
-        return "video_avatar";
-      };
-
-      // ✅ Normalize avatar fields
+      // Normalize avatar fields
       const titleAvatarId = extractAvatarId(userSettings.titleAvatar);
       const bodyAvatarId = extractAvatarId(
         userSettings.bodyAvatar || userSettings.avatar?.[0]
@@ -270,22 +237,17 @@ export class VideoScheduleProcessing {
         userSettings.conclusionAvatar
       );
 
-      // ✅ Lookup avatar in DB with clean string ID
+      // Lookup avatar in DB with clean string ID
       const DefaultAvatar = require("../../models/avatar").default;
       const avatarDoc = await DefaultAvatar.findOne({
         avatar_id: titleAvatarId,
       });
 
-      const gender = avatarDoc ? avatarDoc.gender : undefined;
-      let voice_id: string | undefined = undefined;
-      if (gender) {
-        const DefaultVoice = require("../../models/voice").default;
-        const voiceDoc = await DefaultVoice.findOne({ gender });
-        voice_id = voiceDoc ? voiceDoc.voice_id : undefined;
-      }
+      // Get voice ID from avatar gender
+      const voice_id = await getVoiceIdFromAvatarGender(titleAvatarId);
 
       // ==================== STEP 1: CREATE VIDEO (Prompt Generation) ====================
-      const videoCreationData = {
+      const videoCreationData: VideoCreationData = {
         prompt: userSettings.prompt,
         avatar: titleAvatarId,
         name: userSettings.name,
@@ -299,14 +261,12 @@ export class VideoScheduleProcessing {
         city: userSettings.city,
         preferredTone: userSettings.preferredTone,
         language: userSettings.language,
-        zipCode: 90014,
-        zipKeyPoints: "new bars and restaurants",
+        zipCode: DEFAULT_ZIP_CODE,
+        zipKeyPoints: DEFAULT_ZIP_KEYPOINTS,
         callToAction: userSettings.callToAction,
         email: userSettings.email,
         timestamp: new Date().toISOString(),
-        requestId: `scheduled_video_${Date.now()}_${Math.random()
-          .toString(36)
-          .substr(2, 9)}`,
+        requestId: generateScheduledVideoRequestId(),
         isScheduled: true,
         scheduleId: scheduleId,
         trendIndex: trendIndex,
@@ -318,10 +278,10 @@ export class VideoScheduleProcessing {
           videoCreationData
         );
       } catch (err: any) {
-        throw new Error(`Create Video API failed: ${err.message}`);
+        throw new Error(`${ERROR_MESSAGES.CREATE_VIDEO_API_FAILED}: ${err.message}`);
       }
 
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, API_CALL_DELAY_MS));
 
       // ==================== STEP 1.5: CALL ELEVENLABS TTS ====================
       let ttsResult: any = null;
@@ -329,33 +289,12 @@ export class VideoScheduleProcessing {
       try {
         // Get voice_id from user settings
         const selectedVoiceId = userSettings.selectedVoiceId;
-        if (!selectedVoiceId) {
-        } else {
+        if (selectedVoiceId) {
           // Check if voice category is "cloned" and get preset from userSettings
-          let voice_settings = null;
-          try {
-            const voice = await ElevenLabsVoice.findOne({
-              voice_id: selectedVoiceId,
-            });
-            if (voice) {
-              const voiceCategory = voice.category?.toLowerCase().trim();
-
-              if (voiceCategory === "cloned") {
-                // Get preset directly from userSettings (already know which user)
-                const preset = userSettings.preset;
-
-                if (preset) {
-                  voice_settings = getVoiceSettingsByPreset(preset);
-                } else {
-                  console.log(
-                    `⚠️ No preset found in user settings for auto posting`
-                  );
-                }
-              }
-            }
-          } catch (voiceError: any) {
-            // Continue without voice_settings if there's an error
-          }
+          const voice_settings = await getVoiceSettingsForClonedVoice(
+            selectedVoiceId,
+            userSettings.preset
+          );
 
           // Call ElevenLabs TTS API
           ttsResult = await generateSpeech({
@@ -363,95 +302,15 @@ export class VideoScheduleProcessing {
             hook: enhancedContent.hook,
             body: enhancedContent.body,
             conclusion: enhancedContent.conclusion,
-            output_format: "mp3_44100_128",
-            voice_settings: voice_settings || undefined, // Pass voice_settings if available
+            output_format: DEFAULT_OUTPUT_FORMAT,
+            voice_settings: voice_settings || undefined,
           });
 
           // Get music URL from selectedMusicTrackId
-          // Auto: Find track by ID → Extract S3 key from s3FullTrackUrl → Convert to clean MP3 URL
-
           if (userSettings.selectedMusicTrackId) {
-            try {
-              // Step 1: Find music track by ID from userSettings
-              const musicTrack = await MusicTrack.findById(
-                userSettings.selectedMusicTrackId
-              );
-
-              if (!musicTrack) {
-                console.warn(
-                  `⚠️ Music track not found with ID: ${userSettings.selectedMusicTrackId}`
-                );
-              } else if (!musicTrack.s3FullTrackUrl) {
-                console.warn(
-                  `⚠️ Music track has no s3FullTrackUrl: ${musicTrack._id}`
-                );
-              } else {
-                // Step 2: Extract S3 key from s3FullTrackUrl (stored in DB)
-                const extractS3KeyFromUrl = (url: string): string | null => {
-                  try {
-                    // If it's already a key (no http/https), return as is
-                    if (
-                      !url.startsWith("http://") &&
-                      !url.startsWith("https://")
-                    ) {
-                      return url;
-                    }
-
-                    // If it's a URL, extract the path
-                    const urlObj = new URL(url);
-                    let s3Key = urlObj.pathname;
-
-                    // Remove leading slash
-                    if (s3Key.startsWith("/")) {
-                      s3Key = s3Key.substring(1);
-                    }
-
-                    // Remove bucket name if present in path
-                    const bucketEnv = process.env.AWS_S3_BUCKET || "";
-                    const bucketName = bucketEnv.split("/")[0];
-                    if (bucketName && s3Key.startsWith(bucketName + "/")) {
-                      s3Key = s3Key.substring(bucketName.length + 1);
-                    }
-
-                    return s3Key;
-                  } catch (error: any) {
-                    return null;
-                  }
-                };
-
-                const s3Key = extractS3KeyFromUrl(musicTrack.s3FullTrackUrl);
-
-                if (!s3Key) {
-                } else {
-                  // Step 3: Ensure key ends with .mp3
-                  const finalS3Key = s3Key.endsWith(".mp3")
-                    ? s3Key
-                    : s3Key + ".mp3";
-
-                  // Step 4: Convert S3 key to clean MP3 URL (without query parameters)
-                  const s3Service = new S3Service({
-                    region: process.env.AWS_REGION || "us-east-1",
-                    bucketName: process.env.AWS_S3_BUCKET || "",
-                    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-                    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-                  });
-
-                  // Generate clean MP3 URL (S3 key is already stored in DB)
-                  musicUrl = await s3Service.getMusicTrackUrl(
-                    finalS3Key,
-                    604800
-                  );
-
-                  // Ensure URL ends with .mp3 (safety check)
-                  if (!musicUrl.endsWith(".mp3")) {
-                    musicUrl = musicUrl + ".mp3";
-                  }
-                }
-              }
-            } catch (musicError: any) {
-              // Don't fail the entire process, just log the error
-            }
-          } else {
+            musicUrl = await getMusicUrlFromTrackId(
+              userSettings.selectedMusicTrackId
+            );
           }
         }
       } catch (ttsError: any) {
@@ -459,39 +318,11 @@ export class VideoScheduleProcessing {
       }
 
       // Map language from userSettings to language code
-      let languageCode: string | undefined = undefined;
-      if (userSettings?.language) {
-        // Map language names to codes
-        const languageMap: Record<string, string> = {
-          english: "en",
-          spanish: "es",
-          french: "fr",
-          german: "de",
-          italian: "it",
-          portuguese: "pt",
-          chinese: "zh",
-          japanese: "ja",
-          korean: "ko",
-        };
-
-        const languageLower = String(userSettings.language)
-          .toLowerCase()
-          .trim();
-        languageCode = languageMap[languageLower] || languageLower; // Use mapped code or original if not found
-      }
-
-      // Helper function to convert videoCaption value to boolean
-      const convertVideoCaptionToBoolean = (
-        value: string | undefined | null
-      ): boolean => {
-        if (!value) return true; // Default to true if not set
-        const normalized = String(value).toLowerCase().trim();
-        return normalized === "yes" || normalized === "true";
-      };
+      const languageCode = mapLanguageToCode(userSettings?.language);
 
       // Generate Video API accepts flat format and converts internally
       // Use TTS audio URLs if available, otherwise fall back to text
-      const videoGenerationData = {
+      const videoGenerationData: VideoGenerationData = {
         hook: ttsResult?.hook_url, // Audio URL from TTS or text string from API
         body: ttsResult?.body_url, // Audio URL from TTS or text string from API
         conclusion: ttsResult?.conclusion_url, // Audio URL from TTS or text string from API
@@ -511,16 +342,15 @@ export class VideoScheduleProcessing {
         scheduleId: scheduleId,
         trendIndex: trendIndex,
         _captions: captions,
-        ...(languageCode ? { language: languageCode } : {}), // Add language code if available
+        ...(languageCode ? { language: languageCode } : {}),
         videoCaption: convertVideoCaptionToBoolean(userSettings?.videoCaption),
-
         ...(musicUrl ? { music: musicUrl } : {}),
       };
 
       try {
         await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
       } catch (err: any) {
-        throw new Error(`Generate Video API failed: ${err.message}`);
+        throw new Error(`${ERROR_MESSAGES.GENERATE_VIDEO_API_FAILED}: ${err.message}`);
       }
 
       notificationService.notifyScheduledVideoProgress(
@@ -536,7 +366,7 @@ export class VideoScheduleProcessing {
         }
       );
     } catch (error: any) {
-      schedule.generatedTrends[trendIndex].status = "failed";
+      schedule.generatedTrends[trendIndex].status = STATUS_FAILED;
       await schedule.save();
 
       notificationService.notifyScheduledVideoProgress(
@@ -569,7 +399,7 @@ export class VideoScheduleProcessing {
     }
 
     if (schedule.generatedTrends[trendIndex]) {
-      schedule.generatedTrends[trendIndex].status = status;
+      schedule.generatedTrends[trendIndex].status = status as typeof STATUS_COMPLETED | typeof STATUS_FAILED;
       if (videoId) {
         schedule.generatedTrends[trendIndex].videoId = videoId;
       }

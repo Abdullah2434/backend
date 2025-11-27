@@ -1,102 +1,43 @@
 import { Response } from "express";
-import { AuthenticatedRequest } from "../types";
-import { socialBuMediaService, socialBuService } from "../services/socialbu";
-import { ResponseHelper } from "../utils/responseHelper";
+import { AuthenticatedRequest } from "../../types";
+import { socialBuMediaService, socialBuService } from "../../services/socialbu";
+import { ResponseHelper } from "../../utils/responseHelper";
 import {
   uploadMediaSchema,
   mediaIdParamSchema,
   updateMediaStatusSchema,
   createSocialPostSchema,
-} from "../validations/socialbuMedia.validations";
-
-// ==================== CONSTANTS ====================
-const VALID_MEDIA_STATUSES = ["uploaded", "failed"] as const;
-const UPLOAD_STATUS_CHECK_DELAY_MS = 2000;
-const POST_CREATION_DELAY_MS = 1000;
-
-// Account type mappings for captions
-const ACCOUNT_TYPE_CAPTION_MAP: Record<string, string> = {
-  "instagram.api": "instagram_caption",
-  "facebook.profile": "facebook_caption",
-  "facebook.page": "facebook_caption",
-  "linkedin.profile": "linkedin_caption",
-  "twitter.profile": "twitter_caption",
-  "tiktok.profile": "tiktok_caption",
-  "google.youtube": "youtube_caption",
-};
+} from "../../validations/socialbuMedia.validations";
+import {
+  getUserIdFromRequest,
+  formatValidationErrors,
+  handleControllerError,
+} from "../../utils/controllerHelpers";
+import {
+  normalizeAccountIdsComplex,
+  normalizeSelectedAccounts,
+} from "../../utils/socialbuHelpers";
+import {
+  UPLOAD_STATUS_CHECK_DELAY_MS,
+  POST_CREATION_DELAY_MS,
+  ACCOUNT_TYPE_CAPTION_MAP,
+} from "../../constants/socialbuMedia.constants";
+import { Captions, MediaResponse, Account } from "../../types/socialbu.types";
 
 // ==================== HELPER FUNCTIONS ====================
 /**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Normalize accountIds to array format
- */
-function normalizeAccountIds(accountIds: any): number[] {
-  if (typeof accountIds === "string") {
-    try {
-      const parsed = JSON.parse(accountIds);
-      return Array.isArray(parsed) ? parsed : [parseInt(accountIds)];
-    } catch (e) {
-      return [parseInt(accountIds)];
-    }
-  } else if (typeof accountIds === "number") {
-    return [accountIds];
-  } else if (
-    typeof accountIds === "object" &&
-    accountIds !== null &&
-    !Array.isArray(accountIds)
-  ) {
-    return Object.values(accountIds).filter(
-      (val) => typeof val === "number"
-    ) as number[];
-  }
-  return Array.isArray(accountIds) ? accountIds : [];
-}
-
-/**
- * Normalize selectedAccounts to array format
- */
-function normalizeSelectedAccounts(selectedAccounts: any): any[] {
-  if (
-    selectedAccounts &&
-    typeof selectedAccounts === "object" &&
-    !Array.isArray(selectedAccounts)
-  ) {
-    return Object.values(selectedAccounts);
-  }
-  return Array.isArray(selectedAccounts) ? selectedAccounts : [];
-}
-
-/**
  * Get appropriate caption for account type
  */
-function getAccountCaption(
-  account: any,
-  captions: {
-    caption?: string;
-    instagram_caption?: string;
-    facebook_caption?: string;
-    linkedin_caption?: string;
-    twitter_caption?: string;
-    tiktok_caption?: string;
-    youtube_caption?: string;
-  }
-): string {
+function getAccountCaption(account: Account, captions: Captions): string {
   const accountType = account.type;
   const captionKey = ACCOUNT_TYPE_CAPTION_MAP[accountType];
 
   // Check for specific account type caption
-  if (captionKey && captions[captionKey as keyof typeof captions]) {
+  if (captionKey && captions[captionKey as keyof Captions]) {
     return (
-      captions[captionKey as keyof typeof captions] || captions.caption || ""
+      (captions[captionKey as keyof Captions] as string) ||
+      captions.caption ||
+      ""
     );
   }
 
@@ -112,7 +53,7 @@ function getAccountCaption(
 /**
  * Format media response data
  */
-function formatMediaResponse(data: any) {
+function formatMediaResponse(data: any): MediaResponse {
   return {
     id: data?._id,
     userId: data?.userId,
@@ -127,44 +68,22 @@ function formatMediaResponse(data: any) {
   };
 }
 
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("user not found")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Upload media to SocialBu
  * POST /api/socialbu-media/upload
  */
-export const uploadMedia = async (req: AuthenticatedRequest, res: Response) => {
+export const uploadMedia = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
 
     // Validate request body
     const validationResult = uploadMediaSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -183,14 +102,13 @@ export const uploadMedia = async (req: AuthenticatedRequest, res: Response) => {
     return ResponseHelper.success(res, result.message, {
       ...formatMediaResponse(result.data),
     });
-  } catch (error: any) {
-    console.error("Error in uploadMedia:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to complete media upload workflow",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "uploadMedia",
+      "Failed to complete media upload workflow"
+    );
   }
 };
 
@@ -201,7 +119,7 @@ export const uploadMedia = async (req: AuthenticatedRequest, res: Response) => {
 export const getUserMedia = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
 
@@ -212,14 +130,13 @@ export const getUserMedia = async (
     }
 
     return ResponseHelper.success(res, result.message, result.data);
-  } catch (error: any) {
-    console.error("Error in getUserMedia:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get user media",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getUserMedia",
+      "Failed to get user media"
+    );
   }
 };
 
@@ -230,18 +147,15 @@ export const getUserMedia = async (
 export const getMediaById = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
-    const userId = getUserIdFromRequest(req);
+    getUserIdFromRequest(req); // Validate user is authenticated
     const { mediaId } = req.params;
 
     // Validate mediaId parameter
     const validationResult = mediaIdParamSchema.safeParse({ mediaId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -252,14 +166,13 @@ export const getMediaById = async (
     }
 
     return ResponseHelper.success(res, result.message, result.data);
-  } catch (error: any) {
-    console.error("Error in getMediaById:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get media",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getMediaById",
+      "Failed to get media"
+    );
   }
 };
 
@@ -270,27 +183,21 @@ export const getMediaById = async (
 export const updateMediaStatus = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const { mediaId } = req.params;
 
     // Validate mediaId parameter
     const mediaIdValidation = mediaIdParamSchema.safeParse({ mediaId });
     if (!mediaIdValidation.success) {
-      const errors = mediaIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(mediaIdValidation.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
     // Validate request body
     const validationResult = updateMediaStatusSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -307,14 +214,13 @@ export const updateMediaStatus = async (
     }
 
     return ResponseHelper.success(res, result.message, result.data);
-  } catch (error: any) {
-    console.error("Error in updateMediaStatus:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to update media status",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "updateMediaStatus",
+      "Failed to update media status"
+    );
   }
 };
 
@@ -325,7 +231,7 @@ export const updateMediaStatus = async (
 export const createSocialPost = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
 
@@ -336,10 +242,7 @@ export const createSocialPost = async (
     });
 
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -360,7 +263,7 @@ export const createSocialPost = async (
     } = validationResult.data;
 
     // Normalize accountIds and selectedAccounts
-    const normalizedAccountIds = normalizeAccountIds(accountIds);
+
     const normalizedSelectedAccounts =
       normalizeSelectedAccounts(selectedAccounts);
 
@@ -419,7 +322,7 @@ export const createSocialPost = async (
     const errors: any[] = [];
 
     // Prepare captions object
-    const captions = {
+    const captions: Captions = {
       caption,
       instagram_caption,
       facebook_caption,
@@ -511,13 +414,12 @@ export const createSocialPost = async (
         },
       }
     );
-  } catch (error: any) {
-    console.error("Error in createSocialPost:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to create social media post",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "createSocialPost",
+      "Failed to create social media post"
+    );
   }
 };

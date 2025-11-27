@@ -1,4 +1,3 @@
-import dotenv from "dotenv";
 import cron from "node-cron";
 import { fetchAndSyncElevenLabsVoices } from "../services/elevenLabs";
 import CronMonitoringService from "../services/cronMonitoring.service";
@@ -7,20 +6,15 @@ import {
   retryWithBackoff,
 } from "../utils/cronHelpers";
 import { getCronConfig } from "../config/cron.config";
-import {
-  VALID_CRON_SCHEDULES,
-  envConfigSchema,
-} from "../validations/fetchElevenLabsVoices.validations";
+import { envConfigSchema } from "../validations/fetchElevenLabsVoices.validations";
 import {
   ElevenLabsVoicesSyncResult,
   ElevenLabsVoicesSyncConfig,
 } from "../types/cron/fetchElevenLabsVoices.types";
-
-// ==================== CONSTANTS ====================
-dotenv.config();
-
-const CRON_JOB_NAME = "elevenlabs-voices-sync";
-const CRON_SCHEDULE = VALID_CRON_SCHEDULES.TWICE_DAILY; // 11:03 AM and 11:03 PM
+import {
+  CRON_JOB_NAME,
+  CRON_SCHEDULE,
+} from "../constants/fetchElevenLabsVoicesCron.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const cronMonitor = CronMonitoringService.getInstance();

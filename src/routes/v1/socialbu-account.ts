@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   disconnectAccount,
   checkAccount
-} from '../../controllers/socialbu-account.controller';
+} from '../../controllers/socialbu/socialbu-account.controller';
 import { authenticate } from '../../middleware/auth';
 
 const router = Router();

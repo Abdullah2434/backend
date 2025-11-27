@@ -2,6 +2,7 @@ import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import { generateRealEstateTrends } from "../content";
 import { VideoScheduleUtils } from "./utils.service";
 import { ScheduleData } from "./types";
+import { ERROR_MESSAGES } from "../../constants/videoScheduleService.constants";
 
 export class VideoScheduleManagement {
   /**
@@ -26,7 +27,7 @@ export class VideoScheduleManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_FOUND);
     }
 
     // If frequency or dates are changing, regenerate trends
@@ -105,7 +106,7 @@ export class VideoScheduleManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found or not active");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_ACTIVE);
     }
 
     // Delete the entire schedule document

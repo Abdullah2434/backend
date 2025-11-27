@@ -1,9 +1,8 @@
 import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import UserVideoSettings from "../../models/UserVideoSettings";
 import { generateRealEstateTrends } from "../content";
-import ScheduleEmailService, {
-  ScheduleEmailData,
-} from "./scheduleEmail.service";
+import ScheduleEmailService from "./scheduleEmail.service";
+import { ScheduleEmailData } from "../../types/videoScheduleService.types";
 import { VideoScheduleUtils } from "./utils.service";
 import { VideoScheduleCaptionGeneration } from "./caption-generation.service";
 import { ScheduleData } from "./types";
@@ -11,6 +10,18 @@ import {
   getUserExistingVideoTitles,
   filterExistingTrends,
 } from "../../utils/videoHelpers";
+import {
+  CHUNK_SIZE,
+  MAX_ATTEMPTS,
+  CHUNK_DELAY_MS,
+  DEFAULT_SCHEDULE_DURATION_MONTHS,
+  STATUS_PROCESSING,
+  ERROR_MESSAGES,
+} from "../../constants/videoScheduleService.constants";
+import {
+  buildBasicCaptions,
+  normalizeTrendDescription,
+} from "../../utils/videoScheduleServiceHelpers";
 
 export class VideoScheduleCreation {
   private emailService = new ScheduleEmailService();
@@ -33,21 +44,19 @@ export class VideoScheduleCreation {
     });
 
     if (existingSchedule) {
-      throw new Error("User already has an active video schedule");
+      throw new Error(ERROR_MESSAGES.USER_ALREADY_HAS_SCHEDULE);
     }
 
     // Get user video settings
     const userSettings = await UserVideoSettings.findOne({ userId });
     if (!userSettings) {
-      throw new Error(
-        "User video settings not found. Please complete your profile first."
-      );
+      throw new Error(ERROR_MESSAGES.USER_SETTINGS_NOT_FOUND);
     }
 
     // Set default duration to one month from start date
     const startDate = scheduleData.startDate; // Already converted to UTC in controller
     const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); // Add one month
+    endDate.setMonth(endDate.getMonth() + DEFAULT_SCHEDULE_DURATION_MONTHS);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = VideoScheduleUtils.calculateNumberOfVideos(
@@ -60,13 +69,11 @@ export class VideoScheduleCreation {
     const existingTitles = await getUserExistingVideoTitles(userId, email);
 
     const allTrends = [];
-    const chunkSize = 5;
-    const maxAttempts = 10; // Prevent infinite loops
     let attemptCount = 0;
 
-    while (allTrends.length < numberOfVideos && attemptCount < maxAttempts) {
+    while (allTrends.length < numberOfVideos && attemptCount < MAX_ATTEMPTS) {
       const remainingTrends = numberOfVideos - allTrends.length;
-      const currentChunkSize = Math.min(chunkSize, remainingTrends);
+      const currentChunkSize = Math.min(CHUNK_SIZE, remainingTrends);
 
       try {
         const chunkTrends = await generateRealEstateTrends(
@@ -77,7 +84,7 @@ export class VideoScheduleCreation {
 
         if (!chunkTrends || chunkTrends.length === 0) {
           throw new Error(
-            `Failed to generate trends for attempt ${attemptCount + 1}`
+            `${ERROR_MESSAGES.FAILED_TO_GENERATE_TRENDS} for attempt ${attemptCount + 1}`
           );
         }
 
@@ -90,7 +97,7 @@ export class VideoScheduleCreation {
         if (filteredTrends.length === 0) {
           // All trends were filtered out, try again with different seed
           attemptCount++;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
           continue;
         }
 
@@ -99,40 +106,30 @@ export class VideoScheduleCreation {
           .slice(0, currentChunkSize)
           .map((trend) => ({
             ...trend,
-            instagram_caption: `${trend.description} - ${trend.keypoints}`,
-            facebook_caption: `${trend.description} - ${trend.keypoints}`,
-            linkedin_caption: `${trend.description} - ${trend.keypoints}`,
-            twitter_caption: `${trend.description} - ${trend.keypoints}`,
-            tiktok_caption: `${trend.description} - ${trend.keypoints}`,
-            youtube_caption: `${trend.description} - ${trend.keypoints}`,
-            enhanced_with_dynamic_posts: false,
-            caption_status: "pending", // Mark for background processing
+            ...buildBasicCaptions(trend.description, trend.keypoints),
           }));
 
         allTrends.push(...basicTrends);
 
         // Update existing titles set with newly added trends to avoid duplicates within schedule
         basicTrends.forEach((trend) => {
-          const normalized = trend.description
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, " ");
+          const normalized = normalizeTrendDescription(trend.description);
           existingTitles.add(normalized);
         });
 
         attemptCount++;
         // Add a small delay between chunks to avoid rate limiting
         if (allTrends.length < numberOfVideos) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
         }
       } catch (error) {
         attemptCount++;
-        if (attemptCount >= maxAttempts) {
+        if (attemptCount >= MAX_ATTEMPTS) {
           throw new Error(
-            `Failed to generate enough unique trends after ${maxAttempts} attempts. Please try again.`
+            `Failed to generate enough unique trends after ${MAX_ATTEMPTS} attempts. Please try again.`
           );
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
       }
     }
 
@@ -159,7 +156,7 @@ export class VideoScheduleCreation {
       frequency: scheduleData.frequency,
       schedule: scheduleData.schedule,
       isActive: true,
-      status: "processing", // Set initial status to processing
+      status: STATUS_PROCESSING, // Set initial status to processing
       startDate: startDate,
       endDate: endDate,
       generatedTrends,
@@ -204,21 +201,19 @@ export class VideoScheduleCreation {
     });
 
     if (existingSchedule) {
-      throw new Error("User already has an active video schedule");
+      throw new Error(ERROR_MESSAGES.USER_ALREADY_HAS_SCHEDULE);
     }
 
     // Get user video settings
     const userSettings = await UserVideoSettings.findOne({ userId });
     if (!userSettings) {
-      throw new Error(
-        "User video settings not found. Please complete your profile first."
-      );
+      throw new Error(ERROR_MESSAGES.USER_SETTINGS_NOT_FOUND);
     }
 
     // Set default duration to one month from start date
     const startDate = scheduleData.startDate; // Already converted to UTC in controller
     const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); // Add one month
+    endDate.setMonth(endDate.getMonth() + DEFAULT_SCHEDULE_DURATION_MONTHS);
 
     // Calculate number of videos needed for one month
     const numberOfVideos = VideoScheduleUtils.calculateNumberOfVideos(
@@ -231,13 +226,11 @@ export class VideoScheduleCreation {
     const existingTitles = await getUserExistingVideoTitles(userId, email);
 
     const allTrends = [];
-    const chunkSize = 5;
-    const maxAttempts = 10; // Prevent infinite loops
     let attemptCount = 0;
 
-    while (allTrends.length < numberOfVideos && attemptCount < maxAttempts) {
+    while (allTrends.length < numberOfVideos && attemptCount < MAX_ATTEMPTS) {
       const remainingTrends = numberOfVideos - allTrends.length;
-      const currentChunkSize = Math.min(chunkSize, remainingTrends);
+      const currentChunkSize = Math.min(CHUNK_SIZE, remainingTrends);
 
       try {
         const chunkTrends = await generateRealEstateTrends(
@@ -248,7 +241,7 @@ export class VideoScheduleCreation {
 
         if (!chunkTrends || chunkTrends.length === 0) {
           throw new Error(
-            `Failed to generate trends for attempt ${attemptCount + 1}`
+            `${ERROR_MESSAGES.FAILED_TO_GENERATE_TRENDS} for attempt ${attemptCount + 1}`
           );
         }
 
@@ -261,7 +254,7 @@ export class VideoScheduleCreation {
         if (filteredTrends.length === 0) {
           // All trends were filtered out, try again with different seed
           attemptCount++;
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
           continue;
         }
 
@@ -282,14 +275,7 @@ export class VideoScheduleCreation {
           // Subsequent chunks - use basic captions
           enhancedTrends = trendsToUse.map((trend) => ({
             ...trend,
-            instagram_caption: `${trend.description} - ${trend.keypoints}`,
-            facebook_caption: `${trend.description} - ${trend.keypoints}`,
-            linkedin_caption: `${trend.description} - ${trend.keypoints}`,
-            twitter_caption: `${trend.description} - ${trend.keypoints}`,
-            tiktok_caption: `${trend.description} - ${trend.keypoints}`,
-            youtube_caption: `${trend.description} - ${trend.keypoints}`,
-            enhanced_with_dynamic_posts: false,
-            caption_status: "pending", // Mark for background processing
+            ...buildBasicCaptions(trend.description, trend.keypoints),
           }));
         }
 
@@ -297,26 +283,23 @@ export class VideoScheduleCreation {
 
         // Update existing titles set with newly added trends to avoid duplicates within schedule
         trendsToUse.forEach((trend) => {
-          const normalized = trend.description
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, " ");
+          const normalized = normalizeTrendDescription(trend.description);
           existingTitles.add(normalized);
         });
 
         attemptCount++;
         // Add a small delay between chunks to avoid rate limiting
         if (allTrends.length < numberOfVideos) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
         }
       } catch (error) {
         attemptCount++;
-        if (attemptCount >= maxAttempts) {
+        if (attemptCount >= MAX_ATTEMPTS) {
           throw new Error(
-            `Failed to generate enough unique trends after ${maxAttempts} attempts. Please try again.`
+            `Failed to generate enough unique trends after ${MAX_ATTEMPTS} attempts. Please try again.`
           );
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
       }
     }
 

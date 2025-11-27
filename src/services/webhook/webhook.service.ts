@@ -9,7 +9,7 @@ import VideoScheduleService from "../videoSchedule";
 import AutoSocialPostingService from "../autoSocialPosting.service";
 import { PostWebhookDynamicGenerationService } from "./postWebhookDynamicGeneration.service";
 import VideoWebhookStatus from "../../models/VideoWebhookStatus";
-import { generateFromDescription } from "../content";
+import VideoSchedule from "../../models/VideoSchedule";
 import {
   buildWebhookPayload,
   buildWebhookHeaders,
@@ -19,6 +19,11 @@ import {
   validateVideoId,
   verifyWebhookSignature as verifySignature,
 } from "../../utils/webhookHelpers";
+import {
+  generateKeypointsFromTitle,
+  extractCaptionsFromTrend,
+} from "../../utils/webhookServiceHelpers";
+import { WEBHOOK_TYPES } from "../../constants/postWebhookDynamicGeneration.constants";
 
 export class WebhookService {
   private videoService: VideoService;
@@ -118,86 +123,95 @@ export class WebhookService {
     title: string
   ): Promise<void> {
     try {
-      // Find or create webhook status record
-      let webhookStatus = await VideoWebhookStatus.findOne({ videoId });
+      const webhookStatus = await this.getOrCreateWebhookStatus(
+        videoId,
+        email,
+        title
+      );
 
-      if (!webhookStatus) {
-        webhookStatus = new VideoWebhookStatus({
-          videoId,
-          email,
-          title,
-          videoWebhookCompleted: false,
-          captionWebhookCompleted: false,
-          allWebhooksCompleted: false,
-        });
-      }
+      this.updateWebhookCompletionStatus(webhookStatus, webhookType);
 
-      // Update the specific webhook completion status
-      if (webhookType === "video") {
-        webhookStatus.videoWebhookCompleted = true;
-        webhookStatus.videoWebhookCompletedAt = new Date();
-      } else if (webhookType === "caption") {
-        webhookStatus.captionWebhookCompleted = true;
-        webhookStatus.captionWebhookCompletedAt = new Date();
-      }
-
-      // Check if both webhooks are completed
       const bothCompleted =
         webhookStatus.videoWebhookCompleted &&
         webhookStatus.captionWebhookCompleted;
 
       if (bothCompleted && !webhookStatus.allWebhooksCompleted) {
-        webhookStatus.allWebhooksCompleted = true;
-        webhookStatus.allWebhooksCompletedAt = new Date();
-        await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
+        await this.handleAllWebhooksCompleted(
+          webhookStatus,
           videoId,
           email,
           title
         );
-
-        // Call trends API to generate keypoints from description (video title)
-        try {
-          // Get city from UserVideoSettings using email
-          const UserVideoSettings =
-            require("../models/UserVideoSettings").default;
-          const userSettings = await UserVideoSettings.findOne({
-            email: email,
-          });
-          const videoCity = userSettings?.city || null;
-
-          if (videoCity) {
-          } else {
-          }
-
-          // Call generateFromDescription API with video title as description
-          const keypointsResult = await generateFromDescription(
-            title,
-            videoCity || undefined
-          );
-
-          if (keypointsResult && keypointsResult.keypoints) {
-            // Update PendingCaptions with generated keypoints
-            const PendingCaptions =
-              require("../models/PendingCaptions").default;
-            await PendingCaptions.findOneAndUpdate(
-              {
-                email: email,
-                title: title,
-              },
-              {
-                keypoints: keypointsResult.keypoints,
-                // Keep other fields intact
-              },
-              { upsert: true, new: true }
-            );
-          }
-        } catch (keypointsError: any) {
-          // Don't fail the webhook if keypoints generation fails
-        }
       }
 
       await webhookStatus.save();
-    } catch (error: any) {}
+    } catch (error: any) {
+      // Silently handle tracking errors to not break webhook flow
+    }
+  }
+
+  /**
+   * Get or create webhook status record
+   */
+  private async getOrCreateWebhookStatus(
+    videoId: string,
+    email: string,
+    title: string
+  ): Promise<any> {
+    let webhookStatus = await VideoWebhookStatus.findOne({ videoId });
+
+    if (!webhookStatus) {
+      webhookStatus = new VideoWebhookStatus({
+        videoId,
+        email,
+        title,
+        videoWebhookCompleted: false,
+        captionWebhookCompleted: false,
+        allWebhooksCompleted: false,
+      });
+    }
+
+    return webhookStatus;
+  }
+
+  /**
+   * Update webhook completion status based on type
+   */
+  private updateWebhookCompletionStatus(
+    webhookStatus: any,
+    webhookType: "video" | "caption"
+  ): void {
+    if (webhookType === WEBHOOK_TYPES.VIDEO) {
+      webhookStatus.videoWebhookCompleted = true;
+      webhookStatus.videoWebhookCompletedAt = new Date();
+    } else if (webhookType === WEBHOOK_TYPES.CAPTION) {
+      webhookStatus.captionWebhookCompleted = true;
+      webhookStatus.captionWebhookCompletedAt = new Date();
+    }
+  }
+
+  /**
+   * Handle when all webhooks are completed
+   */
+  private async handleAllWebhooksCompleted(
+    webhookStatus: any,
+    videoId: string,
+    email: string,
+    title: string
+  ): Promise<void> {
+    webhookStatus.allWebhooksCompleted = true;
+    webhookStatus.allWebhooksCompletedAt = new Date();
+
+    await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
+      videoId,
+      email,
+      title
+    );
+
+    // Generate keypoints from title asynchronously (non-blocking)
+    await generateKeypointsFromTitle(title, email).catch(() => {
+      // Silently handle keypoints generation errors
+    });
   }
 
   /**
@@ -218,101 +232,23 @@ export class WebhookService {
       }
 
       // Handle scheduled video completion
-      if (scheduleId && trendIndex !== undefined) {
-        // Update schedule status
-        await this.videoScheduleService.updateVideoStatus(
+      if (scheduleId && trendIndex !== undefined && videoId && finalStatus) {
+        await this.handleScheduledVideoCompletion(
           scheduleId,
           trendIndex,
-          finalStatus as "completed" | "failed",
-          videoId
+          finalStatus,
+          videoId,
+          updatedVideo
         );
-
-        // If video is completed, store captions and auto-post
-        if (finalStatus === "ready" && updatedVideo) {
-          try {
-            // Get the schedule to retrieve captions
-            const VideoSchedule = require("../models/VideoSchedule").default;
-            const schedule = await VideoSchedule.findById(scheduleId);
-
-            if (schedule && schedule.generatedTrends[trendIndex]) {
-              const trend = schedule.generatedTrends[trendIndex];
-
-              // Store captions from schedule in video record
-              const captionsFromSchedule = {
-                instagram_caption: trend.instagram_caption,
-                facebook_caption: trend.facebook_caption,
-                linkedin_caption: trend.linkedin_caption,
-                twitter_caption: trend.twitter_caption,
-                tiktok_caption: trend.tiktok_caption,
-                youtube_caption: trend.youtube_caption,
-              };
-
-              await this.videoService.updateVideoCaptions(
-                videoId,
-                captionsFromSchedule
-              );
-
-              // Auto post to social media platforms
-              try {
-                const postingResults =
-                  await this.autoSocialPostingService.postVideoToSocialMedia({
-                    userId: schedule.userId.toString(),
-                    scheduleId: scheduleId,
-                    trendIndex: trendIndex,
-                    videoUrl: updatedVideo.videoUrl,
-                    videoTitle: trend.description,
-                  });
-
-                // Log posting results
-                const successfulPosts = postingResults.filter((r) => r.success);
-                const failedPosts = postingResults.filter((r) => !r.success);
-
-                if (successfulPosts.length > 0) {
-                }
-
-                if (failedPosts.length > 0) {
-                }
-              } catch (postingError) {
-                // Don't fail the webhook if social posting fails
-              }
-            }
-          } catch (captionError) {
-            // Don't fail the webhook if caption storage fails
-          }
-        }
       }
 
       // Process dynamic generation for manual videos (non-scheduled)
-      // Trigger caption generation asynchronously after n8n webhook completes (second hook)
-      // This happens regardless of video status (processing/ready) - captions generate in background
-      if (updatedVideo && !scheduleId) {
-        try {
-          // Only track if video is ready (for webhook tracking system)
-          if (finalStatus === "ready") {
-            await this.trackWebhookCompletion(
-              videoId,
-              "video",
-              updatedVideo.email,
-              updatedVideo.title
-            );
-          }
-        } catch (trackingError) {
-          // Don't fail the webhook if tracking fails
-        }
-
-        // Trigger caption generation asynchronously after webhook response
-        // This happens after n8n webhook completes (second hook), even if video is still processing
-        (async () => {
-          try {
-            await this.postWebhookDynamicGenerationService.processDynamicGenerationForVideo(
-              videoId,
-              updatedVideo.email,
-              updatedVideo.title
-            );
-          } catch (captionError) {
-            // Don't fail the webhook response if caption generation fails
-          }
-        })();
+      if (updatedVideo && !scheduleId && videoId && finalStatus) {
+        await this.handleManualVideoCompletion(
+          videoId,
+          finalStatus,
+          updatedVideo
+        );
       }
 
       return buildWebhookResult(
@@ -348,8 +284,12 @@ export class WebhookService {
     try {
       // If email and title are provided, track caption webhook completion
       if (email && title) {
-        await this.trackWebhookCompletion(videoId, "caption", email, title);
-      } else {
+        await this.trackWebhookCompletion(
+          videoId,
+          WEBHOOK_TYPES.CAPTION,
+          email,
+          title
+        );
       }
 
       return buildWebhookResult(
@@ -412,6 +352,109 @@ export class WebhookService {
         null
       );
     }
+  }
+
+  /**
+   * Handle scheduled video completion
+   */
+  private async handleScheduledVideoCompletion(
+    scheduleId: string,
+    trendIndex: number,
+    finalStatus: string,
+    videoId: string,
+    updatedVideo: any
+  ): Promise<void> {
+    // Update schedule status
+    await this.videoScheduleService.updateVideoStatus(
+      scheduleId,
+      trendIndex,
+      finalStatus as "completed" | "failed",
+      videoId
+    );
+
+    // If video is completed, store captions and auto-post
+    if (finalStatus === "ready" && updatedVideo) {
+      try {
+        const schedule = await VideoSchedule.findById(scheduleId);
+
+        if (schedule?.generatedTrends[trendIndex]) {
+          const trend = schedule.generatedTrends[trendIndex];
+          const captionsFromSchedule = extractCaptionsFromTrend(trend);
+
+          await this.videoService.updateVideoCaptions(
+            videoId,
+            captionsFromSchedule
+          );
+
+          // Auto post to social media platforms
+          await this.autoPostScheduledVideo(
+            schedule,
+            trendIndex,
+            updatedVideo,
+            trend.description
+          );
+        }
+      } catch (error) {
+        // Don't fail the webhook if caption storage or posting fails
+      }
+    }
+  }
+
+  /**
+   * Auto post scheduled video to social media
+   */
+  private async autoPostScheduledVideo(
+    schedule: any,
+    trendIndex: number,
+    updatedVideo: any,
+    videoTitle: string
+  ): Promise<void> {
+    try {
+      await this.autoSocialPostingService.postVideoToSocialMedia({
+        userId: schedule.userId.toString(),
+        scheduleId: schedule._id.toString(),
+        trendIndex: trendIndex,
+        videoUrl: updatedVideo.videoUrl,
+        videoTitle: videoTitle,
+      });
+    } catch (postingError) {
+      // Don't fail the webhook if social posting fails
+    }
+  }
+
+  /**
+   * Handle manual video completion (non-scheduled)
+   */
+  private async handleManualVideoCompletion(
+    videoId: string,
+    finalStatus: string,
+    updatedVideo: any
+  ): Promise<void> {
+    // Only track if video is ready (for webhook tracking system)
+    if (finalStatus === "ready") {
+      try {
+        await this.trackWebhookCompletion(
+          videoId,
+          WEBHOOK_TYPES.VIDEO,
+          updatedVideo.email,
+          updatedVideo.title
+        );
+      } catch (trackingError) {
+        // Don't fail the webhook if tracking fails
+      }
+    }
+
+    // Trigger caption generation asynchronously after webhook response
+    // This happens after n8n webhook completes (second hook), even if video is still processing
+    this.postWebhookDynamicGenerationService
+      .processDynamicGenerationForVideo(
+        videoId,
+        updatedVideo.email,
+        updatedVideo.title
+      )
+      .catch(() => {
+        // Don't fail the webhook response if caption generation fails
+      });
   }
 }
 

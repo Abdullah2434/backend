@@ -5,7 +5,7 @@ import {
     getMediaById,
     updateMediaStatus,
     createSocialPost
-} from '../../controllers/socialbu-media.controller';
+} from '../../controllers/socialbu/socialbu-media.controller';
 
 const router = Router();
 

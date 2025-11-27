@@ -2,6 +2,21 @@ import VideoSchedule, { IVideoSchedule } from "../../models/VideoSchedule";
 import { generateFromDescription, DynamicPostGenerationService } from "../content";
 import UserVideoSettings from "../../models/UserVideoSettings";
 import { VideoScheduleCaptionGeneration } from "./caption-generation.service";
+import {
+  ERROR_MESSAGES,
+  STATUS_PENDING,
+  SOCIAL_MEDIA_PLATFORMS,
+  CAPTION_STATUS_READY,
+} from "../../constants/videoScheduleService.constants";
+import {
+  UpdatePostData,
+  UserContext,
+} from "../../types/videoScheduleService.types";
+import {
+  parsePostId,
+  validatePostIndex,
+  getDynamicCaption,
+} from "../../utils/videoScheduleServiceHelpers";
 
 export class VideoSchedulePostManagement {
   /**
@@ -11,17 +26,7 @@ export class VideoSchedulePostManagement {
     scheduleId: string,
     postIndex: number,
     userId: string,
-    updateData: {
-      description?: string;
-      keypoints?: string;
-      scheduledFor?: Date;
-      instagram_caption?: string;
-      facebook_caption?: string;
-      linkedin_caption?: string;
-      twitter_caption?: string;
-      tiktok_caption?: string;
-      youtube_caption?: string;
-    }
+    updateData: UpdatePostData
   ): Promise<IVideoSchedule | null> {
     const schedule = await VideoSchedule.findOne({
       _id: scheduleId,
@@ -30,21 +35,19 @@ export class VideoSchedulePostManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found or not active");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_ACTIVE);
     }
 
-    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
-      throw new Error("Post index out of range");
-    }
+    validatePostIndex(postIndex, schedule.generatedTrends.length);
 
     const post = schedule.generatedTrends[postIndex];
     if (!post) {
-      throw new Error("Post not found");
+      throw new Error(ERROR_MESSAGES.POST_NOT_FOUND);
     }
 
     // Only allow editing if post is still pending
-    if (post.status !== "pending") {
-      throw new Error("Can only edit pending posts");
+    if (post.status !== STATUS_PENDING) {
+      throw new Error(ERROR_MESSAGES.CAN_ONLY_EDIT_PENDING);
     }
 
     // Update the post fields
@@ -91,17 +94,7 @@ export class VideoSchedulePostManagement {
     scheduleId: string,
     postId: string,
     userId: string,
-    updateData: {
-      description?: string;
-      keypoints?: string;
-      scheduledFor?: Date;
-      instagram_caption?: string;
-      facebook_caption?: string;
-      linkedin_caption?: string;
-      twitter_caption?: string;
-      tiktok_caption?: string;
-      youtube_caption?: string;
-    }
+    updateData: UpdatePostData
   ): Promise<IVideoSchedule | null> {
     const schedule = await VideoSchedule.findOne({
       _id: scheduleId,
@@ -110,32 +103,21 @@ export class VideoSchedulePostManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found or not active");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_ACTIVE);
     }
 
     // Parse post ID to get index
-    const parts = postId.split("_");
-    if (parts.length !== 2) {
-      throw new Error("Invalid post ID format");
-    }
-
-    const postIndex = parseInt(parts[1]);
-    if (
-      isNaN(postIndex) ||
-      postIndex < 0 ||
-      postIndex >= schedule.generatedTrends.length
-    ) {
-      throw new Error("Post not found");
-    }
+    const postIndex = parsePostId(postId);
+    validatePostIndex(postIndex, schedule.generatedTrends.length);
 
     const post = schedule.generatedTrends[postIndex];
     if (!post) {
-      throw new Error("Post not found");
+      throw new Error(ERROR_MESSAGES.POST_NOT_FOUND);
     }
 
     // Only allow editing if post is still pending
-    if (post.status !== "pending") {
-      throw new Error("Can only edit pending posts");
+    if (post.status !== STATUS_PENDING) {
+      throw new Error(ERROR_MESSAGES.CAN_ONLY_EDIT_PENDING);
     }
 
     // Store original values to detect changes
@@ -206,43 +188,18 @@ export class VideoSchedulePostManagement {
             keypointsForCaptions,
             userContext,
             userId,
-            [
-              "instagram",
-              "facebook",
-              "linkedin",
-              "twitter",
-              "tiktok",
-              "youtube",
-            ],
+            [...SOCIAL_MEDIA_PLATFORMS],
             userSettings?.language
           );
 
         // Extract captions using the helper method
         const generatedCaptions = {
-          instagram_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "instagram"
-          ),
-          facebook_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "facebook"
-          ),
-          linkedin_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "linkedin"
-          ),
-          twitter_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "twitter"
-          ),
-          tiktok_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "tiktok"
-          ),
-          youtube_caption: VideoScheduleCaptionGeneration.getDynamicCaption(
-            dynamicPosts,
-            "youtube"
-          ),
+          instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
+          facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
+          linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
+          twitter_caption: getDynamicCaption(dynamicPosts, "twitter"),
+          tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
+          youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
         };
 
         // Replace ALL old captions with new generated ones (ignore user-provided captions when description changes)
@@ -253,7 +210,7 @@ export class VideoSchedulePostManagement {
         post.tiktok_caption = generatedCaptions.tiktok_caption;
         post.youtube_caption = generatedCaptions.youtube_caption;
         post.enhanced_with_dynamic_posts = true;
-        post.caption_status = "ready";
+        post.caption_status = CAPTION_STATUS_READY;
         post.caption_processed_at = new Date();
 
       } catch (error: any) {
@@ -427,16 +384,14 @@ export class VideoSchedulePostManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found or not active");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_ACTIVE);
     }
 
-    if (postIndex < 0 || postIndex >= schedule.generatedTrends.length) {
-      throw new Error("Post index out of range");
-    }
+    validatePostIndex(postIndex, schedule.generatedTrends.length);
 
     const post = schedule.generatedTrends[postIndex];
     if (!post) {
-      throw new Error("Post not found");
+      throw new Error(ERROR_MESSAGES.POST_NOT_FOUND);
     }
 
     return {
@@ -465,27 +420,16 @@ export class VideoSchedulePostManagement {
     });
 
     if (!schedule) {
-      throw new Error("Schedule not found or not active");
+      throw new Error(ERROR_MESSAGES.SCHEDULE_NOT_ACTIVE);
     }
 
     // Parse post ID to get index
-    const parts = postId.split("_");
-    if (parts.length !== 2) {
-      throw new Error("Invalid post ID format");
-    }
-
-    const postIndex = parseInt(parts[1]);
-    if (
-      isNaN(postIndex) ||
-      postIndex < 0 ||
-      postIndex >= schedule.generatedTrends.length
-    ) {
-      throw new Error("Post not found");
-    }
+    const postIndex = parsePostId(postId);
+    validatePostIndex(postIndex, schedule.generatedTrends.length);
 
     const post = schedule.generatedTrends[postIndex];
     if (!post) {
-      throw new Error("Post not found");
+      throw new Error(ERROR_MESSAGES.POST_NOT_FOUND);
     }
 
     return {

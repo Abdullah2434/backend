@@ -5,7 +5,7 @@ import {
   handleSocialBuWebhook,
   getUserSocialBuAccounts,
   removeUserSocialBuAccount,
-} from "../../controllers/webhooksocialbu.controller";
+} from "../../controllers/socialbu/webhooksocialbu.controller";
 const router = Router();
 
 router.post("/video-complete", ctrl.videoComplete);

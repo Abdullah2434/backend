@@ -1,19 +1,8 @@
-/**
- * Email templates for scheduled video processing failures
- */
-
-export interface VideoLimitReachedEmailData {
-  videoTitle: string;
-  limit: number;
-  remaining: number;
-  used: number;
-  frontendUrl: string;
-}
-
-export interface SubscriptionExpiredEmailData {
-  videoTitle: string;
-  frontendUrl: string;
-}
+import {
+  VideoLimitReachedEmailData,
+  SubscriptionExpiredEmailData,
+} from "../../types/videoScheduleService.types";
+import { FRONTEND_URL } from "../../constants/videoScheduleService.constants";
 
 /**
  * Generate email content for video limit reached
@@ -21,6 +10,7 @@ export interface SubscriptionExpiredEmailData {
 export function generateVideoLimitReachedEmail(
   data: VideoLimitReachedEmailData
 ): string {
+  const frontendUrl = data.frontendUrl || FRONTEND_URL;
   return `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -79,6 +69,8 @@ export function generateVideoLimitReachedEmail(
 export function generateSubscriptionExpiredEmail(
   data: SubscriptionExpiredEmailData
 ): string {
+  const frontendUrl = data.frontendUrl || FRONTEND_URL;
+  
   return `
     <div style="text-align: center; margin-bottom: 32px;">
       <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">

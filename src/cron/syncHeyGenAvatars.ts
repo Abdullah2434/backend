@@ -1,14 +1,12 @@
 import axios, { AxiosResponse } from "axios";
 import DefaultAvatar, { IDefaultAvatar } from "../models/avatar";
 import { connectMongo } from "../config/mongoose";
-import dotenv from "dotenv";
 import cron from "node-cron";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
   executeWithOverallTimeout,
   withDatabaseTimeout,
   withApiTimeout,
-  processInBatches,
 } from "../utils/cronHelpers";
 import { getCronConfig } from "../config/cron.config";
 import {
@@ -21,13 +19,11 @@ import {
   SyncHeyGenAvatarsResult,
   SyncHeyGenAvatarsConfig,
 } from "../types/cron/syncHeyGenAvatars.types";
-
-// ==================== CONSTANTS ====================
-dotenv.config();
-
-const CRON_JOB_NAME = "heygen-avatars-sync";
-const API_URL = `${process.env.HEYGEN_BASE_URL}/avatars`;
-const API_KEY = process.env.HEYGEN_API_KEY;
+import {
+  CRON_JOB_NAME,
+  API_URL,
+  API_KEY,
+} from "../constants/syncHeyGenAvatarsCron.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const cronMonitor = CronMonitoringService.getInstance();

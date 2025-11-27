@@ -1,47 +1,18 @@
 import PendingCaptions from "../../models/PendingCaptions";
 import UserVideoSettings from "../../models/UserVideoSettings";
 import { VideoService } from "../video";
+import {
+  getUserContextFromSettings,
+  convertDynamicPostsToCaptions,
+  type UserContext,
+  type SocialMediaCaptions,
+} from "../../utils/postWebhookDynamicGenerationHelpers";
 
 export class PostWebhookDynamicGenerationService {
   private videoService: VideoService;
 
   constructor() {
     this.videoService = new VideoService();
-  }
-
-  /**
-   * Get user context from UserVideoSettings
-   */
-  private async getUserContextFromSettings(email: string): Promise<{
-    name: string;
-    position: string;
-    companyName: string;
-    city: string;
-    socialHandles: string;
-  }> {
-    try {
-      const userSettings = await UserVideoSettings.findOne({ email });
-      if (userSettings) {
-        return {
-          name: userSettings.name,
-          position: userSettings.position,
-          companyName: userSettings.companyName,
-          city: userSettings.city,
-          socialHandles: userSettings.socialHandles,
-        };
-      }
-    } catch (error) {
-      // Fallback to defaults if error
-    }
-
-    // Default fallback values
-    return {
-      name: "Real Estate Professional",
-      position: "Real Estate Professional",
-      companyName: "Real Estate Company",
-      city: "Your City",
-      socialHandles: "@realestate",
-    };
   }
 
   /**
@@ -67,13 +38,10 @@ export class PostWebhookDynamicGenerationService {
       }
 
       // Check video status (but don't require it to be "ready")
-      const video = await this.videoService.getVideo(videoId);
-      if (video) {
-      } else {
-      }
+      await this.videoService.getVideo(videoId);
 
       let dynamicPosts: any[] = [];
-      let captions: any;
+      let captions: SocialMediaCaptions;
 
       // Generate DYNAMIC posts using Smart Memory System if dynamic is enabled
       if (
@@ -88,9 +56,7 @@ export class PostWebhookDynamicGenerationService {
           });
           const language = userSettings?.language;
 
-          const { DynamicPostGenerationService } = await import(
-            "../content"
-          );
+          const { DynamicPostGenerationService } = await import("../content");
 
           dynamicPosts =
             await DynamicPostGenerationService.generateDynamicPosts(
@@ -103,40 +69,14 @@ export class PostWebhookDynamicGenerationService {
             );
 
           // Convert dynamic posts to traditional caption format for compatibility
-          const instagramPost = dynamicPosts.find(
-            (p: any) => p.platform === "instagram"
-          );
-          const facebookPost = dynamicPosts.find(
-            (p: any) => p.platform === "facebook"
-          );
-          const linkedinPost = dynamicPosts.find(
-            (p: any) => p.platform === "linkedin"
-          );
-          const twitterPost = dynamicPosts.find(
-            (p: any) => p.platform === "twitter"
-          );
-          const tiktokPost = dynamicPosts.find(
-            (p: any) => p.platform === "tiktok"
-          );
-          const youtubePost = dynamicPosts.find(
-            (p: any) => p.platform === "youtube"
-          );
-
-          captions = {
-            instagram_caption: instagramPost?.content || "",
-            facebook_caption: facebookPost?.content || "",
-            linkedin_caption: linkedinPost?.content || "",
-            twitter_caption: twitterPost?.content || "",
-            tiktok_caption: tiktokPost?.content || "",
-            youtube_caption: youtubePost?.content || "", // ✅ Ensure youtube_caption is included
-          };
+          captions = convertDynamicPostsToCaptions(dynamicPosts);
         } catch (dynamicError) {
           // Fall through to generate fallback captions
           captions = await this.generateFallbackCaptions(
             pendingCaption.topic || title,
             pendingCaption.keyPoints || "",
             pendingCaption.userContext ||
-              (await this.getUserContextFromSettings(email)),
+              (await getUserContextFromSettings(email)),
             email
           );
         }
@@ -145,74 +85,22 @@ export class PostWebhookDynamicGenerationService {
           pendingCaption.topic || title,
           pendingCaption.keyPoints || "",
           pendingCaption.userContext ||
-            (await this.getUserContextFromSettings(email)),
+            (await getUserContextFromSettings(email)),
           email
         );
       }
 
-      await PendingCaptions.findOneAndUpdate(
-        {
-          email: email,
-          title: title,
-        },
-        {
-          captions, // ✅ Includes youtube_caption
-          dynamicPosts: dynamicPosts.length > 0 ? dynamicPosts : undefined,
-          isPending: false, // Mark as completed
-        },
-        { new: true }
+      await this.updatePendingCaptions(
+        email,
+        title,
+        captions,
+        dynamicPosts.length > 0 ? dynamicPosts : undefined
       );
 
       // Update the video with the generated captions (works even if video is processing)
-      try {
-        await this.videoService.updateVideoCaptions(videoId, captions);
-      } catch (captionUpdateError) {
-        // Continue anyway - captions are stored in PendingCaptions
-      }
+      await this.updateVideoCaptionsSafely(videoId, captions);
     } catch (error: any) {
-      // Mark as failed in pending captions
-      await PendingCaptions.findOneAndUpdate(
-        {
-          email: email,
-          title: title,
-        },
-        {
-          isPending: false,
-          isDynamic: false, // Fallback to non-dynamic
-        }
-      );
-
-      // Generate fallback captions
-      try {
-        // Try to fetch pending caption again for fallback data
-        const fallbackPendingCaption = await PendingCaptions.findOne({
-          email: email,
-          title: title,
-        });
-
-        const fallbackCaptions = await this.generateFallbackCaptions(
-          fallbackPendingCaption?.topic || title,
-          fallbackPendingCaption?.keyPoints || "",
-          fallbackPendingCaption?.userContext ||
-            (await this.getUserContextFromSettings(email)),
-          email
-        );
-
-        // Try to update video captions, but don't fail if video is still processing
-        try {
-          await this.videoService.updateVideoCaptions(
-            videoId,
-            fallbackCaptions
-          );
-        } catch (updateError) {
-          // Store in PendingCaptions as fallback
-          await PendingCaptions.findOneAndUpdate(
-            { email: email, title: title },
-            { captions: fallbackCaptions, isPending: false, isDynamic: false },
-            { upsert: true }
-          );
-        }
-      } catch (fallbackError) {}
+      await this.handleGenerationError(email, title, videoId);
     }
   }
 
@@ -222,18 +110,16 @@ export class PostWebhookDynamicGenerationService {
   private async generateFallbackCaptions(
     topic: string,
     keyPoints: string,
-    userContext: any,
+    userContext: UserContext,
     email: string
-  ): Promise<any> {
+  ): Promise<SocialMediaCaptions> {
     // Get user settings to retrieve language preference
     const userSettings = await UserVideoSettings.findOne({
       email: email,
     });
     const language = userSettings?.language;
 
-    const { CaptionGenerationService } = await import(
-      "../content"
-    );
+    const { CaptionGenerationService } = await import("../content");
 
     const captions = await CaptionGenerationService.generateCaptions(
       topic,
@@ -243,6 +129,98 @@ export class PostWebhookDynamicGenerationService {
     );
 
     return captions;
+  }
+
+  /**
+   * Update pending captions record
+   */
+  private async updatePendingCaptions(
+    email: string,
+    title: string,
+    captions: SocialMediaCaptions,
+    dynamicPosts?: any[]
+  ): Promise<void> {
+    await PendingCaptions.findOneAndUpdate(
+      {
+        email: email,
+        title: title,
+      },
+      {
+        captions,
+        dynamicPosts: dynamicPosts || undefined,
+        isPending: false,
+      },
+      { new: true }
+    );
+  }
+
+  /**
+   * Update video captions safely (doesn't throw if video is still processing)
+   */
+  private async updateVideoCaptionsSafely(
+    videoId: string,
+    captions: SocialMediaCaptions
+  ): Promise<void> {
+    try {
+      await this.videoService.updateVideoCaptions(videoId, captions);
+    } catch (captionUpdateError) {
+      // Continue anyway - captions are stored in PendingCaptions
+    }
+  }
+
+  /**
+   * Handle generation error by marking as failed and generating fallback
+   */
+  private async handleGenerationError(
+    email: string,
+    title: string,
+    videoId: string
+  ): Promise<void> {
+    // Mark as failed in pending captions
+    await PendingCaptions.findOneAndUpdate(
+      {
+        email: email,
+        title: title,
+      },
+      {
+        isPending: false,
+        isDynamic: false,
+      }
+    );
+
+    // Generate fallback captions
+    try {
+      const fallbackPendingCaption = await PendingCaptions.findOne({
+        email: email,
+        title: title,
+      });
+
+      const fallbackCaptions = await this.generateFallbackCaptions(
+        fallbackPendingCaption?.topic || title,
+        fallbackPendingCaption?.keyPoints || "",
+        fallbackPendingCaption?.userContext ||
+          (await getUserContextFromSettings(email)),
+        email
+      );
+
+      // Try to update video captions, but don't fail if video is still processing
+      try {
+        await this.videoService.updateVideoCaptions(videoId, fallbackCaptions);
+      } catch (updateError) {
+        // Store in PendingCaptions as fallback
+        await PendingCaptions.findOneAndUpdate(
+          { email: email, title: title },
+          {
+            captions: fallbackCaptions,
+            isPending: false,
+            isDynamic: false,
+          },
+          { upsert: true }
+        );
+      }
+    } catch (fallbackError) {
+      // Silently handle fallback error
+    }
   }
 
   /**

@@ -1,90 +1,41 @@
 import { Request, Response } from "express";
-import { AuthenticatedRequest } from "../types";
+import { AuthenticatedRequest } from "../../types";
 import socialBuService, {
   socialBuAccountService,
   socialBuPostsService,
   socialBuInsightsService,
   webhookService,
-} from "../services/socialbu";
-import { asyncHandler } from "../middleware/asyncHandler";
-import { ResponseHelper } from "../utils/responseHelper";
+} from "../../services/socialbu";
+import { asyncHandler } from "../../middleware/asyncHandler";
+import { ResponseHelper } from "../../utils/responseHelper";
 import {
   saveTokenSchema,
   connectAccountSchema,
   getPostsSchema,
   getInsightsSchema,
   getScheduledPostsSchema,
-} from "../validations/socialbu.validations";
-
-// ==================== CONSTANTS ====================
-const DEFAULT_POSTBACK_URL = "http://localhost:4000/api/webhook/socialbu";
-
-// ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: Request): string | null {
-  const authHeader = req.headers.authorization;
-  return authHeader?.replace("Bearer ", "") || null;
-}
-
-/**
- * Normalize account IDs to numbers
- */
-function normalizeAccountIds(accountIds: (string | number)[]): number[] {
-  return accountIds.map((id) => Number(id));
-}
-
-/**
- * Build user-specific postback URL
- */
-function buildUserPostbackUrl(
-  userId: string,
-  postbackUrl?: string
-): string {
-  const baseUrl = postbackUrl || DEFAULT_POSTBACK_URL;
-  return `${baseUrl}?user_id=${userId}`;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("user not found") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
+} from "../../validations/socialbu.validations";
+import {
+  getUserIdFromRequest,
+  extractAccessToken,
+  formatValidationErrors,
+  handleControllerError,
+} from "../../utils/controllerHelpers";
+import {
+  normalizeAccountIds,
+  buildUserPostbackUrl,
+} from "../../utils/socialbuHelpers";
+import { DEFAULT_POSTBACK_URL } from "../../constants/socialbu.constants";
 
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Manual login to SocialBu and save token
  * POST /api/socialbu/login
  */
-export const manualLogin = async (req: Request, res: Response) => {
+export const manualLogin = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     const result = await socialBuService.manualLogin();
 
@@ -92,15 +43,18 @@ export const manualLogin = async (req: Request, res: Response) => {
       return ResponseHelper.badRequest(res, result.message || "Login failed");
     }
 
-    return ResponseHelper.success(res, result.message || "Login successful", result.data);
-  } catch (error: any) {
-    console.error("Error in manualLogin:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to login to SocialBu",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    return ResponseHelper.success(
+      res,
+      result.message || "Login successful",
+      result.data
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "manualLogin",
+      "Failed to login to SocialBu"
+    );
   }
 };
 
@@ -108,15 +62,15 @@ export const manualLogin = async (req: Request, res: Response) => {
  * Save token manually (for initial setup)
  * POST /api/socialbu/save-token
  */
-export const saveToken = async (req: Request, res: Response) => {
+export const saveToken = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     // Validate request body
     const validationResult = saveTokenSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -142,14 +96,13 @@ export const saveToken = async (req: Request, res: Response) => {
       isActive: result.isActive,
       createdAt: result.createdAt,
     });
-  } catch (error: any) {
-    console.error("Error in saveToken:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to save token",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "saveToken",
+      "Failed to save token"
+    );
   }
 };
 
@@ -158,7 +111,7 @@ export const saveToken = async (req: Request, res: Response) => {
  * GET /api/socialbu/accounts
  */
 export const getAccounts = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<Response> => {
     const token = extractAccessToken(req);
 
     if (!token) {
@@ -168,7 +121,11 @@ export const getAccounts = asyncHandler(
     const result = await socialBuAccountService.getUserAccounts(token);
 
     if (!result.success) {
-      return ResponseHelper.badRequest(res, result.message || "Failed to get accounts", result.error);
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to get accounts",
+        result.error
+      );
     }
 
     return ResponseHelper.success(
@@ -187,7 +144,7 @@ export const getAccounts = asyncHandler(
 export const getAccountsPublic = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const userId = getUserIdFromRequest(req);
 
@@ -196,11 +153,9 @@ export const getAccountsPublic = async (
 
     // If still not successful, try one more time with fresh login
     if (!socialBuResult.success) {
-      // Try to login and get fresh token
       const loginResult = await socialBuService.manualLogin();
 
       if (loginResult.success) {
-        // Try again with fresh token
         socialBuResult = await socialBuService.getAccounts();
       }
     }
@@ -244,14 +199,13 @@ export const getAccountsPublic = async (
         socialbu_status: "available",
       }
     );
-  } catch (error: any) {
-    console.error("Error in getAccountsPublic:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get user SocialBu accounts",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getAccountsPublic",
+      "Failed to get user SocialBu accounts"
+    );
   }
 };
 
@@ -262,15 +216,12 @@ export const getAccountsPublic = async (
 export const connectAccount = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     // Validate request body
     const validationResult = connectAccountSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -288,7 +239,11 @@ export const connectAccount = async (
     }
 
     // Create user-specific postback URL
-    const userSpecificPostbackUrl = buildUserPostbackUrl(userId, postback_url);
+    const userSpecificPostbackUrl = buildUserPostbackUrl(
+      userId,
+      postback_url,
+      DEFAULT_POSTBACK_URL
+    );
 
     const result = await socialBuService.connectAccount(
       provider,
@@ -297,18 +252,25 @@ export const connectAccount = async (
     );
 
     if (!result.success) {
-      return ResponseHelper.badRequest(res, result.message || "Failed to connect account", result.error);
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to connect account",
+        result.error
+      );
     }
 
-    return ResponseHelper.success(res, "Account connected successfully", result.data);
-  } catch (error: any) {
-    console.error("Error in connectAccount:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to connect account",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    return ResponseHelper.success(
+      res,
+      "Account connected successfully",
+      result.data
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "connectAccount",
+      "Failed to connect account"
+    );
   }
 };
 
@@ -316,7 +278,10 @@ export const connectAccount = async (
  * Test authentication
  * GET /api/socialbu/test-auth
  */
-export const testAuth = async (req: AuthenticatedRequest, res: Response) => {
+export const testAuth = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> => {
   try {
     const accessToken = extractAccessToken(req);
 
@@ -327,14 +292,8 @@ export const testAuth = async (req: AuthenticatedRequest, res: Response) => {
       hasToken: !!accessToken,
       tokenLength: accessToken?.length,
     });
-  } catch (error: any) {
-    console.error("Error in testAuth:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Test auth failed",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(error, res, "testAuth", "Test auth failed");
   }
 };
 
@@ -342,50 +301,53 @@ export const testAuth = async (req: AuthenticatedRequest, res: Response) => {
  * Get posts from SocialBu
  * POST /api/socialbu/posts
  */
-export const getPosts = asyncHandler(async (req: Request, res: Response) => {
-  const token = extractAccessToken(req);
+export const getPosts = asyncHandler(
+  async (req: Request, res: Response): Promise<Response> => {
+    const token = extractAccessToken(req);
 
-  if (!token) {
-    return ResponseHelper.unauthorized(res, "Access token is required");
-  }
+    if (!token) {
+      return ResponseHelper.unauthorized(res, "Access token is required");
+    }
 
-  // Validate request body
-  const validationResult = getPostsSchema.safeParse(req.body);
-  if (!validationResult.success) {
-    const errors = validationResult.error.errors.map((err) => ({
-      field: err.path.join("."),
-      message: err.message,
-    }));
-    return ResponseHelper.badRequest(res, "Validation failed", errors);
-  }
+    // Validate request body
+    const validationResult = getPostsSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = formatValidationErrors(validationResult.error);
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
 
-  const { type, account_id, limit, offset } = validationResult.data;
+    const { type, account_id, limit, offset } = validationResult.data;
 
-  const requestData: any = {};
-  if (type) requestData.type = type;
-  if (account_id) requestData.account_id = parseInt(account_id as string);
-  if (limit) requestData.limit = parseInt(limit as string);
-  if (offset) requestData.offset = parseInt(offset as string);
+    const requestData: Record<string, any> = {};
+    if (type) requestData.type = type;
+    if (account_id) requestData.account_id = parseInt(account_id as string, 10);
+    if (limit) requestData.limit = parseInt(limit as string, 10);
+    if (offset) requestData.offset = parseInt(offset as string, 10);
 
     const result = await socialBuPostsService.getUserPosts(token, requestData);
 
     if (!result.success) {
-      return ResponseHelper.badRequest(res, result.message || "Failed to get posts", result.error);
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to get posts",
+        result.error
+      );
     }
 
-  return ResponseHelper.success(
-    res,
-    "User data and posts retrieved successfully",
-    result.data
-  );
-});
+    return ResponseHelper.success(
+      res,
+      "User data and posts retrieved successfully",
+      result.data
+    );
+  }
+);
 
 /**
  * Get insights from SocialBu
  * POST /api/socialbu/insights
  */
 export const getInsights = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<Response> => {
     const token = extractAccessToken(req);
 
     if (!token) {
@@ -395,16 +357,21 @@ export const getInsights = asyncHandler(
     // Validate request body
     const validationResult = getInsightsSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
     const { start, end, metrics } = validationResult.data;
 
-    const requestData: any = {
+    // Ensure required fields are present (validation ensures they exist)
+    if (!start || !end || !metrics) {
+      return ResponseHelper.badRequest(
+        res,
+        "Missing required fields: start, end, and metrics are required"
+      );
+    }
+
+    const requestData = {
       start,
       end,
       metrics,
@@ -416,7 +383,11 @@ export const getInsights = asyncHandler(
     );
 
     if (!result.success) {
-      return ResponseHelper.badRequest(res, result.message || "Failed to get insights", result.error);
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to get insights",
+        result.error
+      );
     }
 
     return ResponseHelper.success(
@@ -434,15 +405,12 @@ export const getInsights = asyncHandler(
 export const getScheduledPosts = async (
   req: AuthenticatedRequest,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     // Validate request body (optional user_id)
     const validationResult = getScheduledPostsSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -469,10 +437,16 @@ export const getScheduledPosts = async (
     const normalizedAccountIds = normalizeAccountIds(userAccountIds);
 
     // Get scheduled posts filtered by user's account IDs
-    const result = await socialBuService.getScheduledPosts(normalizedAccountIds);
+    const result = await socialBuService.getScheduledPosts(
+      normalizedAccountIds
+    );
 
     if (!result.success) {
-      return ResponseHelper.badRequest(res, result.message || "Failed to get scheduled posts", result.error);
+      return ResponseHelper.badRequest(
+        res,
+        result.message || "Failed to get scheduled posts",
+        result.error
+      );
     }
 
     return ResponseHelper.success(
@@ -482,22 +456,19 @@ export const getScheduledPosts = async (
         ...result.data,
         meta: {
           user_account_ids: userAccountIds,
-          total_posts:
-            result.data?.items?.length || result.data?.total || 0,
+          total_posts: result.data?.items?.length || result.data?.total || 0,
           filtered: userAccountIds.length > 0,
-          original_total:
-            result.data?.originalTotal || result.data?.total || 0,
+          original_total: result.data?.originalTotal || result.data?.total || 0,
         },
       }
     );
-  } catch (error: any) {
-    console.error("Error in getScheduledPosts:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get scheduled posts",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getScheduledPosts",
+      "Failed to get scheduled posts"
+    );
   }
 };
 
@@ -505,7 +476,10 @@ export const getScheduledPosts = async (
  * Test SocialBu API connection
  * GET /api/socialbu/test-connection
  */
-export const testConnection = async (req: Request, res: Response) => {
+export const testConnection = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     const token = await socialBuService.getValidToken();
 
@@ -520,13 +494,12 @@ export const testConnection = async (req: Request, res: Response) => {
       hasToken: true,
       tokenLength: token.length,
     });
-  } catch (error: any) {
-    console.error("Error in testConnection:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to test connection",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "testConnection",
+      "Failed to test connection"
+    );
   }
 };

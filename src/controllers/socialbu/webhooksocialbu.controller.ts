@@ -1,15 +1,16 @@
 import { Request, Response } from "express";
-import { webhookService } from "../services/socialbu";
-import { ResponseHelper } from "../utils/responseHelper";
+import { webhookService } from "../../services/socialbu";
+import { ResponseHelper } from "../../utils/responseHelper";
 import {
   socialBuWebhookSchema,
   userIdQuerySchema,
   userIdParamSchema,
   removeSocialBuAccountSchema,
-} from "../validations/webhookSocialbu.validations";
-
-// ==================== CONSTANTS ====================
-const VALID_ACCOUNT_ACTIONS = ["added", "updated", "removed"] as const;
+} from "../../validations/webhookSocialbu.validations";
+import {
+  formatValidationErrors,
+  handleControllerError,
+} from "../../utils/controllerHelpers";
 
 // ==================== HELPER FUNCTIONS ====================
 /**
@@ -34,15 +35,6 @@ function getUserIdFromQuery(req: Request): string | undefined {
   return req.query.user_id as string | undefined;
 }
 
-/**
- * Get error status code based on error type
- */
-function getErrorStatus(error: any): number {
-  if (error?.name === "ValidationError" || error?.name === "ZodError") {
-    return 400;
-  }
-  return 500;
-}
 
 /**
  * Format webhook debug information
@@ -61,7 +53,10 @@ function formatWebhookDebug(req: Request, parsedBody?: any) {
 /**
  * Test webhook endpoint
  */
-export const testWebhook = async (req: Request, res: Response) => {
+export const testWebhook = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     const parsedBody = parseJsonBody(req.body);
 
@@ -72,12 +67,12 @@ export const testWebhook = async (req: Request, res: Response) => {
       bodyType: typeof req.body,
       headers: req.headers,
     });
-  } catch (error: any) {
-    console.error("Error in testWebhook:", error);
-    return ResponseHelper.serverError(
+  } catch (error) {
+    return handleControllerError(
+      error,
       res,
-      "Test webhook failed",
-      error instanceof Error ? error.message : "Unknown error"
+      "testWebhook",
+      "Test webhook failed"
     );
   }
 };
@@ -85,7 +80,10 @@ export const testWebhook = async (req: Request, res: Response) => {
 /**
  * Handle SocialBu account webhook
  */
-export const handleSocialBuWebhook = async (req: Request, res: Response) => {
+export const handleSocialBuWebhook = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     // Parse body if it's a string
     const webhookData = parseJsonBody(req.body);
@@ -93,11 +91,8 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
     // Validate webhook payload
     const validationResult = socialBuWebhookSchema.safeParse(webhookData);
     if (!validationResult.success) {
-      return ResponseHelper.badRequest(
-        res,
-        "Invalid webhook payload",
-        validationResult.error.errors
-      );
+      const errors = formatValidationErrors(validationResult.error);
+      return ResponseHelper.badRequest(res, "Invalid webhook payload", errors);
     }
 
     const validatedData = validationResult.data;
@@ -105,10 +100,11 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
     // Validate and extract user_id from query (optional)
     const queryValidation = userIdQuerySchema.safeParse(req.query);
     if (!queryValidation.success) {
+      const errors = formatValidationErrors(queryValidation.error);
       return ResponseHelper.badRequest(
         res,
         "Invalid query parameters",
-        queryValidation.error.errors
+        errors
       );
     }
 
@@ -129,34 +125,44 @@ export const handleSocialBuWebhook = async (req: Request, res: Response) => {
       return ResponseHelper.badRequest(res, result.message || "Failed to process webhook");
     }
 
-    return ResponseHelper.success(res, result.message || "Webhook processed successfully", result.data);
-  } catch (error: any) {
-    console.error("Error in handleSocialBuWebhook:", error);
-    const statusCode = getErrorStatus(error);
-    
-    if (statusCode === 400) {
+    return ResponseHelper.success(
+      res,
+      result.message || "Webhook processed successfully",
+      result.data
+    );
+  } catch (error) {
+    // For webhook errors, include debug info
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("Error in handleSocialBuWebhook:", err);
+
+    // Check if it's a validation error
+    if (
+      err.name === "ValidationError" ||
+      err.name === "ZodError" ||
+      err.message.toLowerCase().includes("invalid") ||
+      err.message.toLowerCase().includes("required")
+    ) {
       return ResponseHelper.badRequest(
         res,
         "Failed to process webhook",
-        error instanceof Error ? error.message : "Unknown error"
+        err.message
       );
     }
 
-    return ResponseHelper.serverError(
-      res,
-      "Failed to process webhook",
-      {
-        error: error instanceof Error ? error.message : "Unknown error",
+    return ResponseHelper.serverError(res, "Failed to process webhook", {
+      error: err.message,
         debug: formatWebhookDebug(req),
-      }
-    );
+    });
   }
 };
 
 /**
  * Get user's SocialBu account IDs
  */
-export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
+export const getUserSocialBuAccounts = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     // Validate userId parameter
     const paramValidation = userIdParamSchema.safeParse(req.params);
@@ -184,22 +190,12 @@ export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
       result.message || "SocialBu accounts retrieved successfully",
       result.data
     );
-  } catch (error: any) {
-    console.error("Error in getUserSocialBuAccounts:", error);
-    const statusCode = getErrorStatus(error);
-    
-    if (statusCode === 400) {
-      return ResponseHelper.badRequest(
+  } catch (error) {
+    return handleControllerError(
+      error,
         res,
-        "Failed to get SocialBu accounts",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-    }
-
-    return ResponseHelper.serverError(
-      res,
-      "Failed to get SocialBu accounts",
-      error instanceof Error ? error.message : "Unknown error"
+      "getUserSocialBuAccounts",
+      "Failed to get SocialBu accounts"
     );
   }
 };
@@ -207,15 +203,19 @@ export const getUserSocialBuAccounts = async (req: Request, res: Response) => {
 /**
  * Remove specific SocialBu account from user
  */
-export const removeUserSocialBuAccount = async (req: Request, res: Response) => {
+export const removeUserSocialBuAccount = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     // Validate userId parameter
     const paramValidation = userIdParamSchema.safeParse(req.params);
     if (!paramValidation.success) {
+      const errors = formatValidationErrors(paramValidation.error);
       return ResponseHelper.badRequest(
         res,
         "Invalid user ID parameter",
-        paramValidation.error.errors
+        errors
       );
     }
 
@@ -224,11 +224,8 @@ export const removeUserSocialBuAccount = async (req: Request, res: Response) => 
     // Validate request body
     const bodyValidation = removeSocialBuAccountSchema.safeParse(req.body);
     if (!bodyValidation.success) {
-      return ResponseHelper.badRequest(
-        res,
-        "Invalid request body",
-        bodyValidation.error.errors
-      );
+      const errors = formatValidationErrors(bodyValidation.error);
+      return ResponseHelper.badRequest(res, "Invalid request body", errors);
     }
 
     const { accountId } = bodyValidation.data;
@@ -247,22 +244,12 @@ export const removeUserSocialBuAccount = async (req: Request, res: Response) => 
       result.message || "SocialBu account removed successfully",
       result.data
     );
-  } catch (error: any) {
-    console.error("Error in removeUserSocialBuAccount:", error);
-    const statusCode = getErrorStatus(error);
-    
-    if (statusCode === 400) {
-      return ResponseHelper.badRequest(
+  } catch (error) {
+    return handleControllerError(
+      error,
         res,
-        "Failed to remove SocialBu account",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-    }
-
-    return ResponseHelper.serverError(
-      res,
-      "Failed to remove SocialBu account",
-      error instanceof Error ? error.message : "Unknown error"
+      "removeUserSocialBuAccount",
+      "Failed to remove SocialBu account"
     );
   }
 };

@@ -1,6 +1,5 @@
 import axios, { AxiosResponse } from "axios";
 import Topic, { ITopic } from "../models/Topic";
-import dotenv from "dotenv";
 import { connectMongo } from "../config/mongoose";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
@@ -29,13 +28,11 @@ import {
   GenerateTopicDataConfig,
   OpenAIRequestPayload,
 } from "../types/cron/generateTopicData.types";
-
-// ==================== CONSTANTS ====================
-dotenv.config();
-
-const CRON_JOB_NAME = "generate-topic-data";
-const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+import {
+  CRON_JOB_NAME,
+  OPENAI_API_URL,
+  OPENAI_API_KEY,
+} from "../constants/generateTopicDataCron.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const cronMonitor = CronMonitoringService.getInstance();

@@ -56,7 +56,9 @@ export async function generateFromDescription(
     // Check content safety first
     const safetyCheck = await checkContentSafetyWithOpenAI(description);
     if (!safetyCheck.isSafe) {
-      throw new Error(formatContentModerationError(safetyCheck.category));
+      throw formatContentModerationError(
+        safetyCheck.category || "inappropriate content"
+      );
     }
 
     // Validate real estate related
@@ -78,7 +80,7 @@ export async function generateFromDescription(
 
     // Build city context
     const cityInfo = city ? getCityData(city) : null;
-    const cityContext = cityInfo
+    const cityContext = cityInfo && city
       ? buildCityContext(city)
       : isRealEstateRelated
       ? " for real estate"
@@ -129,9 +131,12 @@ export async function generateFromDescription(
       description: description,
       keypoints: keypoints,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     // Re-throw validation errors and content moderation errors
-    if (isContentModerationError(error) || isValidationError(error)) {
+    if (
+      (error instanceof Error || typeof error === "string") &&
+      (isContentModerationError(error) || isValidationError(error))
+    ) {
       throw error;
     }
 

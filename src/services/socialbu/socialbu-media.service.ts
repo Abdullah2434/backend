@@ -2,40 +2,29 @@ import axios, { AxiosError } from 'axios';
 import SocialBuMedia, { ISocialBuMedia } from '../../models/SocialBuMedia';
 import { connectMongo } from '../../config/mongoose';
 import socialBuService from './socialbu.service';
-
-interface SocialBuUploadMediaRequest {
-  name: string;
-  mime_type: string;
-  videoUrl?: string; // Optional video URL for the upload script
-}
-
-interface SocialBuUploadMediaResponse {
-  name: string;
-  mime_type: string;
-  signed_url: string;
-  key: string;
-  secure_key: string;
-  url: string;
-}
-
-interface UploadScriptResponse {
-  statusCode: number;
-  headers: any;
-  success: boolean;
-  finalVideoUrl?: string;
-  errorMessage?: string;
-}
-
-interface MediaUploadResult {
-  success: boolean;
-  message: string;
-  data?: ISocialBuMedia;
-  error?: string;
-}
+import {
+  SOCIALBU_UPLOAD_URL,
+  HTTP_STATUS_OK,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  DEFAULT_HEADERS,
+} from '../../constants/socialbuService.constants';
+import {
+  SocialBuUploadMediaRequest,
+  SocialBuUploadMediaResponse,
+  UploadScriptResponse,
+  MediaUploadResult,
+} from '../../types/socialbuService.types';
+import {
+  buildAuthHeaders,
+  getHttpClient,
+  extractCleanUrl,
+  buildUploadScriptResponse,
+  buildMediaRecordData,
+} from '../../utils/socialbuServiceHelpers';
 
 class SocialBuMediaService {
   private static instance: SocialBuMediaService;
-  private readonly SOCIALBU_UPLOAD_URL = 'https://socialbu.com/api/v1/upload_media';
 
   private constructor() {}
 
@@ -59,78 +48,53 @@ class SocialBuMediaService {
       if (!tokenString) {
         return {
           success: false,
-          message: 'No valid SocialBu token available',
-          error: 'Token not found'
+          message: ERROR_MESSAGES.NO_TOKEN_AVAILABLE,
+          error: ERROR_MESSAGES.TOKEN_NOT_FOUND
         };
       }
 
       // Call SocialBu upload API
       const response = await axios.post<SocialBuUploadMediaResponse>(
-        this.SOCIALBU_UPLOAD_URL,
+        SOCIALBU_UPLOAD_URL,
         {
           name: mediaData.name,
           mime_type: mediaData.mime_type
         },
         {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${tokenString}`
-          }
+          headers: buildAuthHeaders(tokenString)
         }
       );
 
       if (response.data) {
-        
-
         // Create media record with API response
-        const mediaRecord = new SocialBuMedia({
-          userId,
-          name: mediaData.name,
-          mime_type: mediaData.mime_type,
-          socialbuResponse: {
-            name: response.data.name,
-            mime_type: response.data.mime_type,
-            signed_url: response.data.signed_url,
-            key: response.data.key,
-            secure_key: response.data.secure_key,
-            url: response.data.url
-          },
-          uploadScript: {
-            videoUrl: mediaData.videoUrl || 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-            executed: false,
-            status: 'pending'
-          },
-          status: 'pending'
-        });
+        const mediaRecordData = buildMediaRecordData(userId, mediaData, response.data);
+        const mediaRecord = new SocialBuMedia(mediaRecordData);
 
         await mediaRecord.save();
         await mediaRecord.markApiCompleted();
 
-
         // Execute upload script if videoUrl is provided
         if (mediaData.videoUrl) {
-        
           const scriptResult = await this.executeUploadScript(mediaRecord, mediaData.videoUrl);
           
           return {
             success: true,
-            message: 'Complete media upload workflow completed',
+            message: SUCCESS_MESSAGES.MEDIA_UPLOAD_COMPLETE,
             data: scriptResult
           };
         }
 
         return {
           success: true,
-          message: 'Media upload API completed successfully. Upload script pending.',
+          message: SUCCESS_MESSAGES.MEDIA_UPLOAD_API_COMPLETE,
           data: mediaRecord
         };
       }
 
       return {
         success: false,
-        message: 'No response data from SocialBu',
-        error: 'Empty response'
+        message: ERROR_MESSAGES.NO_RESPONSE_DATA,
+        error: ERROR_MESSAGES.EMPTY_RESPONSE
       };
     } catch (error) {
 
@@ -149,8 +113,8 @@ class SocialBuMediaService {
 
       return {
         success: false,
-        message: 'Failed to upload media',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: ERROR_MESSAGES.FAILED_TO_UPLOAD_MEDIA,
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
       };
     }
   }
@@ -169,7 +133,7 @@ class SocialBuMediaService {
       const http = require('http');
 
       // Choose correct module based on URL protocol
-      const client = videoUrl.startsWith("https") ? https : http;
+      const client = getHttpClient(videoUrl);
 
       return new Promise((resolve, reject) => {
         client
@@ -193,19 +157,15 @@ class SocialBuMediaService {
             res.pipe(req);
 
             req.on("response", async (uploadRes: any) => {
-              if (uploadRes.statusCode === 200) {
-              
-                
+              if (uploadRes.statusCode === HTTP_STATUS_OK) {
                 // Extract the clean video URL (without query parameters)
-                const finalVideoUrl = signedUrl.split('?')[0];
-             
+                const finalVideoUrl = extractCleanUrl(signedUrl);
                 
-                const response: UploadScriptResponse = {
-                  statusCode: uploadRes.statusCode,
-                  headers: uploadRes.headers,
-                  success: true,
-                  finalVideoUrl: finalVideoUrl
-                };
+                const response = buildUploadScriptResponse(
+                  uploadRes.statusCode,
+                  uploadRes.headers,
+                  finalVideoUrl
+                );
 
                 await mediaRecord.markScriptCompleted(response);
                 resolve(mediaRecord);
@@ -249,7 +209,7 @@ class SocialBuMediaService {
 
       return {
         success: true,
-        message: 'User media retrieved successfully',
+        message: SUCCESS_MESSAGES.USER_MEDIA_RETRIEVED,
         data: mediaRecords as any
       };
     } catch (error) {
@@ -257,8 +217,8 @@ class SocialBuMediaService {
       
       return {
         success: false,
-        message: 'Failed to get user media',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: ERROR_MESSAGES.FAILED_TO_GET_USER_MEDIA,
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
       };
     }
   }
@@ -287,7 +247,7 @@ class SocialBuMediaService {
 
       return {
         success: true,
-        message: 'Media status updated successfully',
+        message: SUCCESS_MESSAGES.MEDIA_STATUS_UPDATED,
         data: mediaRecord
       };
     } catch (error) {
@@ -295,8 +255,8 @@ class SocialBuMediaService {
       
       return {
         success: false,
-        message: 'Failed to update media status',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: ERROR_MESSAGES.FAILED_TO_UPDATE_MEDIA_STATUS,
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
       };
     }
   }
@@ -312,14 +272,14 @@ class SocialBuMediaService {
       if (!mediaRecord) {
         return {
           success: false,
-          message: 'Media record not found',
-          error: 'Media not found'
+          message: ERROR_MESSAGES.MEDIA_NOT_FOUND,
+          error: ERROR_MESSAGES.MEDIA_NOT_FOUND
         };
       }
 
       return {
         success: true,
-        message: 'Media retrieved successfully',
+        message: SUCCESS_MESSAGES.MEDIA_RETRIEVED,
         data: mediaRecord
       };
     } catch (error) {
@@ -327,8 +287,8 @@ class SocialBuMediaService {
       
       return {
         success: false,
-        message: 'Failed to get media',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: ERROR_MESSAGES.FAILED_TO_GET_MEDIA,
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
       };
     }
   }

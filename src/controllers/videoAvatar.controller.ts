@@ -16,25 +16,22 @@ import {
   avatarIdParamSchema,
   s3KeyParamSchema,
 } from "../validations/videoAvatar.validations";
-
-// ==================== CONSTANTS ====================
-const TEMP_DIR = "/tmp/";
-const MAX_FILE_SIZE = 1000 * 1024 * 1024; // 1GB
-const MAX_FIELD_SIZE = 1000 * 1024 * 1024; // 1GB
-const MAX_FILES = 10;
-const MAX_FIELDS = 20;
-const SIGNED_URL_EXPIRY_SECONDS = 3600; // 1 hour
-
-const TEMP_AVATAR_ID = "temp-avatar-id";
-
-// Socket notification statuses
-const NOTIFICATION_STATUSES = {
-  VALIDATION: "validation",
-  PROGRESS: "progress",
-  COMPLETED: "completed",
-  ERROR: "error",
-  FINAL_RESULT: "final_result",
-} as const;
+import {
+  extractAccessToken,
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
+import { isValidUrl } from "../utils/urlHelpers";
+import {
+  TEMP_DIR,
+  MAX_FILE_SIZE,
+  MAX_FIELD_SIZE,
+  MAX_FILES,
+  MAX_FIELDS,
+  SIGNED_URL_EXPIRY_SECONDS,
+  TEMP_AVATAR_ID,
+  NOTIFICATION_STATUSES,
+} from "../constants/videoAvatar.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const videoAvatarService = new VideoAvatarService();
@@ -67,34 +64,6 @@ const upload = multer({
 });
 
 // ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
-/**
- * Extract access token from request headers
- */
-function extractAccessToken(req: AuthenticatedRequest): string | undefined {
-  return req.headers.authorization?.replace("Bearer ", "");
-}
-
-/**
- * Validate URL format
- */
-function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Clean up temporary files
@@ -134,31 +103,6 @@ function getFinalNotificationStatus(
   return "progress";
 }
 
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("subscription")) {
-    return 403;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
-
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Submit Video Avatar Creation Request (with file uploads)
@@ -167,7 +111,7 @@ function getErrorStatus(error: Error): number {
 export async function createVideoAvatar(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   let trainingFootageFile: Express.Multer.File | undefined;
   let consentStatementFile: Express.Multer.File | undefined;
 
@@ -185,10 +129,7 @@ export async function createVideoAvatar(
     // Validate request body
     const validationResult = createVideoAvatarSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -200,7 +141,7 @@ export async function createVideoAvatar(
 
     // Get user ID and token
     const userId = req.user?._id;
-    const authToken = extractAccessToken(req);
+    const authToken = extractAccessToken(req) || undefined;
 
     if (!userId) {
       return ResponseHelper.unauthorized(
@@ -278,7 +219,7 @@ export async function createVideoAvatar(
         consent_statement_url: consent_statement_url,
       },
       userId,
-      authToken || undefined
+      authToken
     );
 
     // Clean up temporary files after successful upload
@@ -306,8 +247,6 @@ export async function createVideoAvatar(
 
     return res.status(202).json(result);
   } catch (error: any) {
-    console.error("Error in createVideoAvatar:", error);
-
     // Emit error socket notification
     const userId = req.user?._id;
     if (userId) {
@@ -327,11 +266,12 @@ export async function createVideoAvatar(
     // Clean up temporary files on error
     cleanupTempFiles([trainingFootageFile, consentStatementFile]);
 
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+    return handleControllerError(
+      error,
+      res,
+      "createVideoAvatar",
+      "Internal server error"
+    );
   }
 }
 
@@ -362,17 +302,14 @@ export const uploadMiddleware = (req: any, res: any, next: any) => {
 export async function getVideoAvatarStatus(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const { id } = req.params;
 
     // Validate avatar ID parameter
     const validationResult = avatarIdParamSchema.safeParse({ id });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -385,17 +322,16 @@ export async function getVideoAvatarStatus(
       result
     );
   } catch (error: any) {
-    console.error("Error in getVideoAvatarStatus:", error);
-
     if (error.message === "Avatar ID not found") {
       return ResponseHelper.notFound(res, "Avatar ID not found");
     }
 
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+    return handleControllerError(
+      error,
+      res,
+      "getVideoAvatarStatus",
+      "Internal server error"
+    );
   }
 }
 
@@ -403,17 +339,20 @@ export async function getVideoAvatarStatus(
  * Health check endpoint for video avatar service
  * GET /v2/video_avatar/health
  */
-export async function healthCheck(req: AuthenticatedRequest, res: Response) {
+export async function healthCheck(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
   try {
     return ResponseHelper.success(res, "Video Avatar service is healthy", {
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
-    console.error("Error in healthCheck:", error);
-    return ResponseHelper.serverError(
+  } catch (error) {
+    return handleControllerError(
+      error,
       res,
-      "Video Avatar service is unhealthy",
-      error.message
+      "healthCheck",
+      "Video Avatar service is unhealthy"
     );
   }
 }
@@ -422,17 +361,17 @@ export async function healthCheck(req: AuthenticatedRequest, res: Response) {
  * Proxy endpoint to serve video avatar files with clean URLs
  * GET /v2/video_avatar/proxy/:s3Key
  */
-export async function proxyVideoFile(req: AuthenticatedRequest, res: Response) {
+export async function proxyVideoFile(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
   try {
     const { s3Key } = req.params;
 
     // Validate s3Key parameter
     const validationResult = s3KeyParamSchema.safeParse({ s3Key });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -447,7 +386,8 @@ export async function proxyVideoFile(req: AuthenticatedRequest, res: Response) {
           movS3Key,
           SIGNED_URL_EXPIRY_SECONDS
         );
-        return res.redirect(signedUrl);
+        res.redirect(signedUrl);
+        return res;
       } catch (error) {
         // If .mov doesn't exist, try the .mp4 version
       }
@@ -460,14 +400,14 @@ export async function proxyVideoFile(req: AuthenticatedRequest, res: Response) {
     );
 
     // Redirect to the signed URL
-    return res.redirect(signedUrl);
-  } catch (error: any) {
-    console.error("Error in proxyVideoFile:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to serve video file",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    res.redirect(signedUrl);
+    return res;
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "proxyVideoFile",
+      "Failed to serve video file"
+    );
   }
 }

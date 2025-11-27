@@ -1,4 +1,20 @@
 import VideoSchedule from "../../models/VideoSchedule";
+import {
+  SOCIAL_MEDIA_PLATFORMS,
+  CAPTION_BATCH_SIZE,
+  BATCH_DELAY_MS,
+  CAPTION_STATUS_PENDING,
+  CAPTION_STATUS_READY,
+  CAPTION_STATUS_FAILED,
+  STATUS_FAILED,
+  STATUS_READY,
+  STATUS_PROCESSING,
+} from "../../constants/videoScheduleService.constants";
+import { UserContext } from "../../types/videoScheduleService.types";
+import {
+  getDynamicCaption,
+  buildCaptionUpdateObject,
+} from "../../utils/videoScheduleServiceHelpers";
 
 export class VideoScheduleCaptionGeneration {
   /**
@@ -14,7 +30,7 @@ export class VideoScheduleCaptionGeneration {
     for (const trend of trends) {
       try {
         // Create user context from user settings
-        const userContext = {
+        const userContext: UserContext = {
           name: userSettings.name,
           position: userSettings.position,
           companyName: userSettings.companyName,
@@ -32,14 +48,7 @@ export class VideoScheduleCaptionGeneration {
             trend.keypoints,
             userContext,
             userId,
-            [
-              "instagram",
-              "facebook",
-              "linkedin",
-              "twitter",
-              "tiktok",
-              "youtube",
-            ],
+            [...SOCIAL_MEDIA_PLATFORMS],
             userSettings.language
           );
 
@@ -47,12 +56,12 @@ export class VideoScheduleCaptionGeneration {
         const enhancedTrend = {
           ...trend,
           // Update captions with dynamic content
-          instagram_caption: this.getDynamicCaption(dynamicPosts, "instagram"),
-          facebook_caption: this.getDynamicCaption(dynamicPosts, "facebook"),
-          linkedin_caption: this.getDynamicCaption(dynamicPosts, "linkedin"),
-          twitter_caption: this.getDynamicCaption(dynamicPosts, "twitter"),
-          tiktok_caption: this.getDynamicCaption(dynamicPosts, "tiktok"),
-          youtube_caption: this.getDynamicCaption(dynamicPosts, "youtube"),
+          instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
+          facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
+          linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
+          twitter_caption: getDynamicCaption(dynamicPosts, "twitter"),
+          tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
+          youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
           // Add metadata
           enhanced_with_dynamic_posts: true,
           enhancement_timestamp: new Date().toISOString(),
@@ -98,7 +107,7 @@ export class VideoScheduleCaptionGeneration {
 
         // Update schedule status to failed
         await VideoSchedule.findByIdAndUpdate(scheduleId, {
-          status: "failed",
+          status: STATUS_FAILED,
         });
 
         // Send failure notification
@@ -131,8 +140,8 @@ export class VideoScheduleCaptionGeneration {
     const { notificationService } = await import("../notification.service");
     let processedCount = 0;
 
-    // Process videos in batches of 3 to avoid rate limiting
-    const batchSize = 3;
+    // Process videos in batches to avoid rate limiting
+    const batchSize = CAPTION_BATCH_SIZE;
     const totalBatches = Math.ceil(totalVideos / batchSize);
 
     for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -171,7 +180,7 @@ export class VideoScheduleCaptionGeneration {
 
         // Add delay between batches to avoid rate limiting
         if (batchIndex < totalBatches - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
         }
       } catch (error: any) {
       
@@ -181,7 +190,7 @@ export class VideoScheduleCaptionGeneration {
 
     // Update schedule status to ready
     await VideoSchedule.findByIdAndUpdate(scheduleId, {
-      status: "ready",
+      status: STATUS_READY,
     });
 
     // Send completion notification
@@ -206,7 +215,7 @@ export class VideoScheduleCaptionGeneration {
   ): Promise<void> {
     try {
       // Create user context from user settings
-      const userContext = {
+      const userContext: UserContext = {
         name: userSettings.name,
         position: userSettings.position,
         companyName: userSettings.companyName,
@@ -224,45 +233,30 @@ export class VideoScheduleCaptionGeneration {
           trend.keypoints,
           userContext,
           userId,
-          ["instagram", "facebook", "linkedin", "twitter", "tiktok", "youtube"],
+          [...SOCIAL_MEDIA_PLATFORMS],
           userSettings.language
         );
 
       // Update captions with dynamic content
       const updatedCaptions = {
-        instagram_caption: this.getDynamicCaption(dynamicPosts, "instagram"),
-        facebook_caption: this.getDynamicCaption(dynamicPosts, "facebook"),
-        linkedin_caption: this.getDynamicCaption(dynamicPosts, "linkedin"),
-        twitter_caption: this.getDynamicCaption(dynamicPosts, "twitter"),
-        tiktok_caption: this.getDynamicCaption(dynamicPosts, "tiktok"),
-        youtube_caption: this.getDynamicCaption(dynamicPosts, "youtube"),
+        instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
+        facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
+        linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
+        twitter_caption: getDynamicCaption(dynamicPosts, "twitter"),
+        tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
+        youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
         enhanced_with_dynamic_posts: true,
-        caption_status: "ready",
+        caption_status: CAPTION_STATUS_READY,
         caption_processed_at: new Date(),
       };
 
-      // Update the specific trend in the schedule
+      // Update the specific trend in the schedule using helper function
+      const updateObject = buildCaptionUpdateObject(trendIndex, updatedCaptions);
+      updateObject[`generatedTrends.${trendIndex}.caption_processed_at`] =
+        updatedCaptions.caption_processed_at;
+
       await VideoSchedule.findByIdAndUpdate(scheduleId, {
-        $set: {
-          [`generatedTrends.${trendIndex}.instagram_caption`]:
-            updatedCaptions.instagram_caption,
-          [`generatedTrends.${trendIndex}.facebook_caption`]:
-            updatedCaptions.facebook_caption,
-          [`generatedTrends.${trendIndex}.linkedin_caption`]:
-            updatedCaptions.linkedin_caption,
-          [`generatedTrends.${trendIndex}.twitter_caption`]:
-            updatedCaptions.twitter_caption,
-          [`generatedTrends.${trendIndex}.tiktok_caption`]:
-            updatedCaptions.tiktok_caption,
-          [`generatedTrends.${trendIndex}.youtube_caption`]:
-            updatedCaptions.youtube_caption,
-          [`generatedTrends.${trendIndex}.enhanced_with_dynamic_posts`]:
-            updatedCaptions.enhanced_with_dynamic_posts,
-          [`generatedTrends.${trendIndex}.caption_status`]:
-            updatedCaptions.caption_status,
-          [`generatedTrends.${trendIndex}.caption_processed_at`]:
-            updatedCaptions.caption_processed_at,
-        },
+        $set: updateObject,
       });
 
     } catch (error: any) {
@@ -271,7 +265,7 @@ export class VideoScheduleCaptionGeneration {
       // Mark as failed but continue processing others
       await VideoSchedule.findByIdAndUpdate(scheduleId, {
         $set: {
-          [`generatedTrends.${trendIndex}.caption_status`]: "failed",
+          [`generatedTrends.${trendIndex}.caption_status`]: CAPTION_STATUS_FAILED,
           [`generatedTrends.${trendIndex}.caption_error`]: error.message,
         },
       });
@@ -315,7 +309,7 @@ export class VideoScheduleCaptionGeneration {
     }
 
     const pendingTrends = schedule.generatedTrends.filter(
-      (trend: any) => trend.caption_status === "pending"
+      (trend: any) => trend.caption_status === CAPTION_STATUS_PENDING
     );
 
 
@@ -328,7 +322,7 @@ export class VideoScheduleCaptionGeneration {
    
 
         // Generate dynamic captions for this trend
-        const userContext = {
+        const userContext: UserContext = {
           name: userSettings.name,
           position: userSettings.position,
           companyName: userSettings.companyName,
@@ -345,52 +339,40 @@ export class VideoScheduleCaptionGeneration {
             pendingTrends[i].keypoints,
             userContext,
             userId,
-            [
-              "instagram",
-              "facebook",
-              "linkedin",
-              "twitter",
-              "tiktok",
-              "youtube",
-            ],
+            [...SOCIAL_MEDIA_PLATFORMS],
             userSettings.language
           );
 
-        // Update trend with dynamic captions
-        schedule.generatedTrends[trendIndex].instagram_caption =
-          dynamicPosts.find((p) => p.platform === "instagram")?.content ||
-          schedule.generatedTrends[trendIndex].instagram_caption;
-        schedule.generatedTrends[trendIndex].facebook_caption =
-          dynamicPosts.find((p) => p.platform === "facebook")?.content ||
-          schedule.generatedTrends[trendIndex].facebook_caption;
-        schedule.generatedTrends[trendIndex].linkedin_caption =
-          dynamicPosts.find((p) => p.platform === "linkedin")?.content ||
-          schedule.generatedTrends[trendIndex].linkedin_caption;
-        schedule.generatedTrends[trendIndex].twitter_caption =
-          dynamicPosts.find((p) => p.platform === "twitter")?.content ||
-          schedule.generatedTrends[trendIndex].twitter_caption;
-        schedule.generatedTrends[trendIndex].tiktok_caption =
-          dynamicPosts.find((p) => p.platform === "tiktok")?.content ||
-          schedule.generatedTrends[trendIndex].tiktok_caption;
-        schedule.generatedTrends[trendIndex].youtube_caption =
-          dynamicPosts.find((p) => p.platform === "youtube")?.content ||
-          schedule.generatedTrends[trendIndex].youtube_caption;
+        // Update trend with dynamic captions using helper function
+        const trend = schedule.generatedTrends[trendIndex];
+        trend.instagram_caption =
+          getDynamicCaption(dynamicPosts, "instagram") || trend.instagram_caption;
+        trend.facebook_caption =
+          getDynamicCaption(dynamicPosts, "facebook") || trend.facebook_caption;
+        trend.linkedin_caption =
+          getDynamicCaption(dynamicPosts, "linkedin") || trend.linkedin_caption;
+        trend.twitter_caption =
+          getDynamicCaption(dynamicPosts, "twitter") || trend.twitter_caption;
+        trend.tiktok_caption =
+          getDynamicCaption(dynamicPosts, "tiktok") || trend.tiktok_caption;
+        trend.youtube_caption =
+          getDynamicCaption(dynamicPosts, "youtube") || trend.youtube_caption;
 
-        schedule.generatedTrends[trendIndex].enhanced_with_dynamic_posts = true;
-        schedule.generatedTrends[trendIndex].caption_status = "ready";
-        schedule.generatedTrends[trendIndex].caption_processed_at = new Date();
+        trend.enhanced_with_dynamic_posts = true;
+        trend.caption_status = CAPTION_STATUS_READY;
+        trend.caption_processed_at = new Date();
 
         // Save after each video to prevent data loss
         await schedule.save();
 
         // Small delay between videos to avoid rate limiting
         if (i < pendingTrends.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
         }
       } catch (error) {
       
         // Mark as failed but continue with other videos
-        schedule.generatedTrends[trendIndex].caption_status = "failed";
+        schedule.generatedTrends[trendIndex].caption_status = CAPTION_STATUS_FAILED;
         schedule.generatedTrends[trendIndex].caption_error =
           error instanceof Error ? error.message : "Unknown error";
         await schedule.save();
@@ -402,14 +384,10 @@ export class VideoScheduleCaptionGeneration {
 
   /**
    * Get dynamic caption from generated posts
+   * @deprecated Use getDynamicCaption from utils/videoScheduleServiceHelpers instead
    */
   static getDynamicCaption(dynamicPosts: any[], platform: string): string {
-    const post = dynamicPosts.find((p) => p.platform === platform);
-    if (post && post.content) {
-      return post.content;
-    }
-
-    return `Real Estate Update - Check out the latest market insights!`;
+    return getDynamicCaption(dynamicPosts, platform);
   }
 }
 
