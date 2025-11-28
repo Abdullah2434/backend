@@ -229,14 +229,6 @@ export class VideoScheduleProcessing {
       );
       const conclusionAvatarId = extractAvatarId(userSettings.conclusionAvatar);
 
-      const titleAvatarType = extractAvatarType(userSettings.titleAvatar);
-      const bodyAvatarType = extractAvatarType(
-        userSettings.bodyAvatar || userSettings.avatar?.[0]
-      );
-      const conclusionAvatarType = extractAvatarType(
-        userSettings.conclusionAvatar
-      );
-
       // Lookup avatar in DB with clean string ID
       const DefaultAvatar = require("../../models/avatar").default;
       const avatarDoc = await DefaultAvatar.findOne({
@@ -271,6 +263,7 @@ export class VideoScheduleProcessing {
         scheduleId: scheduleId,
         trendIndex: trendIndex,
       };
+     
 
       let enhancedContent: any;
       try {

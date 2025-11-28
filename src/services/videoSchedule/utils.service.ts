@@ -110,7 +110,7 @@ export class VideoScheduleUtils {
     let trendIndex = 0;
     const now = new Date();
 
-  
+   
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.toLocaleDateString("en-US", {
@@ -132,6 +132,7 @@ export class VideoScheduleUtils {
         }
       }
 
+  
       if (shouldSchedule) {
         const [hours, minutes] = schedule.times[timeIndex]
           .split(":")
@@ -139,7 +140,13 @@ export class VideoScheduleUtils {
 
         // Create the scheduled time by combining the current date with the scheduled time
         // in the user's timezone, then convert to UTC
-        const dateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+        // IMPORTANT: Get date string in user's timezone, not UTC
+        // Convert currentDate (UTC) to user's timezone first, then get the date string
+        const currentDateInUserTimezone = TimezoneService.convertFromUTC(
+          currentDate,
+          timezone
+        );
+        const dateString = currentDateInUserTimezone.split(" ")[0]; // Get YYYY-MM-DD from "YYYY-MM-DD HH:mm:ss"
         const timeString = `${hours.toString().padStart(2, "0")}:${minutes
           .toString()
           .padStart(2, "0")}:00`;
@@ -152,6 +159,7 @@ export class VideoScheduleUtils {
             : TimezoneService.ensureUTCDate(localDateTime, timezone);
 
 
+
         // Edge case handling: Check if scheduled time is less than minimum buffer away
         const shouldSkipDay = this.shouldSkipScheduledDay(
           finalScheduledTime,
@@ -160,6 +168,7 @@ export class VideoScheduleUtils {
           schedule.times[timeIndex]
         );
 
+    
         if (shouldSkipDay) {
           // Skip this day, move to next day
           currentDate.setDate(currentDate.getDate() + 1);
@@ -196,11 +205,15 @@ export class VideoScheduleUtils {
           status: "pending" as const,
         });
 
+
+
         trendIndex++;
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
+
+  
 
     return scheduledTrends;
   }

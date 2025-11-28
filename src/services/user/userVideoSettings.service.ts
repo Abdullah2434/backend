@@ -19,6 +19,7 @@ import {
   getDefaultMusicEnergy,
   validateMusicTrackEnergy,
 } from "../../utils/userVideoSettingsHelpers";
+import { getCached, invalidateCache } from "../redis.service";
 
 export class UserVideoSettingsService {
   private musicService: MusicService;
@@ -47,6 +48,8 @@ export class UserVideoSettingsService {
       userId: user._id,
     });
 
+    let result: IUserVideoSettings;
+
     if (existingSettings) {
       // Update existing settings
       const updateData = buildUpdateData(data);
@@ -60,19 +63,26 @@ export class UserVideoSettingsService {
         throw new Error("Failed to update user video settings");
       }
 
-      return updatedSettings;
+      result = updatedSettings;
     } else {
       // Create new settings
       const newSettingsData = buildNewSettingsData(user._id, data);
       const newSettings = new UserVideoSettings(newSettingsData);
 
       await newSettings.save();
-      return newSettings;
+      result = newSettings;
     }
+
+    // Invalidate cache after create/update
+    await invalidateCache(`user_settings:${user._id.toString()}`);
+
+    return result;
   }
 
   /**
    * Get user video settings by email
+   * Cache key: user_settings:${userId}
+   * TTL: 10 minutes (600 seconds)
    */
   async getUserVideoSettings(
     email: string
@@ -82,16 +92,35 @@ export class UserVideoSettingsService {
       return null;
     }
 
-    return await UserVideoSettings.findOne({ userId: user._id });
+    const userId = user._id.toString();
+    const cacheKey = `user_settings:${userId}`;
+
+    return getCached(
+      cacheKey,
+      async () => {
+        return await UserVideoSettings.findOne({ userId: user._id });
+      },
+      600 // 10 minutes TTL
+    );
   }
 
   /**
    * Get user video settings by userId
+   * Cache key: user_settings:${userId}
+   * TTL: 10 minutes (600 seconds)
    */
   async getUserVideoSettingsByUserId(
     userId: string
   ): Promise<IUserVideoSettings | null> {
-    return await UserVideoSettings.findOne({ userId });
+    const cacheKey = `user_settings:${userId}`;
+
+    return getCached(
+      cacheKey,
+      async () => {
+        return await UserVideoSettings.findOne({ userId });
+      },
+      600 // 10 minutes TTL
+    );
   }
 
   /**
@@ -104,6 +133,12 @@ export class UserVideoSettingsService {
     }
 
     const result = await UserVideoSettings.deleteOne({ userId: user._id });
+
+    // Invalidate cache after deletion
+    if (result.deletedCount > 0) {
+      await invalidateCache(`user_settings:${user._id.toString()}`);
+    }
+
     return result.deletedCount > 0;
   }
 
@@ -145,6 +180,10 @@ export class UserVideoSettingsService {
     }
 
     await settings.save();
+
+    // Invalidate cache after update
+    await invalidateCache(`user_settings:${user._id.toString()}`);
+
     return settings;
   }
 
@@ -192,6 +231,10 @@ export class UserVideoSettingsService {
     }
 
     await settings.save();
+
+    // Invalidate cache after update
+    await invalidateCache(`user_settings:${user._id.toString()}`);
+
     return settings;
   }
 
@@ -247,6 +290,9 @@ export class UserVideoSettingsService {
       settings.selectedMusicTrackId = randomTrack._id;
       settings.musicEnergy = musicEnergy;
       await settings.save();
+
+      // Invalidate cache after update
+      await invalidateCache(`user_settings:${user._id.toString()}`);
     }
 
     return settings;

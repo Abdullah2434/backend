@@ -54,6 +54,7 @@ import {
   calculateRemainingVideos,
   resetVideoCountDates,
 } from "../../utils/subscriptionServiceHelpers";
+import { getCached, invalidateCache } from "../redis.service";
 
 export class SubscriptionService {
   private stripe: Stripe;
@@ -189,23 +190,35 @@ export class SubscriptionService {
   // ==================== SUBSCRIPTION QUERIES ====================
   /**
    * Get user's active subscription
+   * Cache key: subscription:${userId}
+   * TTL: 5 minutes (300 seconds) - subscription status needs freshness
    */
   async getActiveSubscription(
     userId: string
   ): Promise<UserSubscription | null> {
-    const subscription = await Subscription.findOne(
-      buildActiveOrPendingQuery(userId)
-    ).populate("userId");
+    const cacheKey = `subscription:${userId}`;
 
-    // If subscription exists but is past due, don't consider it active
-    if (subscription && isPastDue(subscription)) {
-      // Mark as past_due and return null
-      subscription.status = "past_due";
-      await subscription.save();
-      return null;
-    }
+    return getCached(
+      cacheKey,
+      async () => {
+        const subscription = await Subscription.findOne(
+          buildActiveOrPendingQuery(userId)
+        ).populate("userId");
 
-    return subscription ? formatSubscription(subscription) : null;
+        // If subscription exists but is past due, don't consider it active
+        if (subscription && isPastDue(subscription)) {
+          // Mark as past_due and return null
+          subscription.status = "past_due";
+          await subscription.save();
+          // Invalidate cache after status change
+          await invalidateCache(cacheKey);
+          return null;
+        }
+
+        return subscription ? formatSubscription(subscription) : null;
+      },
+      300 // 5 minutes TTL
+    );
   }
 
   /**
@@ -337,6 +350,9 @@ export class SubscriptionService {
     if (subscription) {
       subscription.videoCount += 1;
       await subscription.save();
+
+      // Invalidate cache after video count update
+      await invalidateCache(`subscription:${userId}`);
     }
   }
 
@@ -351,6 +367,7 @@ export class SubscriptionService {
     const subscription = await Subscription.findOne({ stripeSubscriptionId });
 
     if (subscription) {
+      const userId = subscription.userId?.toString();
       const oldStatus = subscription.status;
       subscription.status = status as any;
 
@@ -364,6 +381,11 @@ export class SubscriptionService {
       }
 
       await subscription.save();
+
+      // Invalidate cache after status update
+      if (userId) {
+        await invalidateCache(`subscription:${userId}`);
+      }
 
       // Verify the save was successful
       const verifySubscription = await Subscription.findOne({
@@ -456,6 +478,12 @@ export class SubscriptionService {
         await localSubscription.save();
       }
 
+      // Invalidate cache after sync (create or update)
+      const subscriptionUserId = localSubscription.userId?.toString();
+      if (subscriptionUserId) {
+        await invalidateCache(`subscription:${subscriptionUserId}`);
+      }
+
       // Ensure billing records exist for all invoices of this subscription
       // This ensures the subscription ID is stored in the billing table
       await syncBillingRecordsForSubscription(
@@ -523,6 +551,9 @@ export class SubscriptionService {
     // Update local record
     subscription.cancelAtPeriodEnd = false;
     await subscription.save();
+
+    // Invalidate cache after reactivation
+    await invalidateCache(`subscription:${userId}`);
   }
 
   // ==================== PAYMENT METHODS ====================
@@ -563,11 +594,17 @@ export class SubscriptionService {
   ): Promise<void> {
     const subscription = await Subscription.findOne({ stripeSubscriptionId });
     if (subscription) {
+      const userId = subscription.userId?.toString();
       subscription.videoCount = 0;
       const dates = resetVideoCountDates();
       subscription.currentPeriodStart = dates.currentPeriodStart;
       subscription.currentPeriodEnd = dates.currentPeriodEnd;
       await subscription.save();
+
+      // Invalidate cache after video count reset
+      if (userId) {
+        await invalidateCache(`subscription:${userId}`);
+      }
     }
   }
 
@@ -1034,6 +1071,12 @@ export class SubscriptionService {
         (planId) => this.getPlan(planId)?.name
       );
 
+      // Invalidate cache after update
+      const userId = existingSubscription.userId?.toString();
+      if (userId) {
+        await invalidateCache(`subscription:${userId}`);
+      }
+
       return formatSubscription(existingSubscription);
     }
 
@@ -1094,6 +1137,9 @@ export class SubscriptionService {
       stripeSubscription,
       (planId) => this.getPlan(planId)?.name
     );
+
+    // Invalidate cache after creation
+    await invalidateCache(`subscription:${userId}`);
 
     return formatSubscription(subscriptionRecord);
   }

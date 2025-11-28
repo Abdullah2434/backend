@@ -173,6 +173,31 @@ export class VideoScheduleCreation {
       processedVideos: 0,
     });
 
+    // Send schedule created email
+    try {
+      const emailData: ScheduleEmailData = {
+        userEmail: email,
+        scheduleId: schedule._id.toString(),
+        frequency: scheduleData.frequency,
+        startDate: startDate,
+        endDate: endDate,
+        totalVideos: numberOfVideos,
+        timezone: scheduleData.timezone,
+        schedule: scheduleData.schedule,
+        videos: generatedTrends.map((trend) => ({
+          description: trend.description,
+          keypoints: trend.keypoints,
+          scheduledFor: trend.scheduledFor,
+          status: trend.status,
+        })),
+      };
+
+      await this.emailService.sendScheduleCreatedEmail(emailData);
+    } catch (emailError) {
+      // Don't fail the schedule creation if email fails
+      console.error("Failed to send schedule created email:", emailError);
+    }
+
     // Queue background job to generate dynamic captions for ALL videos
     VideoScheduleCaptionGeneration.queueBackgroundCaptionGenerationAsync(
       schedule._id.toString(),
