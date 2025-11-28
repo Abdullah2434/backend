@@ -45,8 +45,7 @@ const SocialBuTokenSchema = new Schema<ISocialBuToken>({
   },
   isActive: {
     type: Boolean,
-    default: true,
-    index: true
+    default: true
   },
   lastUsed: {
     type: Date,

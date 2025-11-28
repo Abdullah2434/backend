@@ -37,7 +37,6 @@ const elevenLabsVoiceSchema = new Schema<IElevenLabsVoice>(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     name: {
       type: String,
@@ -67,18 +66,15 @@ const elevenLabsVoiceSchema = new Schema<IElevenLabsVoice>(
     descriptive: {
       type: String,
       required: false,
-      index: true,
     },
     use_case: {
       type: String,
       required: false,
-      index: true,
     },
     energy: {
       type: String,
       enum: ["low", "medium", "high"],
       required: false,
-      index: true,
     },
     energy_conclusion: {
       type: String,
@@ -102,7 +98,6 @@ const elevenLabsVoiceSchema = new Schema<IElevenLabsVoice>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: false,
-      index: true,
     },
   },
   {
@@ -112,7 +107,7 @@ const elevenLabsVoiceSchema = new Schema<IElevenLabsVoice>(
   }
 );
 
-elevenLabsVoiceSchema.index({ voice_id: 1 });
+// Note: voice_id already has an index from unique: true
 elevenLabsVoiceSchema.index({ category: 1 });
 
 export default mongoose.models.ElevenLabsVoice ||

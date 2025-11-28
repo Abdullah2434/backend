@@ -24,7 +24,6 @@ const musicTrackSchema = new Schema<IMusicTrack>(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     name: {
       type: String,
@@ -35,7 +34,6 @@ const musicTrackSchema = new Schema<IMusicTrack>(
       type: String,
       enum: ["high", "mid", "low"],
       required: true,
-      index: true,
     },
     s3FullTrackUrl: {
       type: String,
@@ -65,7 +63,7 @@ const musicTrackSchema = new Schema<IMusicTrack>(
 
 // Indexes for better performance
 musicTrackSchema.index({ energyCategory: 1 });
-musicTrackSchema.index({ trackId: 1 });
+// Note: trackId already has an index from unique: true
 
 export default mongoose.models.MusicTrack ||
   mongoose.model<IMusicTrack>("MusicTrack", musicTrackSchema);

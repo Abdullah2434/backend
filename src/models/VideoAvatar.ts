@@ -25,19 +25,16 @@ const VideoAvatarSchema = new Schema<IVideoAvatar>({
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: false,
-    index: true
+    required: false
   },
   avatar_id: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   avatar_group_id: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   avatar_name: {
     type: String,
@@ -99,7 +96,7 @@ const VideoAvatarSchema = new Schema<IVideoAvatar>({
 });
 
 // Indexes for better query performance
-VideoAvatarSchema.index({ avatar_id: 1 });
+// Note: avatar_id already has an index from unique: true
 VideoAvatarSchema.index({ avatar_group_id: 1 });
 VideoAvatarSchema.index({ userId: 1 });
 VideoAvatarSchema.index({ status: 1 });

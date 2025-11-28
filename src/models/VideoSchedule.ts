@@ -45,12 +45,10 @@ const videoScheduleSchema = new Schema<IVideoSchedule>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
     email: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     timezone: {

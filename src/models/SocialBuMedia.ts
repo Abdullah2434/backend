@@ -55,8 +55,7 @@ const socialBuMediaSchema = new Schema<ISocialBuMedia>({
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   },
   name: {
     type: String,
@@ -103,8 +102,7 @@ const socialBuMediaSchema = new Schema<ISocialBuMedia>({
   status: {
     type: String,
     enum: ['pending', 'api_completed', 'script_executing', 'script_completed', 'failed'],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   errorMessage: {
     type: String
@@ -172,7 +170,7 @@ socialBuMediaSchema.statics.findActiveUploads = function(): Promise<ISocialBuMed
 
 // Indexes
 socialBuMediaSchema.index({ userId: 1, status: 1 });
-socialBuMediaSchema.index({ 'socialbuResponse.key': 1 }, { unique: true });
+// Note: socialbuResponse.key already has an index from unique: true
 socialBuMediaSchema.index({ createdAt: -1 });
 
 export default mongoose.models.SocialBuMedia || mongoose.model<ISocialBuMedia, ISocialBuMediaModel>('SocialBuMedia', socialBuMediaSchema);
