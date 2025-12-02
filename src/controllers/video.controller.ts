@@ -866,7 +866,25 @@ export async function createVideo(
       });
     }
 
+    // Get language from body, userSettings, or default
+   
+
     const body = req.body;
+    let language = body.language;
+    if (!language) {
+      try {
+        const userVideoSettingsService = new UserVideoSettingsService();
+        const userSettings = await userVideoSettingsService.getUserVideoSettings(email);
+        if (userSettings?.language) {
+          language = userSettings.language;
+        }
+      } catch (langError) {
+        // If userSettings fetch fails, continue with default
+        console.error("Failed to fetch userSettings for language:", langError);
+      }
+    }
+    // Use DEFAULT_LANGUAGE only as last resort
+    language = language || DEFAULT_LANGUAGE;
     const webhookData = {
       prompt: body.prompt,
       avatar: body.avatar,
@@ -884,7 +902,7 @@ export async function createVideo(
       zipKeyPoints: body.zipKeyPoints || null,
       callToAction: body.callToAction,
       email: body.email,
-      language: body.language || DEFAULT_LANGUAGE,
+      language: language,
       timestamp: new Date().toISOString(),
       requestId: generateRequestId("video"),
     };

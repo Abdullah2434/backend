@@ -33,7 +33,6 @@ import {
 } from "../../constants/videoScheduleService.constants";
 import {
   extractAvatarId,
-  extractAvatarType,
   getVoiceIdFromAvatarGender,
   getVoiceSettingsForClonedVoice,
   getMusicUrlFromTrackId,
