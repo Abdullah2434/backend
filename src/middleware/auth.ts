@@ -54,6 +54,8 @@ const AUTH_ROUTES = {
     "/api/payment-methods",
     "/v2/video_avatar",
     "/api/v2/video_avatar",
+    "/v2/user/avatar-videos",
+    "/api/v2/user/avatar-videos",
     "/elevenlabs/voices/add",
   ],
 
