@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import AuthService from "../services/auth.service";
 import { UserResponse, ApiResponse } from "../../../types";
+import { getPlatform } from "../../../utils/platform";
 
 const authService = new AuthService();
 
@@ -13,18 +14,29 @@ export async function register(req: Request, res: Response) {
         .json({ success: false, message: "All fields are required" });
     }
 
-    const result = await authService.register({
-      firstName,
-      lastName,
-      email,
-      phone: phone || "",
-      password,
-    });
+    // Detect platform (mobile or web)
+    const platform = getPlatform(req);
+    const isMobile = platform == "mobile";
+    console.log(platform)
+    // Default to "web" if platform is unknown
+    const platformType: "mobile" | "web" = platform == "mobile" ? "mobile" : "web";
+
+    const result = await authService.register(
+      {
+        firstName,
+        lastName,
+        email,
+        phone: phone || "",
+        password,
+      },
+      platformType
+    );
 
     return res.status(201).json({
       success: true,
-      message:
-        "User registered successfully. Please check your email for verification.",
+      message: isMobile
+        ? "User registered successfully. Please check your email for the OTP code."
+        : "User registered successfully. Please check your email for verification.",
       data: {
         user: {
           id: result.user._id,
@@ -35,6 +47,7 @@ export async function register(req: Request, res: Response) {
           isEmailVerified: result.user.isEmailVerified,
         },
         accessToken: result.accessToken,
+        requiresOtpVerification: isMobile,
       },
     });
   } catch (e: any) {
@@ -198,7 +211,11 @@ export async function forgotPassword(req: Request, res: Response) {
         .json({ success: false, message: "Email is required" });
     }
 
-    const result = await authService.forgotPassword(email);
+    // Detect platform (mobile or web)
+    const platform = getPlatform(req);
+    // Default to "web" if platform is unknown
+    const platformType: "mobile" | "web" = platform === "mobile" ? "mobile" : "web";
+    const result = await authService.forgotPassword(email, platformType);
     return res.json({ success: true, message: result.message });
   } catch (e: any) {
     return res
@@ -220,6 +237,51 @@ export async function resetPassword(req: Request, res: Response) {
     }
 
     const result = await authService.resetPassword({ resetToken, newPassword });
+    return res.json({ success: true, message: result.message });
+  } catch (e: any) {
+    return res
+      .status(400)
+      .json({ success: false, message: e.message || "Internal server error" });
+  }
+}
+
+export async function verifyPasswordResetOtp(req: Request, res: Response) {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const result = await authService.verifyPasswordResetOtp(email, otp);
+    return res.json({
+      success: true,
+      message: result.message,
+      data: {
+        verified: result.verified,
+      },
+    });
+  } catch (e: any) {
+    return res
+      .status(400)
+      .json({ success: false, message: e.message || "Internal server error" });
+  }
+}
+
+export async function resetPasswordWithOtp(req: Request, res: Response) {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Email, OTP, and new password are required",
+        });
+    }
+
+    const result = await authService.resetPasswordWithOtp(email, otp, newPassword);
     return res.json({ success: true, message: result.message });
   } catch (e: any) {
     return res
@@ -268,7 +330,11 @@ export async function resendVerification(req: Request, res: Response) {
         .json({ success: false, message: "Email is required" });
     }
 
-    const result = await authService.resendVerificationEmail(email);
+    // Detect platform (mobile or web)
+    const platform = getPlatform(req);
+    // Default to "web" if platform is unknown
+    const platformType: "mobile" | "web" = platform === "mobile" ? "mobile" : "web";
+    const result = await authService.resendVerificationEmail(email, platformType);
     return res.json({ success: true, message: result.message });
   } catch (e: any) {
     return res
@@ -321,6 +387,37 @@ export async function checkEmailVerification(req: Request, res: Response) {
   } catch (e: any) {
     return res
       .status(500)
+      .json({ success: false, message: e.message || "Internal server error" });
+  }
+}
+
+export async function verifyOtp(req: Request, res: Response) {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const result = await authService.verifyEmailWithOtp(email, otp);
+    return res.json({
+      success: true,
+      message: result.message,
+      data: {
+        user: {
+          id: result.user._id,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          email: result.user.email,
+          phone: result.user.phone,
+          isEmailVerified: result.user.isEmailVerified,
+        },
+      },
+    });
+  } catch (e: any) {
+    return res
+      .status(400)
       .json({ success: false, message: e.message || "Internal server error" });
   }
 }

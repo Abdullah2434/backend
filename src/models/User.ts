@@ -12,8 +12,12 @@ export interface IUser extends Document {
   isEmailVerified: boolean
   emailVerificationToken?: string
   emailVerificationExpires?: Date
+  emailOtp?: string
+  emailOtpExpires?: Date
   resetPasswordToken?: string
   resetPasswordExpires?: Date
+  passwordResetOtp?: string
+  passwordResetOtpExpires?: Date
   lastUsedResetToken?: string
   googleId?: string
   googleEmail?: string
@@ -22,7 +26,9 @@ export interface IUser extends Document {
   updatedAt: Date
   comparePassword(candidate: string): Promise<boolean>
   generateEmailVerificationToken(): string
+  generateEmailOtp(): string
   generatePasswordResetToken(): string
+  generatePasswordResetOtp(): string
 }
 
 const userSchema = new Schema<IUser>({
@@ -34,8 +40,12 @@ const userSchema = new Schema<IUser>({
   isEmailVerified: { type: Boolean, default: false },
   emailVerificationToken: { type: String, select: false },
   emailVerificationExpires: { type: Date, select: false },
+  emailOtp: { type: String, select: false },
+  emailOtpExpires: { type: Date, select: false },
   resetPasswordToken: { type: String, select: false },
   resetPasswordExpires: { type: Date, select: false },
+  passwordResetOtp: { type: String, select: false },
+  passwordResetOtpExpires: { type: Date, select: false },
   lastUsedResetToken: { type: String, select: false },
   googleId: { type: String, unique: true, sparse: true, select: false },
   googleEmail: { type: String, lowercase: true, trim: true },
@@ -59,6 +69,16 @@ userSchema.methods.generateEmailVerificationToken = function(): string {
   return token
 }
 
+userSchema.methods.generateEmailOtp = function(): string {
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString()
+  // Hash the OTP before storing
+  this.emailOtp = crypto.createHash('sha256').update(otp).digest('hex')
+  // OTP expires in 10 minutes
+  this.emailOtpExpires = new Date(Date.now() + 10 * 60 * 1000)
+  return otp
+}
+
 userSchema.methods.generatePasswordResetToken = function(): string {
   const token = crypto.randomBytes(32).toString('hex')
   this.resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex')
@@ -66,8 +86,20 @@ userSchema.methods.generatePasswordResetToken = function(): string {
   return token
 }
 
+userSchema.methods.generatePasswordResetOtp = function(): string {
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString()
+  // Hash the OTP before storing
+  this.passwordResetOtp = crypto.createHash('sha256').update(otp).digest('hex')
+  // OTP expires in 10 minutes
+  this.passwordResetOtpExpires = new Date(Date.now() + 10 * 60 * 1000)
+  return otp
+}
+
 userSchema.index({ emailVerificationToken: 1 })
+userSchema.index({ emailOtp: 1 })
 userSchema.index({ resetPasswordToken: 1 })
+userSchema.index({ passwordResetOtp: 1 })
 
 export default mongoose.models.User || mongoose.model<IUser>('User', userSchema)
 

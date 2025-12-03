@@ -110,6 +110,11 @@ export const rateLimitConfigs = {
     max: 10, // 10 password reset attempts per window (increased from 3)
     message: "Too many password reset attempts. Please try again in 5 minutes.",
   },
+  otpVerification: {
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 10, // 10 OTP verification attempts per 5 minutes
+    message: "Too many OTP verification attempts. Please try again in 5 minutes.",
+  },
   general: {
     windowMs: 30 * 1000, // 30 seconds
     max: 200, // 200 requests per 30 seconds (increased from 50)
@@ -135,6 +140,9 @@ export const registerRateLimiter = new ServerRateLimiter(
 );
 export const passwordResetRateLimiter = new ServerRateLimiter(
   rateLimitConfigs.passwordReset
+);
+export const otpVerificationRateLimiter = new ServerRateLimiter(
+  rateLimitConfigs.otpVerification
 );
 export const generalAuthRateLimiter = new ServerRateLimiter(
   rateLimitConfigs.general

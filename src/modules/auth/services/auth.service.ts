@@ -7,6 +7,8 @@ import {
   sendPasswordResetEmail,
   sendResendVerificationEmail,
   sendWelcomeEmail,
+  sendOTPEmail,
+  sendPasswordResetOTPEmail,
 } from "../../../services/email";
 import {
   RegisterData,
@@ -59,7 +61,7 @@ export class AuthService {
   }
 
   // Register a new user
-  async register(userData: RegisterData): Promise<AuthResult> {
+  async register(userData: RegisterData, platform: "mobile" | "web" = "web"): Promise<AuthResult> {
     // Check if user already exists
     const existingUser = await User.findOne({ email: userData.email });
     if (existingUser) {
@@ -75,15 +77,22 @@ export class AuthService {
       password: userData.password,
     });
 
-    // Generate email verification token
-    const verificationToken = user.generateEmailVerificationToken();
-    await user.save();
-
     // Generate JWT access token
     const accessToken = this.generateToken(user._id.toString(), user.email);
 
-    // Send verification email
-    await sendVerificationEmail(user.email, verificationToken, user.firstName);
+    // For mobile app, generate and send OTP
+    if (platform === "mobile") {
+      const otp = user.generateEmailOtp();
+      await user.save();
+      // Send OTP email
+      await sendOTPEmail(user.email, otp, user.firstName);
+    } else {
+      // For web, generate verification token and send link
+      const verificationToken = user.generateEmailVerificationToken();
+      await user.save();
+      // Send verification email with link
+      await sendVerificationEmail(user.email, verificationToken, user.firstName);
+    }
 
     return { user, accessToken };
   }
@@ -192,26 +201,40 @@ export class AuthService {
   }
 
   // Forgot password
-  async forgotPassword(email: string): Promise<{ message: string }> {
+  async forgotPassword(email: string, platform: "mobile" | "web" = "web"): Promise<{ message: string }> {
     const user = await User.findOne({ email });
     if (!user) {
       // Don't reveal if user exists or not for security
       return {
         message:
-          "If an account with that email exists, a password reset link has been sent",
+          platform === "mobile"
+            ? "If an account with that email exists, a password reset OTP has been sent"
+            : "If an account with that email exists, a password reset link has been sent",
       };
     }
 
-    // Generate JWT reset token with short expiration (15 minutes)
-    const resetToken = this.generateResetToken(user._id.toString(), user.email);
+    // For mobile app, generate and send OTP
+    if (platform === "mobile") {
+      const otp = user.generatePasswordResetOtp();
+      await user.save();
+      // Send password reset OTP email
+      await sendPasswordResetOTPEmail(user.email, otp, user.firstName);
+      return {
+        message:
+          "If an account with that email exists, a password reset OTP has been sent",
+      };
+    } else {
+      // For web, generate JWT reset token with short expiration (15 minutes)
+      const resetToken = this.generateResetToken(user._id.toString(), user.email);
 
-    // Send password reset email
-    await sendPasswordResetEmail(user.email, resetToken, user.firstName);
+      // Send password reset email
+      await sendPasswordResetEmail(user.email, resetToken, user.firstName);
 
-    return {
-      message:
-        "If an account with that email exists, a password reset link has been sent",
-    };
+      return {
+        message:
+          "If an account with that email exists, a password reset link has been sent",
+      };
+    }
   }
 
   // Reset password with JWT reset token
@@ -247,6 +270,55 @@ export class AuthService {
     // Set new password (will be hashed by model middleware)
     user.password = resetData.newPassword;
     user.lastUsedResetToken = resetData.resetToken;
+    await user.save();
+
+    return { message: "Password reset successfully" };
+  }
+
+  // Verify password reset OTP (for mobile app)
+  async verifyPasswordResetOtp(email: string, otp: string): Promise<{ message: string; verified: boolean }> {
+    // Hash the OTP to compare with stored hash
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    // Find user with this email and OTP
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      passwordResetOtp: hashedOtp,
+      passwordResetOtpExpires: { $gt: Date.now() },
+    }).select("+passwordResetOtp +passwordResetOtpExpires");
+
+    if (!user) {
+      throw new Error("Invalid or expired OTP");
+    }
+
+    // OTP is valid, but don't clear it yet - it will be cleared when password is reset
+    return {
+      message: "OTP verified successfully. You can now reset your password.",
+      verified: true,
+    };
+  }
+
+  // Reset password with OTP (for mobile app)
+  async resetPasswordWithOtp(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
+    // Hash the OTP to compare with stored hash
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    // Find user with this email and OTP
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      passwordResetOtp: hashedOtp,
+      passwordResetOtpExpires: { $gt: Date.now() },
+    }).select("+password +passwordResetOtp +passwordResetOtpExpires");
+
+    if (!user) {
+      throw new Error("Invalid or expired OTP");
+    }
+
+    // Set new password (will be hashed by model middleware)
+    user.password = newPassword;
+    // Clear OTP after successful password reset
+    user.passwordResetOtp = undefined;
+    user.passwordResetOtpExpires = undefined as any;
     await user.save();
 
     return { message: "Password reset successfully" };
@@ -327,9 +399,41 @@ export class AuthService {
     };
   }
 
+  // Verify email with OTP (for mobile app)
+  async verifyEmailWithOtp(email: string, otp: string): Promise<{ user: IUser; message: string }> {
+    // Hash the OTP to compare with stored hash
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    // Find user with this email and OTP
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      emailOtp: hashedOtp,
+      emailOtpExpires: { $gt: Date.now() },
+    }).select("+emailOtp +emailOtpExpires");
+
+    if (!user) {
+      throw new Error("Invalid or expired OTP");
+    }
+
+    // Mark email as verified and clear OTP
+    user.isEmailVerified = true;
+    user.emailOtp = undefined;
+    user.emailOtpExpires = undefined as any;
+
+    await user.save();
+
+    // Send welcome email
+    await sendWelcomeEmail(user.email, user.firstName);
+
+    return {
+      user,
+      message: "Email verified successfully",
+    };
+  }
+
   // Resend email verification
-  async resendVerificationEmail(email: string): Promise<{ message: string }> {
-    const user = await User.findOne({ email });
+  async resendVerificationEmail(email: string, platform: "mobile" | "web" = "web"): Promise<{ message: string }> {
+    const user = await User.findOne({ email }).select("+emailOtp +emailVerificationToken");
     if (!user) {
       throw new Error("User not found");
     }
@@ -338,18 +442,27 @@ export class AuthService {
       throw new Error("Email is already verified");
     }
 
-    // Generate new verification token
-    const verificationToken = user.generateEmailVerificationToken();
-    await user.save();
+    // For mobile app, generate and send OTP
+    if (platform === "mobile") {
+      const otp = user.generateEmailOtp();
+      await user.save();
+      // Send OTP email
+      await sendOTPEmail(user.email, otp, user.firstName);
+      return { message: "OTP sent successfully. Please check your email." };
+    } else {
+      // For web, generate new verification token
+      const verificationToken = user.generateEmailVerificationToken();
+      await user.save();
 
-    // Send resend verification email
-    await sendResendVerificationEmail(
-      user.email,
-      verificationToken,
-      user.firstName
-    );
+      // Send resend verification email
+      await sendResendVerificationEmail(
+        user.email,
+        verificationToken,
+        user.firstName
+      );
 
-    return { message: "Verification email sent successfully" };
+      return { message: "Verification email sent successfully" };
+    }
   }
 
   // Google OAuth login/register
