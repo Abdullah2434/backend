@@ -1,47 +1,37 @@
-import { S3Service } from "../s3.service";
+import { GoogleDriveService } from "../googleDrive.service";
 import UserAvatarVideos, { IUserAvatarVideos } from "../../models/UserAvatarVideos";
-import { S3Config } from "../../types";
 
 export class UserAvatarVideosService {
-  private s3Service: S3Service;
+  private googleDriveService: GoogleDriveService;
 
   constructor() {
-    // Create S3Service instance with custom bucket for avatar videos
-    const s3Config: S3Config = {
-      region: process.env.AWS_REGION || "us-east-1",
-      bucketName: "avatar-videos-training-consent",
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+    // Create GoogleDriveService instance with credentials from environment variables
+    const driveConfig = {
+      clientEmail: process.env.GOOGLE_DRIVE_CLIENT_EMAIL || "",
+      privateKey: process.env.GOOGLE_DRIVE_PRIVATE_KEY || "",
+      folderId: process.env.GOOGLE_DRIVE_FOLDER_ID || "",
     };
 
-    if (process.env.AWS_S3_ENDPOINT) {
-      s3Config.endpoint = process.env.AWS_S3_ENDPOINT;
-    }
-
-    if (process.env.AWS_S3_FORCE_PATH_STYLE === "true") {
-      s3Config.forcePathStyle = true;
-    }
-
-    if (!s3Config.bucketName || !s3Config.accessKeyId || !s3Config.secretAccessKey) {
+    if (!driveConfig.clientEmail || !driveConfig.privateKey || !driveConfig.folderId) {
       throw new Error(
-        "AWS S3 configuration is incomplete. Please check environment variables."
+        "Google Drive configuration is incomplete. Please check environment variables: GOOGLE_DRIVE_CLIENT_EMAIL, GOOGLE_DRIVE_PRIVATE_KEY, GOOGLE_DRIVE_FOLDER_ID"
       );
     }
 
-    this.s3Service = new S3Service(s3Config);
+    this.googleDriveService = new GoogleDriveService(driveConfig);
   }
 
   /**
-   * Generate S3 key for avatar video file
+   * Generate file name for avatar video file
    */
-  private generateS3Key(userId: string, fileType: "consent" | "training", filename: string): string {
+  private generateFileName(userId: string, fileType: "consent" | "training", filename: string): string {
     const timestamp = Date.now();
     const safeFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-    return `${userId}/${timestamp}_${fileType}_${safeFilename}`;
+    return `${userId}_${timestamp}_${fileType}_${safeFilename}`;
   }
 
   /**
-   * Upload avatar videos to S3 and save/update record in database
+   * Upload avatar videos to Google Drive and save/update record in database
    */
   async uploadAvatarVideos(
     userId: string,
@@ -51,19 +41,19 @@ export class UserAvatarVideosService {
     },
     isAvatarCreated: boolean = false
   ): Promise<IUserAvatarVideos> {
-    const consentVideoS3Key = files.consentVideo
-      ? this.generateS3Key(userId, "consent", files.consentVideo.originalname || "consent.mp4")
-      : undefined;
+    let consentVideoDriveId: string | undefined;
+    let trainingVideoDriveId: string | undefined;
 
-    const trainingVideoS3Key = files.trainingVideo
-      ? this.generateS3Key(userId, "training", files.trainingVideo.originalname || "training.mp4")
-      : undefined;
-
-    // Upload consent video to S3 if provided
-    if (files.consentVideo && consentVideoS3Key) {
-      await this.s3Service.uploadVideoFromPath(
-        consentVideoS3Key,
+    // Upload consent video to Google Drive if provided
+    if (files.consentVideo) {
+      const fileName = this.generateFileName(
+        userId,
+        "consent",
+        files.consentVideo.originalname || "consent.mp4"
+      );
+      consentVideoDriveId = await this.googleDriveService.uploadFileFromPath(
         files.consentVideo.path,
+        fileName,
         files.consentVideo.mimetype,
         {
           userId,
@@ -74,11 +64,16 @@ export class UserAvatarVideosService {
       );
     }
 
-    // Upload training video to S3 if provided
-    if (files.trainingVideo && trainingVideoS3Key) {
-      await this.s3Service.uploadVideoFromPath(
-        trainingVideoS3Key,
+    // Upload training video to Google Drive if provided
+    if (files.trainingVideo) {
+      const fileName = this.generateFileName(
+        userId,
+        "training",
+        files.trainingVideo.originalname || "training.mp4"
+      );
+      trainingVideoDriveId = await this.googleDriveService.uploadFileFromPath(
         files.trainingVideo.path,
+        fileName,
         files.trainingVideo.mimetype,
         {
           userId,
@@ -92,8 +87,8 @@ export class UserAvatarVideosService {
     // Create new record in database (allow multiple records per user)
     const record = new UserAvatarVideos({
       userId,
-      consentVideoS3Key,
-      trainingVideoS3Key,
+      consentVideoDriveId,
+      trainingVideoDriveId,
       isAvatarCreated,
     });
 
@@ -120,18 +115,35 @@ export class UserAvatarVideosService {
   }
 
   /**
-   * Generate signed download URL for admin access (without secret key validation)
+   * Generate shareable link for admin access
    */
-  async generateAdminDownloadUrl(s3Key: string, expiresIn = 3600): Promise<string | null> {
-    if (!s3Key) {
+  async generateAdminDownloadUrl(driveId: string): Promise<string | null> {
+    if (!driveId) {
       return null;
     }
 
     try {
-      const result = await this.s3Service.createVideoViewUrl(s3Key, undefined, expiresIn);
-      return result.viewUrl;
+      const shareableLink = await this.googleDriveService.generateShareableLink(driveId);
+      return shareableLink;
     } catch (error) {
       console.error("Error generating admin download URL:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Generate preview link for admin access
+   */
+  async generateAdminPreviewUrl(driveId: string): Promise<string | null> {
+    if (!driveId) {
+      return null;
+    }
+
+    try {
+      const previewLink = await this.googleDriveService.getPreviewLink(driveId);
+      return previewLink;
+    } catch (error) {
+      console.error("Error generating admin preview URL:", error);
       return null;
     }
   }

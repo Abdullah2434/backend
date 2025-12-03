@@ -148,7 +148,7 @@ export async function uploadAvatarVideos(
 
     const { isAvatarCreated } = validationResult.data;
 
-    // Upload videos to S3 and save to database
+    // Upload videos to Google Drive and save to database
     const record = await userAvatarVideosService.uploadAvatarVideos(
       userId,
       {
@@ -167,8 +167,8 @@ export async function uploadAvatarVideos(
       {
         id: record._id.toString(),
         userId: record.userId.toString(),
-        consentVideoS3Key: record.consentVideoS3Key || null,
-        trainingVideoS3Key: record.trainingVideoS3Key || null,
+        consentVideoDriveId: record.consentVideoDriveId || null,
+        trainingVideoDriveId: record.trainingVideoDriveId || null,
         isAvatarCreated: record.isAvatarCreated,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -205,8 +205,8 @@ export async function getUserAvatarVideos(
       records.map((record) => ({
         id: record._id.toString(),
         userId: record.userId.toString(),
-        consentVideoS3Key: record.consentVideoS3Key || null,
-        trainingVideoS3Key: record.trainingVideoS3Key || null,
+        consentVideoDriveId: record.consentVideoDriveId || null,
+        trainingVideoDriveId: record.trainingVideoDriveId || null,
         isAvatarCreated: record.isAvatarCreated,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -253,8 +253,8 @@ export async function getUserAvatarVideoById(
     return ResponseHelper.success(res, "Avatar video retrieved successfully", {
       id: record._id.toString(),
       userId: record.userId.toString(),
-      consentVideoS3Key: record.consentVideoS3Key || null,
-      trainingVideoS3Key: record.trainingVideoS3Key || null,
+      consentVideoDriveId: record.consentVideoDriveId || null,
+      trainingVideoDriveId: record.trainingVideoDriveId || null,
       isAvatarCreated: record.isAvatarCreated,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,

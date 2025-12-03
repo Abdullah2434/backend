@@ -39,10 +39,12 @@ export interface UserAvatarVideoWithDownloadUrls {
     lastName: string;
     email: string;
   };
-  consentVideoS3Key?: string;
+  consentVideoDriveId?: string;
   consentVideoDownloadUrl?: string | null;
-  trainingVideoS3Key?: string;
+  consentVideoPreviewUrl?: string | null;
+  trainingVideoDriveId?: string;
   trainingVideoDownloadUrl?: string | null;
+  trainingVideoPreviewUrl?: string | null;
   isAvatarCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -118,7 +120,7 @@ export class AdminService {
       .limit(limit)
       .lean();
 
-    const formattedUsers = users.map((user) => ({
+    const formattedUsers = users.map((user: any) => ({
       id: user._id.toString(),
       firstName: user.firstName,
       lastName: user.lastName,
@@ -160,44 +162,59 @@ export class AdminService {
 
     // Create a map for quick user lookup
     const userMap = new Map(
-      users.map((u) => [u._id.toString(), u])
+      users.map((u: any) => [u._id.toString(), u])
     );
 
     // Convert to format with download URLs
     const result: UserAvatarVideoWithDownloadUrls[] = [];
 
     for (const video of avatarVideos) {
-      const userId = video.userId.toString();
+      const videoAny = video as any;
+      const userId = videoAny.userId.toString();
       const user = userMap.get(userId);
 
-      // Generate download URLs for both videos
-      const consentVideoDownloadUrl = video.consentVideoS3Key
+      // Generate download URLs and preview URLs for both videos
+      const consentVideoDownloadUrl = videoAny.consentVideoDriveId
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            video.consentVideoS3Key
+            videoAny.consentVideoDriveId
           )
         : null;
 
-      const trainingVideoDownloadUrl = video.trainingVideoS3Key
+      const consentVideoPreviewUrl = videoAny.consentVideoDriveId
+        ? await this.userAvatarVideosService.generateAdminPreviewUrl(
+            videoAny.consentVideoDriveId
+          )
+        : null;
+
+      const trainingVideoDownloadUrl = videoAny.trainingVideoDriveId
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            video.trainingVideoS3Key
+            videoAny.trainingVideoDriveId
+          )
+        : null;
+
+      const trainingVideoPreviewUrl = videoAny.trainingVideoDriveId
+        ? await this.userAvatarVideosService.generateAdminPreviewUrl(
+            videoAny.trainingVideoDriveId
           )
         : null;
 
       result.push({
-        id: video._id.toString(),
+        id: videoAny._id.toString(),
         userId: userId,
         user: {
           firstName: user?.firstName || "",
           lastName: user?.lastName || "",
           email: user?.email || "",
         },
-        consentVideoS3Key: video.consentVideoS3Key,
+        consentVideoDriveId: videoAny.consentVideoDriveId,
         consentVideoDownloadUrl,
-        trainingVideoS3Key: video.trainingVideoS3Key,
+        consentVideoPreviewUrl,
+        trainingVideoDriveId: videoAny.trainingVideoDriveId,
         trainingVideoDownloadUrl,
-        isAvatarCreated: video.isAvatarCreated,
-        createdAt: video.createdAt,
-        updatedAt: video.updatedAt,
+        trainingVideoPreviewUrl,
+        isAvatarCreated: videoAny.isAvatarCreated,
+        createdAt: videoAny.createdAt,
+        updatedAt: videoAny.updatedAt,
       });
     }
 
@@ -225,34 +242,49 @@ export class AdminService {
     const result: UserAvatarVideoWithDownloadUrls[] = [];
 
     for (const video of avatarVideos) {
-      // Generate download URLs for both videos
-      const consentVideoDownloadUrl = video.consentVideoS3Key
+      const videoAny = video as any;
+      // Generate download URLs and preview URLs for both videos
+      const consentVideoDownloadUrl = videoAny.consentVideoDriveId
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            video.consentVideoS3Key
+            videoAny.consentVideoDriveId
           )
         : null;
 
-      const trainingVideoDownloadUrl = video.trainingVideoS3Key
+      const consentVideoPreviewUrl = videoAny.consentVideoDriveId
+        ? await this.userAvatarVideosService.generateAdminPreviewUrl(
+            videoAny.consentVideoDriveId
+          )
+        : null;
+
+      const trainingVideoDownloadUrl = videoAny.trainingVideoDriveId
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            video.trainingVideoS3Key
+            videoAny.trainingVideoDriveId
+          )
+        : null;
+
+      const trainingVideoPreviewUrl = videoAny.trainingVideoDriveId
+        ? await this.userAvatarVideosService.generateAdminPreviewUrl(
+            videoAny.trainingVideoDriveId
           )
         : null;
 
       result.push({
-        id: video._id.toString(),
+        id: videoAny._id.toString(),
         userId: userId,
         user: {
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
         },
-        consentVideoS3Key: video.consentVideoS3Key,
+        consentVideoDriveId: videoAny.consentVideoDriveId,
         consentVideoDownloadUrl,
-        trainingVideoS3Key: video.trainingVideoS3Key,
+        consentVideoPreviewUrl,
+        trainingVideoDriveId: videoAny.trainingVideoDriveId,
         trainingVideoDownloadUrl,
-        isAvatarCreated: video.isAvatarCreated,
-        createdAt: video.createdAt,
-        updatedAt: video.updatedAt,
+        trainingVideoPreviewUrl,
+        isAvatarCreated: videoAny.isAvatarCreated,
+        createdAt: videoAny.createdAt,
+        updatedAt: videoAny.updatedAt,
       });
     }
 
