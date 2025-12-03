@@ -259,7 +259,7 @@ export async function verifyPasswordResetOtp(req: Request, res: Response) {
       success: true,
       message: result.message,
       data: {
-        verified: result.verified,
+        resetToken: result.resetToken,
       },
     });
   } catch (e: any) {
@@ -271,17 +271,18 @@ export async function verifyPasswordResetOtp(req: Request, res: Response) {
 
 export async function resetPasswordWithOtp(req: Request, res: Response) {
   try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) {
+    const { resetToken, newPassword } = req.body;
+    if (!resetToken || !newPassword) {
       return res
         .status(400)
         .json({
           success: false,
-          message: "Email, OTP, and new password are required",
+          message: "Reset token and new password are required",
         });
     }
 
-    const result = await authService.resetPasswordWithOtp(email, otp, newPassword);
+    // Use the same resetPassword method but with a different name for clarity
+    const result = await authService.resetPasswordWithToken(resetToken, newPassword);
     return res.json({ success: true, message: result.message });
   } catch (e: any) {
     return res

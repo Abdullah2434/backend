@@ -276,7 +276,8 @@ export class AuthService {
   }
 
   // Verify password reset OTP (for mobile app)
-  async verifyPasswordResetOtp(email: string, otp: string): Promise<{ message: string; verified: boolean }> {
+  // Returns a reset token that can be used to reset password
+  async verifyPasswordResetOtp(email: string, otp: string): Promise<{ message: string; resetToken: string }> {
     // Hash the OTP to compare with stored hash
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
@@ -291,34 +292,53 @@ export class AuthService {
       throw new Error("Invalid or expired OTP");
     }
 
-    // OTP is valid, but don't clear it yet - it will be cleared when password is reset
+    // OTP is valid - generate a reset token for password reset
+    // This token will be used in the next step to reset password
+    const resetToken = this.generateResetToken(user._id.toString(), user.email);
+    
+    // Clear OTP after successful verification (user will use token to reset password)
+    user.passwordResetOtp = undefined;
+    user.passwordResetOtpExpires = undefined as any;
+    await user.save();
+
     return {
       message: "OTP verified successfully. You can now reset your password.",
-      verified: true,
+      resetToken: resetToken,
     };
   }
 
-  // Reset password with OTP (for mobile app)
-  async resetPasswordWithOtp(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
-    // Hash the OTP to compare with stored hash
-    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+  // Reset password with reset token (for mobile app - after OTP verification)
+  // This uses the reset token returned from verifyPasswordResetOtp
+  async resetPasswordWithToken(resetToken: string, newPassword: string): Promise<{ message: string }> {
+    // Verify JWT reset token
+    const payload = this.verifyToken(resetToken);
 
-    // Find user with this email and OTP
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      passwordResetOtp: hashedOtp,
-      passwordResetOtpExpires: { $gt: Date.now() },
-    }).select("+password +passwordResetOtp +passwordResetOtpExpires");
+    if (!payload) {
+      throw new Error("Invalid or expired reset token");
+    }
+
+    // Check if it's a reset token
+    if (payload.type !== "reset") {
+      throw new Error("Invalid token type");
+    }
+
+    // Find user by ID from token
+    const user = await User.findById(payload.userId).select(
+      "+password +lastUsedResetToken"
+    );
 
     if (!user) {
-      throw new Error("Invalid or expired OTP");
+      throw new Error("User not found");
+    }
+
+    // Check if this token has already been used
+    if (user.lastUsedResetToken === resetToken) {
+      throw new Error("Reset token has already been used");
     }
 
     // Set new password (will be hashed by model middleware)
     user.password = newPassword;
-    // Clear OTP after successful password reset
-    user.passwordResetOtp = undefined;
-    user.passwordResetOtpExpires = undefined as any;
+    user.lastUsedResetToken = resetToken;
     await user.save();
 
     return { message: "Password reset successfully" };
