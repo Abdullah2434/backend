@@ -40,6 +40,17 @@ export interface RegisterData {
   email: string;
   phone: string;
   password: string;
+  role?: "user" | "admin";
+}
+
+export interface CreateUserData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role?: "user" | "admin";
+  skipEmailVerification?: boolean;
 }
 
 export interface LoginData {
@@ -269,6 +280,7 @@ export interface UserResponse {
   lastName: string;
   email: string;
   phone: string;
+  role: "user" | "admin";
   isEmailVerified: boolean;
   googleId?: string;
   subscription?: UserSubscription;
@@ -289,6 +301,7 @@ export interface VideoResponse {
 export interface JwtPayload {
   userId: string;
   email: string;
+  role?: "user" | "admin";
   type?: "reset";
 }
 
@@ -305,6 +318,7 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     firstName: string;
     lastName: string;
+    role: "user" | "admin";
   };
 }
 
@@ -376,7 +390,13 @@ export interface CreateVideoAvatarResponse {
 
 export interface VideoAvatarStatusResponse {
   avatar_id: string;
-  status: "in_progress"| "training" | "ready" | "processing" | "completed" | "failed";
+  status:
+    | "in_progress"
+    | "training"
+    | "ready"
+    | "processing"
+    | "completed"
+    | "failed";
   avatar_group_id: string;
   error?: string;
   message?: string;

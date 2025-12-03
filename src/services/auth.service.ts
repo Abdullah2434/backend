@@ -16,6 +16,7 @@ import {
   AuthResult,
   GoogleAuthResult,
   JwtPayload,
+  CreateUserData,
 } from "../types";
 
 export class AuthService {
@@ -29,8 +30,16 @@ export class AuthService {
   }
 
   // Generate JWT token
-  generateToken(userId: string, email: string): string {
-    return jwt.sign({ userId, email }, this.jwtSecret, { expiresIn: "7d" });
+  generateToken(
+    userId: string,
+    email: string,
+    role?: "user" | "admin"
+  ): string {
+    const payload: JwtPayload = { userId, email };
+    if (role) {
+      payload.role = role;
+    }
+    return jwt.sign(payload, this.jwtSecret, { expiresIn: "7d" });
   }
 
   // Generate JWT reset token with short expiration
@@ -73,6 +82,7 @@ export class AuthService {
       email: userData.email,
       phone: userData.phone,
       password: userData.password,
+      role: userData.role || "user",
     });
 
     // Generate email verification token
@@ -80,7 +90,11 @@ export class AuthService {
     await user.save();
 
     // Generate JWT access token
-    const accessToken = this.generateToken(user._id.toString(), user.email);
+    const accessToken = this.generateToken(
+      user._id.toString(),
+      user.email,
+      user.role
+    );
 
     // Send verification email
     await sendVerificationEmail(user.email, verificationToken, user.firstName);
@@ -108,9 +122,101 @@ export class AuthService {
       throw new Error("Invalid email or password");
     }
 
-    const accessToken = this.generateToken(user._id.toString(), user.email);
+    const accessToken = this.generateToken(
+      user._id.toString(),
+      user.email,
+      user.role
+    );
 
     return { user, accessToken };
+  }
+
+  // Admin login (separate method for clarity, but uses same logic)
+  async adminLogin(loginData: LoginData): Promise<AuthResult> {
+    // Find user by email and include password
+    const user = await User.findOne({ email: loginData.email }).select(
+      "+password"
+    );
+
+    if (!user) {
+      throw new Error("Invalid email or password");
+    }
+
+    // Check if user is admin
+    if (user.role !== "admin") {
+      throw new Error("Access denied. Admin privileges required.");
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      loginData.password,
+      user.password
+    );
+
+    if (!isPasswordValid) {
+      throw new Error("Invalid email or password");
+    }
+
+    const accessToken = this.generateToken(
+      user._id.toString(),
+      user.email,
+      user.role
+    );
+
+    return { user, accessToken };
+  }
+
+  // Create user account (admin only)
+  async createUser(userData: CreateUserData): Promise<AuthResult> {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: userData.email });
+    if (existingUser) {
+      throw new Error("User with this email already exists");
+    }
+
+    // Create new user (password will be hashed by model middleware)
+    const user = new User({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      email: userData.email,
+      phone: userData.phone || "",
+      password: userData.password,
+      role: userData.role || "user",
+      isEmailVerified: userData.skipEmailVerification ? true : false,
+    });
+
+    // Generate email verification token only if not skipping verification
+    if (!userData.skipEmailVerification) {
+      const verificationToken = user.generateEmailVerificationToken();
+      await user.save();
+      // Send verification email
+      await sendVerificationEmail(
+        user.email,
+        verificationToken,
+        user.firstName
+      );
+    } else {
+      await user.save();
+      // Send welcome email for admin-created accounts
+      try {
+        await sendWelcomeEmail(user.email, user.firstName);
+      } catch (emailError) {
+        // Don't fail the entire creation if email fails
+      }
+    }
+
+    // Generate JWT access token (for the created user, not the admin)
+    const accessToken = this.generateToken(
+      user._id.toString(),
+      user.email,
+      user.role
+    );
+
+    return { user, accessToken };
+  }
+
+  // Check if user is admin
+  isAdmin(user: IUser): boolean {
+    return user.role === "admin";
   }
 
   // Get current user by access token
@@ -353,7 +459,11 @@ export class AuthService {
 
     if (user) {
       // Existing Google user - generate new JWT token
-      const accessToken = this.generateToken(user._id.toString(), user.email);
+      const accessToken = this.generateToken(
+        user._id.toString(),
+        user.email,
+        user.role
+      );
 
       return { user, accessToken, isNewUser: false };
     }
@@ -367,7 +477,11 @@ export class AuthService {
       user.googleEmail = googleData.email;
       user.isEmailVerified = true; // Google emails are pre-verified
 
-      const accessToken = this.generateToken(user._id.toString(), user.email);
+      const accessToken = this.generateToken(
+        user._id.toString(),
+        user.email,
+        user.role
+      );
       await user.save();
 
       // Send welcome email for existing users who just linked their Google account
@@ -393,7 +507,11 @@ export class AuthService {
       password: randomPassword,
     });
 
-    const accessToken = this.generateToken(user._id.toString(), user.email);
+    const accessToken = this.generateToken(
+      user._id.toString(),
+      user.email,
+      user.role
+    );
     await user.save();
 
     // Send welcome email for new Google users since their email is pre-verified

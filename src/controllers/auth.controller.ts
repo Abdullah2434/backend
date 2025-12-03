@@ -32,6 +32,7 @@ export async function register(req: Request, res: Response) {
           lastName: result.user.lastName,
           email: result.user.email,
           phone: result.user.phone,
+          role: result.user.role,
           isEmailVerified: result.user.isEmailVerified,
         },
         accessToken: result.accessToken,
@@ -78,6 +79,7 @@ export async function login(req: Request, res: Response) {
           lastName: result.user.lastName,
           email: result.user.email,
           phone: result.user.phone,
+          role: result.user.role,
           isEmailVerified: result.user.isEmailVerified,
         },
         accessToken: result.accessToken,
@@ -115,6 +117,7 @@ export async function me(req: Request, res: Response) {
           lastName: user.lastName,
           email: user.email,
           phone: user.phone,
+          role: user.role,
           isEmailVerified: user.isEmailVerified,
           googleId: user.googleId,
         },
@@ -163,6 +166,7 @@ export async function updateProfile(req: Request, res: Response) {
           lastName: updatedUser.lastName,
           email: updatedUser.email,
           phone: updatedUser.phone,
+          role: updatedUser.role,
           isEmailVerified: updatedUser.isEmailVerified,
         },
       },
@@ -211,12 +215,10 @@ export async function resetPassword(req: Request, res: Response) {
   try {
     const { resetToken, newPassword } = req.body;
     if (!resetToken || !newPassword) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Reset token and new password are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Reset token and new password are required",
+      });
     }
 
     const result = await authService.resetPassword({ resetToken, newPassword });
@@ -248,6 +250,7 @@ export async function verifyEmail(req: Request, res: Response) {
           lastName: result.user.lastName,
           email: result.user.email,
           phone: result.user.phone,
+          role: result.user.role,
           isEmailVerified: result.user.isEmailVerified,
         },
       },
@@ -359,12 +362,10 @@ export async function validateToken(req: Request, res: Response) {
         userWithResetToken &&
         (userWithResetToken as any).lastUsedResetToken === token
       ) {
-        return res
-          .status(401)
-          .json({
-            success: false,
-            message: "Reset token has already been used",
-          });
+        return res.status(401).json({
+          success: false,
+          message: "Reset token has already been used",
+        });
       }
     }
 
@@ -378,6 +379,7 @@ export async function validateToken(req: Request, res: Response) {
           lastName: user.lastName,
           email: user.email,
           phone: user.phone,
+          role: user.role,
           isEmailVerified: user.isEmailVerified,
         },
         tokenType: isResetToken ? "reset" : "access",
@@ -443,6 +445,7 @@ export async function googleLogin(req: Request, res: Response) {
           lastName: result.user.lastName,
           email: result.user.email,
           phone: result.user.phone || "",
+          role: result.user.role,
           isEmailVerified: result.user.isEmailVerified,
           googleId: result.user.googleId,
         },
@@ -494,6 +497,94 @@ export async function debugPasswordHash(req: Request, res: Response) {
     return res.json({
       success: true,
       data: { hash },
+    });
+  } catch (e: any) {
+    return res
+      .status(400)
+      .json({ success: false, message: e.message || "Internal server error" });
+  }
+}
+
+export async function adminLogin(req: Request, res: Response) {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and password are required" });
+    }
+
+    const result = await authService.adminLogin({ email, password });
+
+    // Admin login doesn't require email verification
+    return res.json({
+      success: true,
+      message: "Admin login successful",
+      data: {
+        user: {
+          id: result.user._id,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          email: result.user.email,
+          phone: result.user.phone,
+          role: result.user.role,
+          isEmailVerified: result.user.isEmailVerified,
+        },
+        accessToken: result.accessToken,
+      },
+    });
+  } catch (e: any) {
+    return res
+      .status(401)
+      .json({ success: false, message: e.message || "Internal server error" });
+  }
+}
+
+export async function createUser(req: Request, res: Response) {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      password,
+      role,
+      skipEmailVerification,
+    } = req.body;
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "First name, last name, email, and password are required",
+      });
+    }
+
+    const result = await authService.createUser({
+      firstName,
+      lastName,
+      email,
+      phone: phone || "",
+      password,
+      role: role || "user",
+      skipEmailVerification: skipEmailVerification || false,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: skipEmailVerification
+        ? "User account created successfully"
+        : "User account created successfully. Verification email sent.",
+      data: {
+        user: {
+          id: result.user._id,
+          firstName: result.user.firstName,
+          lastName: result.user.lastName,
+          email: result.user.email,
+          phone: result.user.phone,
+          role: result.user.role,
+          isEmailVerified: result.user.isEmailVerified,
+        },
+        accessToken: result.accessToken,
+      },
     });
   } catch (e: any) {
     return res

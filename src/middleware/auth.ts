@@ -10,6 +10,8 @@ const AUTH_ROUTES = {
   PUBLIC: [
     "/auth/login",
     "/auth/register",
+    "/auth/admin/login",
+    "/auth/admin/create-user",
     "/auth/forgot-password",
     "/auth/reset-password",
     "/auth/verify-email",
@@ -28,6 +30,8 @@ const AUTH_ROUTES = {
     "/webhook/socialbu",
     "/webhook/test",
     "/schedule/test",
+    "/subscription/plans",
+    "/subscription/current",
   ],
 
   // Protected routes (auth required)
@@ -35,6 +39,7 @@ const AUTH_ROUTES = {
     "/auth/me",
     "/auth/profile",
     "/auth/clear-expired-tokens",
+    "/admin",
     "/video/topics/:id",
     "/video/topics",
     "/video/topics/:topic",
@@ -49,14 +54,12 @@ const AUTH_ROUTES = {
     "/video-schedule/schedule/stats",
     "/video-schedule/schedule/:scheduleId",
     "/schedule",
-    "/api/schedule",
     "/payment-methods",
-    "/api/payment-methods",
-    "/v2/video_avatar",
-    "/api/v2/video_avatar",
-    "/v2/user/avatar-videos",
-    "/api/v2/user/avatar-videos",
     "/elevenlabs/voices/add",
+    "/subscription",
+    "/video",
+    "/user/avatar-videos",
+    "/video_avatar",
   ],
 
   // Video routes (auth required)
@@ -118,22 +121,24 @@ export function authenticate() {
 
     // Extract access token from query parameter or Authorization header
     // For download-proxy route, allow token in query parameter for native downloads
-    const isDownloadProxyRoute = path === "/api/video/download-proxy" || 
-                                 path === "/video/download-proxy" ||
-                                 path.includes("/download-proxy");
-    const tokenFromQuery = isDownloadProxyRoute 
-      ? String((req.query as any).token || "").trim() 
+    const isDownloadProxyRoute =
+      path === "/api/video/download-proxy" ||
+      path === "/video/download-proxy" ||
+      path.includes("/download-proxy");
+    const tokenFromQuery = isDownloadProxyRoute
+      ? String((req.query as any).token || "").trim()
       : "";
     const authHeader = req.headers.authorization;
     const tokenFromHeader = authHeader?.replace("Bearer ", "") || "";
-    
+
     // Use token from query parameter if provided, otherwise fall back to header
     const accessToken = tokenFromQuery || tokenFromHeader;
 
     if (!accessToken) {
       return res.status(401).json({
         success: false,
-        message: "Access token is required (provide via ?token=xxx or Authorization header)",
+        message:
+          "Access token is required (provide via ?token=xxx or Authorization header)",
       });
     }
 
@@ -152,6 +157,7 @@ export function authenticate() {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      role: user.role,
     };
     next();
   };
@@ -177,8 +183,39 @@ export function optionalAuthenticate() {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
+          role: user.role,
         };
       }
+    }
+
+    next();
+  };
+}
+
+/**
+ * Require admin role middleware
+ * Must be used after authenticate() middleware
+ */
+export function requireAdmin() {
+  return async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    // Check if user is admin
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin privileges required.",
+      });
     }
 
     next();

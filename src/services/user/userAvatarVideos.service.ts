@@ -118,5 +118,22 @@ export class UserAvatarVideosService {
   ): Promise<IUserAvatarVideos | null> {
     return await UserAvatarVideos.findOne({ _id: recordId, userId });
   }
+
+  /**
+   * Generate signed download URL for admin access (without secret key validation)
+   */
+  async generateAdminDownloadUrl(s3Key: string, expiresIn = 3600): Promise<string | null> {
+    if (!s3Key) {
+      return null;
+    }
+
+    try {
+      const result = await this.s3Service.createVideoViewUrl(s3Key, undefined, expiresIn);
+      return result.viewUrl;
+    } catch (error) {
+      console.error("Error generating admin download URL:", error);
+      return null;
+    }
+  }
 }
 
