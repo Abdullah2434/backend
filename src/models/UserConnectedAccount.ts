@@ -34,13 +34,11 @@ const userConnectedAccountSchema = new Schema<IUserConnectedAccount>({
   userId: { 
     type: Schema.Types.ObjectId, 
     ref: 'User', 
-    required: true, 
-    index: true 
+    required: true
   },
   socialbuAccountId: { 
     type: Number, 
-    required: true, 
-    index: true 
+    required: true
   },
   accountName: { 
     type: String, 
@@ -69,8 +67,7 @@ const userConnectedAccountSchema = new Schema<IUserConnectedAccount>({
   },
   isActive: { 
     type: Boolean, 
-    default: true, 
-    index: true 
+    default: true
   },
   image: { 
     type: String, 

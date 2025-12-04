@@ -1,7 +1,6 @@
 import axios, { AxiosResponse } from "axios";
 import DefaultAvatar, { IDefaultAvatar } from "../models/avatar";
 import DefaultVoice, { IDefaultVoice } from "../models/voice";
-import dotenv from "dotenv";
 import { connectMongo } from "../config/mongoose";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
@@ -34,14 +33,12 @@ import {
   FetchVoicesSummary,
   ProcessAvatarConfig,
 } from "../types/cron/fetchDefaultAvatars.types";
-
-// ==================== CONSTANTS ====================
-dotenv.config();
-
-const CRON_JOB_NAME = "fetch-default-avatars";
-const AVATARS_API_URL = `${process.env.HEYGEN_BASE_URL}/avatars`;
-const VOICES_API_URL = `${process.env.HEYGEN_BASE_URL}/voices`;
-const API_KEY = process.env.HEYGEN_API_KEY;
+import {
+  CRON_JOB_NAME,
+  API_KEY,
+  AVATARS_API_URL,
+  VOICES_API_URL,
+} from "../constants/fetchDefaultAvatarsCron.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const cronMonitor = CronMonitoringService.getInstance();
@@ -54,7 +51,7 @@ function validateAPIConfig(): { valid: boolean; error?: string } {
   if (!API_KEY) {
     return { valid: false, error: "HEYGEN_API_KEY is not configured" };
   }
-  if (!AVATARS_API_URL || AVATARS_API_URL.includes("undefined")) {
+  if (!AVATARS_API_URL) {
     return { valid: false, error: "HEYGEN_BASE_URL is not configured" };
   }
   return { valid: true };
@@ -278,8 +275,8 @@ export async function fetchAndStoreDefaultAvatars(): Promise<FetchAvatarsSummary
 
   // Validate API configuration
   const configValidation = validateAPIConfig();
-  if (!configValidation.valid) {
-    console.error(`❌ ${configValidation.error}`);
+  if (!configValidation.valid || !AVATARS_API_URL || !API_KEY) {
+    console.error(`❌ ${configValidation.error || "API configuration invalid"}`);
     return null;
   }
 
@@ -366,8 +363,8 @@ export async function fetchAndStoreDefaultVoices(): Promise<FetchVoicesSummary |
 
   // Validate API configuration
   const configValidation = validateAPIConfig();
-  if (!configValidation.valid) {
-    console.error(`❌ ${configValidation.error}`);
+  if (!configValidation.valid || !VOICES_API_URL || !API_KEY) {
+    console.error(`❌ ${configValidation.error || "API configuration invalid"}`);
     return null;
   }
 

@@ -49,7 +49,7 @@ export const VALID_SCHEDULE_STATUSES = [
  */
 export const TREND_PROCESSING_WINDOW = {
   MINUTES_BEFORE: 30, // Process 30 minutes before scheduled time
-  MINUTES_AFTER: 15, // Grace period: 15 minutes after scheduled time
+  MINUTES_AFTER: 120, // Grace period: 2 hours (120 minutes) after scheduled time
 } as const;
 
 /**

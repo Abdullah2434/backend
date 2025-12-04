@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
-import { MusicService } from "../services/music.service";
-import { S3Service } from "../services/s3";
+import { MusicService } from "../services/music";
+import { S3Service } from "../services/s3.service";
 import multer from "multer";
 import { MusicEnergyLevel } from "../constants/voiceEnergy";
 import { ResponseHelper } from "../utils/responseHelper";
+import { ValidationError } from "../types";
 import {
   uploadMusicTrackSchema,
   getMusicTracksByEnergySchema,
@@ -11,38 +12,28 @@ import {
   streamMusicPreviewSchema,
   deleteMusicTrackSchema,
 } from "../validations/music.validations";
-
-// ==================== CONSTANTS ====================
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const PREVIEW_URL_EXPIRATION = 3600; // 1 hour in seconds
-const VALID_ENERGY_CATEGORIES = ["high", "mid", "low"] as const;
-
-// ==================== SERVICE INITIALIZATION ====================
-const s3Service = new S3Service({
-  region: process.env.AWS_REGION || "us-east-1",
-  bucketName: process.env.AWS_S3_BUCKET || "",
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-});
-const musicService = new MusicService(s3Service);
-
-// ==================== MULTER CONFIGURATION ====================
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_FILE_SIZE,
-  },
-  fileFilter: (req, file, cb) => {
-    // Accept audio files
-    if (file.mimetype.startsWith("audio/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only audio files are allowed"));
-    }
-  },
-});
+import { ZodError } from "zod";
+import { CreateMusicTrackData, MusicTrackMetadata } from "../types/music.types";
+import {
+  MAX_FILE_SIZE,
+  PREVIEW_URL_EXPIRATION,
+  VALID_ENERGY_CATEGORIES,
+  DEFAULT_AWS_REGION,
+  AUDIO_MIME_TYPE_PREFIX,
+} from "../constants/music.constants";
 
 // ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Format validation errors from Zod
+ */
+function formatValidationErrors(error: ZodError): ValidationError[] {
+  return error.errors.map((err) => ({
+    field: err.path.join("."),
+    message: err.message,
+  }));
+}
+
 /**
  * Extract S3 key from S3 URL
  */
@@ -58,46 +49,99 @@ function isValidEnergyCategory(category: string): category is MusicEnergyLevel {
   return VALID_ENERGY_CATEGORIES.includes(category as MusicEnergyLevel);
 }
 
+/**
+ * Validate file exists
+ */
+function requireFile(
+  file: Express.Multer.File | undefined
+): Express.Multer.File {
+  if (!file) {
+    throw new Error("Audio file is required");
+  }
+  return file;
+}
+
+/**
+ * Create S3 service configuration from environment
+ */
+function createS3Config() {
+  return {
+    region: process.env.AWS_REGION || DEFAULT_AWS_REGION,
+    bucketName: process.env.AWS_S3_BUCKET || "",
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+  };
+}
+
+/**
+ * Build music track creation data
+ */
+function buildMusicTrackData(
+  validationData: any,
+  file: Express.Multer.File
+): CreateMusicTrackData {
+  const metadata: MusicTrackMetadata = {
+    artist: validationData.artist,
+    source: validationData.source,
+    license: validationData.license,
+    genre: validationData.genre,
+  };
+
+  return {
+    name: validationData.name,
+    energyCategory: validationData.energyCategory as MusicEnergyLevel,
+    duration: parseInt(validationData.duration),
+    fullTrackBuffer: file.buffer,
+    filename: file.originalname,
+    contentType: file.mimetype,
+    metadata: Object.keys(metadata).some(
+      (key) => metadata[key as keyof MusicTrackMetadata]
+    )
+      ? metadata
+      : undefined,
+  };
+}
+
+// ==================== SERVICE INITIALIZATION ====================
+const s3Service = new S3Service(createS3Config());
+const musicService = new MusicService(s3Service);
+
+// ==================== MULTER CONFIGURATION ====================
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith(AUDIO_MIME_TYPE_PREFIX)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only audio files are allowed"));
+    }
+  },
+});
+
 // ==================== CONTROLLER FUNCTIONS ====================
+
 /**
  * Upload music track (Admin endpoint)
  */
 export async function uploadMusicTrack(req: Request, res: Response) {
   try {
-    const file = req.file;
-
-    if (!file) {
-      return ResponseHelper.badRequest(res, "Audio file is required");
-    }
+    const file = requireFile(req.file);
 
     // Validate request body
     const validationResult = uploadMusicTrackSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
-    const { name, energyCategory, duration, artist, source, license, genre } =
-      validationResult.data;
-
-    // Create music track
-    const musicTrack = await musicService.createMusicTrack({
-      name,
-      energyCategory: energyCategory as MusicEnergyLevel,
-      duration: parseInt(duration),
-      fullTrackBuffer: file.buffer,
-      filename: file.originalname,
-      contentType: file.mimetype,
-      metadata: {
-        artist,
-        source,
-        license,
-        genre,
-      },
-    });
+    const musicTrackData = buildMusicTrackData(validationResult.data, file);
+    const musicTrack = await musicService.createMusicTrack(musicTrackData);
 
     return ResponseHelper.created(
       res,
@@ -106,6 +150,11 @@ export async function uploadMusicTrack(req: Request, res: Response) {
     );
   } catch (error: any) {
     console.error("Error in uploadMusicTrack:", error);
+
+    if (error.message === "Audio file is required") {
+      return ResponseHelper.badRequest(res, error.message);
+    }
+
     return ResponseHelper.serverError(
       res,
       error.message || "Failed to upload music track",
@@ -161,11 +210,11 @@ export async function getMusicTracksByEnergy(req: Request, res: Response) {
       energyCategory,
     });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const tracks = await musicService.getMusicTracksByEnergy(
@@ -196,17 +245,16 @@ export async function getMusicTrackById(req: Request, res: Response) {
     // Validate trackId
     const validationResult = getMusicTrackByIdSchema.safeParse({ trackId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const track = await musicService.getMusicTrackWithUrls(
       validationResult.data.trackId
     );
-
     if (!track) {
       return ResponseHelper.notFound(res, "Music track not found");
     }
@@ -235,17 +283,16 @@ export async function streamMusicPreview(req: Request, res: Response) {
     // Validate trackId
     const validationResult = streamMusicPreviewSchema.safeParse({ trackId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const track = await musicService.getMusicTrackById(
       validationResult.data.trackId
     );
-
     if (!track) {
       return ResponseHelper.notFound(res, "Music track not found");
     }
@@ -278,17 +325,16 @@ export async function deleteMusicTrack(req: Request, res: Response) {
     // Validate trackId
     const validationResult = deleteMusicTrackSchema.safeParse({ trackId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
-      return ResponseHelper.badRequest(res, "Validation failed", errors);
+      return ResponseHelper.badRequest(
+        res,
+        "Validation failed",
+        formatValidationErrors(validationResult.error)
+      );
     }
 
     const success = await musicService.deleteMusicTrack(
       validationResult.data.trackId
     );
-
     if (!success) {
       return ResponseHelper.notFound(res, "Music track not found");
     }

@@ -1,44 +1,30 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../types";
-import VideoScheduleService, {
-  ScheduleData,
-} from "../services/videoSchedule.service";
+import VideoScheduleService, { ScheduleData } from "../services/videoSchedule";
 import UserVideoSettings from "../models/UserVideoSettings";
 import TimezoneService from "../utils/timezone";
-import { SubscriptionService } from "../services/subscription.service";
+import { SubscriptionService } from "../services/payment";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   createScheduleSchema,
   scheduleIdParamSchema,
   updateScheduleSchema,
 } from "../validations/videoSchedule.validations";
-
-// ==================== CONSTANTS ====================
-const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const DEFAULT_DURATION = "1 month";
-
-// Video statuses
-const VIDEO_STATUSES = {
-  COMPLETED: "completed",
-  PENDING: "pending",
-  PROCESSING: "processing",
-  FAILED: "failed",
-} as const;
+import {
+  getUserIdFromRequest,
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
+import {
+  DATE_ONLY_REGEX,
+  DEFAULT_DURATION,
+  VIDEO_STATUSES,
+} from "../constants/videoSchedule.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const videoScheduleService = new VideoScheduleService();
 
 // ==================== HELPER FUNCTIONS ====================
-/**
- * Get user ID from authenticated request
- */
-function getUserIdFromRequest(req: AuthenticatedRequest): string {
-  if (!req.user?._id) {
-    throw new Error("User not authenticated");
-  }
-  return req.user._id.toString();
-}
-
 /**
  * Convert date from user's timezone to UTC
  */
@@ -123,40 +109,9 @@ function formatVideoTrend(trend: any, index: number) {
 /**
  * Calculate completion rate
  */
-function calculateCompletionRate(
-  total: number,
-  completed: number
-): number {
+function calculateCompletionRate(total: number, completed: number): number {
   if (total === 0) return 0;
   return Math.round((completed / total) * 100 * 100) / 100;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (
-    message.includes("token") ||
-    message.includes("not authenticated") ||
-    message.includes("unauthorized")
-  ) {
-    return 401;
-  }
-  if (message.includes("subscription")) {
-    return 403;
-  }
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("already exists")) {
-    return 409;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
 }
 
 // ==================== CONTROLLER FUNCTIONS ====================
@@ -167,7 +122,7 @@ function getErrorStatus(error: Error): number {
 export async function createSchedule(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const timezone = TimezoneService.detectTimezone(req);
@@ -175,19 +130,23 @@ export async function createSchedule(
     // Validate request body
     const validationResult = createScheduleSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
-    const { frequency, schedule, startDate, endDate, email: bodyEmail } =
-      validationResult.data;
+    const {
+      frequency,
+      schedule,
+      startDate,
+      endDate,
+      email: bodyEmail,
+    } = validationResult.data;
 
     // Check for active subscription
     const subscriptionService = new SubscriptionService();
-    const subscription = await subscriptionService.getActiveSubscription(userId);
+    const subscription = await subscriptionService.getActiveSubscription(
+      userId
+    );
     if (!subscription) {
       return res.status(403).json({
         success: false,
@@ -252,15 +211,13 @@ export async function createSchedule(
           "Your schedule is being created in the background. You'll receive a notification when it's ready!",
       }
     );
-  } catch (error: any) {
-    console.error("Error in createSchedule:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to create video schedule",
-      error:
-        process.env.NODE_ENV === "development" ? error.stack : undefined,
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "createSchedule",
+      "Failed to create video schedule"
+    );
   }
 }
 
@@ -268,7 +225,10 @@ export async function createSchedule(
  * Get user's active schedule
  * GET /api/video-schedule
  */
-export async function getSchedule(req: AuthenticatedRequest, res: Response) {
+export async function getSchedule(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const schedule = await videoScheduleService.getUserSchedule(userId);
@@ -297,13 +257,13 @@ export async function getSchedule(req: AuthenticatedRequest, res: Response) {
       ...scheduleData,
       upcomingVideos,
     });
-  } catch (error: any) {
-    console.error("Error in getSchedule:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get video schedule",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getSchedule",
+      "Failed to get video schedule"
+    );
   }
 }
 
@@ -314,7 +274,7 @@ export async function getSchedule(req: AuthenticatedRequest, res: Response) {
 export async function updateSchedule(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const { scheduleId } = req.params;
@@ -324,20 +284,14 @@ export async function updateSchedule(
       scheduleId,
     });
     if (!scheduleIdValidation.success) {
-      const errors = scheduleIdValidation.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(scheduleIdValidation.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
     // Validate request body
     const validationResult = updateScheduleSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -347,7 +301,11 @@ export async function updateSchedule(
     // Convert date strings to Date objects if provided
     const updateData: any = { ...rawUpdateData };
     if (updateData.startDate) {
-      updateData.startDate = convertDateToUTC(updateData.startDate, timezone, false);
+      updateData.startDate = convertDateToUTC(
+        updateData.startDate,
+        timezone,
+        false
+      );
     }
     if (updateData.endDate) {
       updateData.endDate = convertDateToUTC(updateData.endDate, timezone, true);
@@ -371,13 +329,13 @@ export async function updateSchedule(
       endDate: updatedSchedule.endDate,
       isActive: updatedSchedule.isActive,
     });
-  } catch (error: any) {
-    console.error("Error in updateSchedule:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to update video schedule",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "updateSchedule",
+      "Failed to update video schedule"
+    );
   }
 }
 
@@ -388,7 +346,7 @@ export async function updateSchedule(
 export async function deactivateSchedule(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const { scheduleId } = req.params;
@@ -396,10 +354,7 @@ export async function deactivateSchedule(
     // Validate scheduleId parameter
     const validationResult = scheduleIdParamSchema.safeParse({ scheduleId });
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -413,13 +368,13 @@ export async function deactivateSchedule(
     }
 
     return ResponseHelper.success(res, "Schedule deactivated successfully");
-  } catch (error: any) {
-    console.error("Error in deactivateSchedule:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to deactivate video schedule",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "deactivateSchedule",
+      "Failed to deactivate video schedule"
+    );
   }
 }
 
@@ -430,7 +385,7 @@ export async function deactivateSchedule(
 export async function getScheduleDetails(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const schedule = await videoScheduleService.getUserSchedule(userId);
@@ -441,19 +396,23 @@ export async function getScheduleDetails(
 
     const scheduleData = formatScheduleResponse(schedule);
 
-    return ResponseHelper.success(res, "Schedule details retrieved successfully", {
-      ...scheduleData,
-      videos: schedule.generatedTrends.map((trend: any, index: number) =>
-        formatVideoTrend(trend, index)
-      ),
-    });
-  } catch (error: any) {
-    console.error("Error in getScheduleDetails:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get schedule details",
-    });
+    return ResponseHelper.success(
+      res,
+      "Schedule details retrieved successfully",
+      {
+        ...scheduleData,
+        videos: schedule.generatedTrends.map((trend: any, index: number) =>
+          formatVideoTrend(trend, index)
+        ),
+      }
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getScheduleDetails",
+      "Failed to get schedule details"
+    );
   }
 }
 
@@ -464,7 +423,7 @@ export async function getScheduleDetails(
 export async function getScheduleStats(
   req: AuthenticatedRequest,
   res: Response
-) {
+): Promise<Response> {
   try {
     const userId = getUserIdFromRequest(req);
     const schedule = await videoScheduleService.getUserSchedule(userId);
@@ -497,22 +456,26 @@ export async function getScheduleStats(
 
     const completionRate = calculateCompletionRate(total, completed);
 
-    return ResponseHelper.success(res, "Schedule statistics retrieved successfully", {
-      stats,
-      completionRate,
-      scheduleInfo: {
-        frequency: schedule.frequency,
-        startDate: schedule.startDate,
-        endDate: schedule.endDate,
-        isActive: schedule.isActive,
-      },
-    });
-  } catch (error: any) {
-    console.error("Error in getScheduleStats:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to get schedule statistics",
-    });
+    return ResponseHelper.success(
+      res,
+      "Schedule statistics retrieved successfully",
+      {
+        stats,
+        completionRate,
+        scheduleInfo: {
+          frequency: schedule.frequency,
+          startDate: schedule.startDate,
+          endDate: schedule.endDate,
+          isActive: schedule.isActive,
+        },
+      }
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getScheduleStats",
+      "Failed to get schedule statistics"
+    );
   }
 }

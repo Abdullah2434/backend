@@ -12,6 +12,7 @@ import socialbuAccountRoutes from "./v1/socialbu-account";
 import userSettingsRoutes from "./v1/user-settings";
 import userConnectedAccountRoutes from "./v1/userConnectedAccount";
 import videoScheduleRoutes from "./v1/videoSchedule";
+import userAvatarVideosRoutes from "./v2/userAvatarVideos";
 import videoAvatarRoutes from "./v2/videoAvatar";
 import webhookV2Routes from "./v2/webhook";
 import dynamicPostsRoutes from "./v2/dynamicPosts";
@@ -20,13 +21,13 @@ import cronHealthRoutes from "./v1/cronHealth";
 import energyProfileRoutes from "./v1/energyProfile";
 import musicRoutes from "./v1/music";
 import elevenLabsRoutes from "./v1/elevenLabs";
+import adminRoutes from "./v1/admin";
 
 const router = Router();
 
-// V1 API Routes
+
 router.use("/auth", authRoutes);
 router.use("/video", videoRoutes);
-router.use("/webhook", webhookRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/payment-methods", paymentMethodsRoutes);
 router.use("/contact", contactRoutes);
@@ -37,16 +38,24 @@ router.use("/socialbu-account", socialbuAccountRoutes);
 router.use("/user-settings", userSettingsRoutes);
 router.use("/user-connected-accounts", userConnectedAccountRoutes);
 router.use("/video-schedule", videoScheduleRoutes);
-
-// V2 API Routes
-router.use("/v2", videoAvatarRoutes);
-router.use("/v2", webhookV2Routes);
-router.use("/v2/dynamic-posts", dynamicPostsRoutes);
+router.use("/admin", adminRoutes);
 router.use("/schedule", scheduleRoutes);
 router.use("/cron", cronHealthRoutes);
 router.use("/energy-profile", energyProfileRoutes);
 router.use("/music", musicRoutes);
 router.use("/elevenlabs", elevenLabsRoutes);
 router.use("/webhook", webhookRoutes);
+
+// V2 routes mounted without v2 prefix (for backward compatibility)
+router.use("/", userAvatarVideosRoutes);
+router.use("/", videoAvatarRoutes);
+router.use("/", webhookV2Routes);
+router.use("/dynamic-posts", dynamicPostsRoutes);
+
+// V2 routes with v2 prefix (for explicit v2 access)
+router.use("/v2", userAvatarVideosRoutes);
+router.use("/v2", videoAvatarRoutes);
+router.use("/v2", webhookV2Routes);
+router.use("/v2/dynamic-posts", dynamicPostsRoutes);
 
 export default router;

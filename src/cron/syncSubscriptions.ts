@@ -1,6 +1,6 @@
 import cron from "node-cron";
-import { SubscriptionService } from "../services/subscription.service";
-import Subscription, { ISubscription } from "../models/Subscription";
+import { SubscriptionService } from "../services/payment";
+import Subscription from "../models/Subscription";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
   executeWithOverallTimeout,
@@ -17,10 +17,10 @@ import {
   SyncSubscriptionsConfig,
   ActiveSubscription,
 } from "../types/cron/syncSubscriptions.types";
-
-// ==================== CONSTANTS ====================
-const CRON_JOB_NAME = "subscription-sync";
-const CRON_SCHEDULE = "0 * * * *"; // Every hour at minute 0
+import {
+  CRON_JOB_NAME,
+  CRON_SCHEDULE,
+} from "../constants/syncSubscriptionsCron.constants";
 
 // ==================== SERVICE INSTANCES ====================
 const subscriptionService = new SubscriptionService();

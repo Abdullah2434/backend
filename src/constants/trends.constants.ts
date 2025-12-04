@@ -175,6 +175,35 @@ export const INAPPROPRIATE_PATTERNS = {
   ],
 };
 
+// ==================== TRENDS CONTROLLER CONSTANTS ====================
+// Trend count limits
+export const DEFAULT_TREND_COUNT = 10;
+export const MIN_TREND_COUNT = 1;
+export const MAX_TREND_COUNT = 20;
+export const SUPER_FAST_MAX_COUNT = 3;
+export const FAST_MAX_COUNT = 5;
+export const TEMPLATE_BASED_THRESHOLD = 5;
+
+// Topic and location defaults
+export const TOPIC_REAL_ESTATE = "real_estate";
+export const LOCATION_AMERICA = "America";
+
+// Content moderation error keywords
+export const CONTENT_MODERATION_KEYWORDS = [
+  "CONTENT_MODERATION_ERROR",
+  "inappropriate",
+  "racism",
+  "nudity",
+  "vulgar",
+] as const;
+
+// Validation error keywords
+export const VALIDATION_ERROR_KEYWORDS = [
+  "VALIDATION_ERROR",
+  "not related to real estate",
+  "not real estate related",
+] as const;
+
 // OpenAI moderation relevant categories
 export const RELEVANT_MODERATION_CATEGORIES = [
   "hate",

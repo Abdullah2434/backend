@@ -10,18 +10,18 @@ import {
 const router = Router();
 
 // Get all saved payment methods for user
-router.get("/", getPaymentMethods);
+router.get("/", getPaymentMethods as any);
 
 // Create setup intent for adding/updating payment method
-router.post("/setup-intent", createSetupIntent);
+router.post("/setup-intent", createSetupIntent as any);
 
 // Update payment method (confirm SetupIntent)
-router.post("/update", updatePaymentMethod);
+router.post("/update", updatePaymentMethod as any);
 
 // Set payment method as default
-router.post("/:paymentMethodId/set-default", setDefaultPaymentMethod);
+router.post("/:paymentMethodId/set-default", setDefaultPaymentMethod as any);
 
 // Remove payment method
-router.delete("/:paymentMethodId", removePaymentMethod);
+router.delete("/:paymentMethodId", removePaymentMethod as any);
 
 export default router;

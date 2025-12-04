@@ -1,0 +1,596 @@
+import Video, { IVideo } from "../../models/Video";
+import User from "../../models/User";
+import Topic, { ITopic } from "../../models/Topic";
+import UserVideoSettings from "../../models/UserVideoSettings";
+import { getS3 } from "../s3.service";
+import { SubscriptionService } from "../payment";
+import {
+  CreateVideoData,
+  UpdateVideoData,
+  VideoMetadata,
+  VideoStats,
+  VideoDownloadResult,
+} from "../../types";
+import {
+  VIDEO_STATUS_PROCESSING,
+  VIDEO_STATUS_READY,
+  VIDEO_STATUS_FAILED,
+  DOWNLOAD_URL_EXPIRY_SECONDS,
+  DEFAULT_CONTENT_TYPE,
+  DEFAULT_VIDEO_TITLE,
+  DEFAULT_USER_AGENT,
+  ERROR_MESSAGES,
+} from "../../constants/videoService.constants";
+import {
+  generateVideoId,
+  generateSecretKey,
+  cleanVideoTitle,
+  extractFilenameFromUrl,
+  generateCaptionsForVideo,
+  areCaptionsMissing,
+  isYoutubeCaptionMissing,
+} from "../../utils/videoServiceHelpers";
+import { getCached, invalidateCache } from "../redis.service";
+
+export class VideoService {
+  private s3Service = getS3();
+  private subscriptionService = new SubscriptionService();
+
+  /**
+   * Create a new video record
+   */
+  async createVideo(videoData: CreateVideoData): Promise<IVideo> {
+    // Find user by email to get userId
+    const user = await User.findOne({ email: videoData.email });
+    if (!user) {
+      throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+    }
+
+    // Check subscription limits
+    const videoLimit = await this.subscriptionService.canCreateVideo(
+      user._id.toString()
+    );
+    if (!videoLimit.canCreate) {
+      throw new Error(ERROR_MESSAGES.VIDEO_LIMIT_REACHED);
+    }
+
+    const videoId = generateVideoId();
+    const secretKey = videoData.secretKey || generateSecretKey();
+
+    const video = new Video({
+      videoId,
+      userId: user._id,
+      email: videoData.email,
+      title: videoData.title,
+      secretKey,
+      videoUrl: videoData.videoUrl,
+      s3Key: videoData.s3Key,
+      status: videoData.status || VIDEO_STATUS_PROCESSING,
+      metadata: videoData.metadata,
+    });
+
+    await video.save();
+
+    // Increment video count for subscription
+    await this.subscriptionService.incrementVideoCount(user._id.toString());
+
+    // Invalidate cache after creating video
+    await invalidateCache(`user_videos:${videoData.email}`);
+    await invalidateCache(`user_videos_by_id:${user._id.toString()}`);
+
+    return video;
+  }
+
+  /**
+   * Get all videos for a user by email
+   * Cache key: user_videos:${email}
+   * TTL: 2 minutes (120 seconds) - videos change frequently
+   */
+  async getUserVideos(email: string): Promise<IVideo[]> {
+    const cacheKey = `user_videos:${email}`;
+
+    return getCached(
+      cacheKey,
+      async () => {
+        const videos = await Video.find({ email })
+          .select("+secretKey") // Include secret key for S3 operations
+          .sort({ createdAt: -1 }); // Newest first
+        return videos as IVideo[];
+      },
+      120 // 2 minutes TTL
+    );
+  }
+
+  /**
+   * Get all videos for a user by userId
+   * Cache key: user_videos_by_id:${userId}
+   * TTL: 2 minutes (120 seconds) - videos change frequently
+   */
+  async getUserVideosByUserId(userId: string): Promise<IVideo[]> {
+    const cacheKey = `user_videos_by_id:${userId}`;
+
+    return getCached(
+      cacheKey,
+      async () => {
+        const videos = await Video.find({ userId })
+          .select("+secretKey") // Include secret key for S3 operations
+          .sort({ createdAt: -1 }); // Newest first
+        return videos as IVideo[];
+      },
+      120 // 2 minutes TTL
+    );
+  }
+
+  /**
+   * Get a specific video by videoId
+   */
+  async getVideo(videoId: string): Promise<IVideo | null> {
+    const video = await Video.findOne({ videoId }).select("+secretKey"); // Include secret key for S3 operations
+
+    return video;
+  }
+
+  /**
+   * Get a video by S3 key
+   */
+  async getVideoByS3Key(s3Key: string): Promise<IVideo | null> {
+    const video = await Video.findOne({ s3Key }).select("+secretKey"); // Include secret key for S3 operations
+
+    return video;
+  }
+
+  /**
+   * Update video status
+   */
+  async updateVideoStatus(
+    videoId: string,
+    status:
+      | typeof VIDEO_STATUS_PROCESSING
+      | typeof VIDEO_STATUS_READY
+      | typeof VIDEO_STATUS_FAILED
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { status },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after status update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Update video metadata
+   */
+  async updateVideoMetadata(
+    videoId: string,
+    metadata: Partial<VideoMetadata>
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { metadata },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after metadata update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Update video social media captions
+   */
+  async updateVideoCaptions(
+    videoId: string,
+    captions: {
+      instagram_caption?: string;
+      facebook_caption?: string;
+      linkedin_caption?: string;
+      twitter_caption?: string;
+      tiktok_caption?: string;
+      youtube_caption?: string;
+    }
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { socialMediaCaptions: captions },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after captions update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Update autoGenerated flag on a video
+   */
+  async updateVideoAutoGenerated(
+    videoId: string,
+    autoGenerated: boolean
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { autoGenerated },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after autoGenerated update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Update video title
+   */
+  async updateVideoTitle(
+    videoId: string,
+    title: string
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { title },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after title update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Update video note
+   */
+  async updateVideoNote(
+    videoId: string,
+    note: string | null
+  ): Promise<IVideo | null> {
+    const video = await Video.findOneAndUpdate(
+      { videoId },
+      { note },
+      { new: true }
+    ).select("+secretKey");
+
+    // Invalidate cache after note update
+    if (video) {
+      await invalidateCache(`user_videos:${video.email}`);
+      if (video.userId) {
+        await invalidateCache(`user_videos_by_id:${video.userId.toString()}`);
+      }
+    }
+
+    return video;
+  }
+
+  /**
+   * Delete a video (from database only, not from S3)
+   */
+  async deleteVideo(videoId: string): Promise<boolean> {
+    const video = await Video.findOne({ videoId });
+
+    if (!video) {
+      return false;
+    }
+
+    const email = video.email;
+    const userId = video.userId?.toString();
+
+    // Delete from database only (not from S3)
+    await Video.deleteOne({ videoId });
+
+    // Invalidate cache after deletion
+    await invalidateCache(`user_videos:${email}`);
+    if (userId) {
+      await invalidateCache(`user_videos_by_id:${userId}`);
+    }
+
+    return true;
+  }
+
+  /**
+   * Get video with download URL
+   */
+  async getVideoWithDownloadUrl(videoId: string): Promise<IVideo | null> {
+    const video = await Video.findOne({ videoId }).select("+secretKey");
+
+    if (!video || video.status !== VIDEO_STATUS_READY) {
+      return video;
+    }
+
+    // Generate download URL for ready videos
+    try {
+      const downloadResult = await this.s3Service.createDownloadUrl(
+        video.s3Key,
+        video.secretKey,
+        DOWNLOAD_URL_EXPIRY_SECONDS
+      );
+
+      // Add download URL to video object (not saved to database)
+      (video as any).downloadUrl = downloadResult.downloadUrl;
+    } catch (s3Error) {
+      // Continue without download URL
+    }
+
+    return video;
+  }
+
+  /**
+   * Get user videos with download URLs
+   */
+  async getUserVideosWithDownloadUrls(userId: string): Promise<IVideo[]> {
+    const videos = await Video.find({ userId })
+      .select("+secretKey")
+      .sort({ createdAt: -1 });
+
+    // Add download URLs for ready videos
+    const videosWithUrls = await Promise.all(
+      videos.map(async (video) => {
+        if (video.status === VIDEO_STATUS_READY) {
+          try {
+            const downloadResult = await this.s3Service.createDownloadUrl(
+              video.s3Key,
+              video.secretKey,
+              DOWNLOAD_URL_EXPIRY_SECONDS
+            );
+            (video as any).downloadUrl = downloadResult.downloadUrl;
+          } catch (s3Error) {
+            // Continue without download URL
+          }
+        }
+
+        // Check if captions are missing and generate them on-the-fly
+        if (
+          video.status === VIDEO_STATUS_READY &&
+          areCaptionsMissing(video.socialMediaCaptions)
+        ) {
+          try {
+            // Get user settings to retrieve language preference and user context
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
+
+            // Generate captions using the video title as topic
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
+              language
+            );
+
+            // Update the video with generated captions
+            await this.updateVideoCaptions(video.videoId, captions);
+
+            // Update the video object for this response
+            (video as any).socialMediaCaptions = captions;
+          } catch (captionError) {
+            // Continue without captions
+          }
+        } else if (
+          video.status === VIDEO_STATUS_READY &&
+          video.socialMediaCaptions &&
+          isYoutubeCaptionMissing(video.socialMediaCaptions)
+        ) {
+          // Check if youtube_caption is missing even if other captions exist
+          try {
+            // Get user settings to retrieve language preference and user context
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
+
+            // Generate captions using the video title as topic
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
+              language
+            );
+
+            // Update the video with generated captions
+            await this.updateVideoCaptions(video.videoId, captions);
+
+            // Update the video object for this response
+            (video as any).socialMediaCaptions = captions;
+          } catch (captionError) {
+            // Continue without captions
+          }
+        }
+
+        return video;
+      })
+    );
+
+    return videosWithUrls;
+  }
+
+  /**
+   * Get video by title for a specific user (by email)
+   */
+  async getVideoByTitle(email: string, title: string): Promise<IVideo | null> {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return null;
+    }
+
+    return await Video.findOne({ userId: user._id, title });
+  }
+
+  /**
+   * Get video statistics for a user
+   */
+  async getUserVideoStats(userId: string): Promise<VideoStats> {
+    const [totalCount, readyCount, processingCount, failedCount] =
+      await Promise.all([
+        Video.countDocuments({ userId }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_READY }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_PROCESSING }),
+        Video.countDocuments({ userId, status: VIDEO_STATUS_FAILED }),
+      ]);
+
+    return {
+      totalCount,
+      readyCount,
+      processingCount,
+      failedCount,
+    };
+  }
+
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string) {
+    return await User.findOne({ email });
+  }
+
+  /**
+   * Download video from external URL and upload to S3
+   */
+  async downloadAndUploadVideo(
+    videoUrl: string,
+    email: string,
+    title: string
+  ): Promise<VideoDownloadResult> {
+    const user = await User.findOne({ email });
+    if (!user) {
+      throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+    }
+
+    // Generate unique video ID
+    const videoId = generateVideoId();
+
+    // Generate title from URL or use provided title
+    const filename = extractFilenameFromUrl(videoUrl, videoId);
+    let baseTitle =
+      title ||
+      filename.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ") ||
+      DEFAULT_VIDEO_TITLE;
+
+    // Clean the title (remove special characters, trim whitespace)
+    baseTitle = cleanVideoTitle(baseTitle);
+
+    // Check for existing videos with same title and generate unique title
+    let finalTitle = baseTitle;
+    let counter = 1;
+
+    while (await this.getVideoByTitle(email, finalTitle)) {
+      finalTitle = `${baseTitle}-${counter}`;
+      counter++;
+    }
+
+    const videoResponse = await fetch(videoUrl, {
+      method: "GET",
+      headers: {
+        "User-Agent": DEFAULT_USER_AGENT,
+      },
+    });
+
+    if (!videoResponse.ok) {
+      throw new Error(
+        `${ERROR_MESSAGES.FAILED_TO_DOWNLOAD_VIDEO}: ${videoResponse.status} ${videoResponse.statusText}`
+      );
+    }
+
+    // Get video content and content type
+    const videoBuffer = await videoResponse.arrayBuffer();
+    const contentType =
+      videoResponse.headers.get("content-type") || DEFAULT_CONTENT_TYPE;
+
+    // Create S3 key and secret key
+    const s3Key = this.s3Service.generateS3Key(
+      user._id.toString(),
+      videoId,
+      filename
+    );
+    const secretKey = generateSecretKey();
+
+    await this.s3Service.uploadVideoDirectly(
+      s3Key,
+      Buffer.from(videoBuffer),
+      contentType,
+      {
+        videoId,
+        secretKey,
+        uploadedAt: new Date().toISOString(),
+      }
+    );
+
+    // Create video record in database
+    const video = await this.createVideo({
+      email,
+      title: finalTitle,
+      s3Key,
+      secretKey,
+      videoUrl,
+      status: VIDEO_STATUS_READY,
+      metadata: {
+        size: videoBuffer.byteLength,
+        format: contentType,
+      },
+    });
+
+    return {
+      videoId: video.videoId,
+      title: video.title,
+      s3Key: video.s3Key,
+      status: video.status,
+      size: videoBuffer.byteLength,
+      createdAt: video.createdAt,
+    };
+  }
+
+  /**
+   * Get all topics
+   */
+  async getAllTopics(): Promise<ITopic[]> {
+    const topics = await Topic.find().sort({ createdAt: -1 });
+    return topics;
+  }
+
+  /**
+   * Get topic by topic type
+   */
+  async getTopicByType(topic: string): Promise<ITopic[]> {
+    const topicData = await Topic.find({ topic });
+    return topicData;
+  }
+
+  /**
+   * Get topic by ID
+   */
+  async getTopicById(id: string): Promise<ITopic[]> {
+    const topicData = await Topic.find({ _id: id });
+    return topicData;
+  }
+}
+
+export default VideoService;

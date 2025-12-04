@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import AuthService from "../services/auth.service";
-import { SubscriptionService } from "../services/subscription.service";
-import { ApiResponse } from "../types";
+import { SubscriptionService } from "../services/payment";
 
 const authService = new AuthService();
 const subscriptionService = new SubscriptionService();

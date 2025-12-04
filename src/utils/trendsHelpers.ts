@@ -1,185 +1,269 @@
 /**
- * Helper functions for trends service
+ * Helper functions for trends controller and service
  */
 
+import AuthService from "../services/auth.service";
 import {
-  TrendData,
-  ContentSafetyResult,
-  CityData,
-} from "../types/services/trends.types";
+  getUserExistingVideoTitles,
+  filterExistingTrends,
+} from "./videoHelpers";
+import { Request } from "express";
 import {
   CITY_DATA,
   DEFAULT_CITY_DATA,
   REAL_ESTATE_KEYWORDS,
-  DEFAULT_KEYPOINTS,
   INAPPROPRIATE_PATTERNS,
+  CONTENT_MODERATION_KEYWORDS,
+  VALIDATION_ERROR_KEYWORDS,
   RELEVANT_MODERATION_CATEGORIES,
 } from "../constants/trends.constants";
+import { CityData, ContentSafetyResult } from "../types/services/trends.types";
 
-// ==================== JSON PARSING ====================
 /**
- * Utility to robustly extract JSON from raw text responses,
- * including handling truncated arrays/objects and malformed JSON.
+ * Filter trends by existing user videos (if authenticated)
  */
-export function extractJsonFromText(content: string): any {
-  if (!content || typeof content !== "string") {
-    throw new Error("No content to parse");
-  }
-
-  // Remove markdown fences and clean up
-  let cleaned = content
-    .replace(/```(?:json)?/gi, "")
-    .replace(/```/g, "")
-    .replace(/\n\s*\n/g, "\n") // Remove empty lines
-    .trim();
-
-  // Try to find JSON array first
-  const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    cleaned = arrayMatch[0];
-  } else {
-    // Extract only the JSON portion (between first {/[ and last }/])
-    const firstIdx = Math.min(
-      ...["{", "["].map((ch) =>
-        cleaned.indexOf(ch) === -1
-          ? Number.POSITIVE_INFINITY
-          : cleaned.indexOf(ch)
-      )
-    );
-    const lastIdx = Math.max(
-      cleaned.lastIndexOf("}"),
-      cleaned.lastIndexOf("]")
-    );
-    if (!isFinite(firstIdx) || lastIdx === -1) {
-      throw new Error("No JSON object/array found in content");
-    }
-    cleaned = cleaned.slice(firstIdx, lastIdx + 1).trim();
-  }
-
-  // Fix common JSON issues
-  let candidateFixed = cleaned
-    .replace(/,\s*(?=[}\]])/g, "") // remove trailing commas
-    .replace(/\n/g, " ") // replace newlines with spaces
-    .replace(/\s+/g, " ") // normalize whitespace
-    .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // quote unquoted keys
-    .trim();
-
+export async function filterTrendsByExistingVideos(
+  trends: any[],
+  req: Request
+): Promise<any[]> {
   try {
-    return JSON.parse(candidateFixed);
-  } catch (err) {
-    // Try parsing the original candidate first
-    try {
-      return JSON.parse(cleaned);
-    } catch (err2) {
-      // Continue with fixes
+    const authService = new AuthService();
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+
+    if (!token) {
+      return trends;
     }
 
-    // If array opened but not closed
-    if (candidateFixed.startsWith("[") && !candidateFixed.endsWith("]")) {
-      const lastCompleteObject = candidateFixed.lastIndexOf("}");
-      if (lastCompleteObject > 0) {
-        candidateFixed =
-          candidateFixed.substring(0, lastCompleteObject + 1) + "]";
-      } else {
-        candidateFixed += "]";
-      }
+    const user = await authService.getCurrentUser(token);
+    if (!user) {
+      return trends;
     }
 
-    // If object opened but not closed
-    if (candidateFixed.startsWith("{") && !candidateFixed.endsWith("}")) {
-      candidateFixed += "}";
-    }
+    // Get user's existing video titles
+    const existingTitles = await getUserExistingVideoTitles(
+      user._id.toString(),
+      user.email
+    );
 
-    try {
-      return JSON.parse(candidateFixed);
-    } catch (err2) {
-      // Try trimming to last complete object/array
-      const lastValidIdx = Math.max(
-        candidateFixed.lastIndexOf("}"),
-        candidateFixed.lastIndexOf("]")
-      );
-      if (lastValidIdx > 0) {
-        const trimmed = candidateFixed.slice(0, lastValidIdx + 1);
-        try {
-          return JSON.parse(trimmed);
-        } catch (err3) {
-          return [];
-        }
-      }
-
-      return [];
-    }
+    // Filter out trends that match existing videos
+    return filterExistingTrends(trends, existingTitles);
+  } catch (authError) {
+    // If auth fails, just return all trends (don't break the API)
+    console.warn("Could not filter trends by existing videos:", authError);
+    return trends;
   }
 }
 
-// ==================== CITY DATA UTILITIES ====================
 /**
- * Get city data by name
+ * Extract JSON from text (handles markdown code blocks and plain JSON)
  */
-export function getCityData(city: string): CityData {
-  return CITY_DATA[city] || DEFAULT_CITY_DATA;
+export function extractJsonFromText(text: string): any {
+  if (!text || typeof text !== "string") {
+    return null;
+    }
+
+  // Try to extract JSON from markdown code blocks
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch {
+      // Fall through to try other methods
+    }
+  }
+
+  // Try to find JSON object or array in the text
+  const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (jsonMatch) {
+        try {
+      return JSON.parse(jsonMatch[1]);
+    } catch {
+      // Fall through
+  }
+}
+
+  // Try parsing the entire text as JSON
+  try {
+    return JSON.parse(text.trim());
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Build city context string for prompts
  */
-export function buildCityContext(city?: string): string {
-  if (!city) return "";
-  const cityInfo = getCityData(city);
-  return ` for ${city} real estate market (${cityInfo.marketTrend}, ${cityInfo.priceRange})`;
+export function buildCityContext(city: string): string {
+  const cityData = getCityData(city);
+  if (!cityData) {
+    return "";
+  }
+
+  const contextParts: string[] = [];
+  if (cityData.neighborhoods && cityData.neighborhoods.length > 0) {
+    contextParts.push(`neighborhoods: ${cityData.neighborhoods.slice(0, 3).join(", ")}`);
+  }
+  if (cityData.priceRange) {
+    contextParts.push(`price range: ${cityData.priceRange}`);
+  }
+  if (cityData.marketTrend) {
+    contextParts.push(`market: ${cityData.marketTrend}`);
+  }
+
+  return contextParts.length > 0 ? ` for ${city} (${contextParts.join(", ")})` : ` for ${city}`;
 }
 
-// ==================== KEYPOINT VALIDATION ====================
 /**
- * Validate and ensure minimum 3 keypoints
+ * Get city data by name
+ */
+export function getCityData(city: string): CityData | null {
+  if (!city || typeof city !== "string") {
+    return null;
+}
+
+  const normalizedCity = city.trim();
+  return CITY_DATA[normalizedCity] || DEFAULT_CITY_DATA;
+}
+
+/**
+ * Ensure minimum keypoints (at least 3, comma-separated)
  */
 export function ensureMinimumKeypoints(keypoints: string): string {
-  const keypointArray = keypoints
-    .split(",")
-    .map((kp: string) => kp.trim())
-    .filter((kp: string) => kp.length > 0);
-
-  // If less than 3 keypoints, add default ones
-  if (keypointArray.length < 3) {
-    const needed = 3 - keypointArray.length;
-    for (let i = 0; i < needed; i++) {
-      keypointArray.push(DEFAULT_KEYPOINTS[i] || `Key point ${i + 1}`);
-    }
+  if (!keypoints || typeof keypoints !== "string") {
+    return "Market insights, Expert guidance, Local expertise";
   }
 
-  return keypointArray.join(", ");
+  const points = keypoints
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  if (points.length >= 3) {
+    return points.join(", ");
+  }
+
+  // Pad with default keypoints if needed
+  const defaultPoints = ["Market insights", "Expert guidance", "Local expertise"];
+  const needed = 3 - points.length;
+  const padded = [...points, ...defaultPoints.slice(0, needed)];
+
+  return padded.join(", ");
 }
 
 /**
- * Normalize keypoints from various formats
+ * Normalize keypoints string (clean up formatting)
  */
-export function normalizeKeypoints(keypoints: any): string {
-  if (Array.isArray(keypoints)) {
-    return keypoints.join(", ");
+export function normalizeKeypoints(keypoints: string): string {
+  if (!keypoints || typeof keypoints !== "string") {
+    return "";
   }
-  return keypoints || "";
+
+  return keypoints
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .join(", ");
 }
 
-// ==================== CONTENT SAFETY ====================
+/**
+ * Validate content with real estate keywords
+ */
+export function validateWithKeywords(description: string): boolean {
+  if (!description || typeof description !== "string") {
+    return false;
+  }
+
+  const lowerDescription = description.toLowerCase();
+  return REAL_ESTATE_KEYWORDS.some((keyword) =>
+    lowerDescription.includes(keyword.toLowerCase())
+  );
+}
+
+/**
+ * Check if error is a content moderation error
+ */
+export function isContentModerationError(errorMessage: string | Error): boolean {
+  const message =
+    errorMessage instanceof Error ? errorMessage.message : String(errorMessage);
+  return CONTENT_MODERATION_KEYWORDS.some((keyword) =>
+    message.toLowerCase().includes(keyword.toLowerCase())
+  );
+}
+
+/**
+ * Check if error is a validation error
+ */
+export function isValidationError(errorMessage: string | Error): boolean {
+  const message =
+    errorMessage instanceof Error ? errorMessage.message : String(errorMessage);
+  return VALIDATION_ERROR_KEYWORDS.some((keyword) =>
+    message.toLowerCase().includes(keyword.toLowerCase())
+  );
+}
+
+/**
+ * Format content moderation error response
+ */
+export function formatContentModerationError(errorMessage: string): Error {
+  const error = new Error("CONTENT_MODERATION_ERROR");
+  (error as any).details = {
+    restriction:
+      "Content must be free of racism, nudity, and vulgar language",
+    requirement:
+      "Please use professional and respectful language appropriate for a real estate platform",
+    categories: {
+      Racism:
+        "Content must not contain racist, discriminatory, or hate speech",
+      Nudity: "Content must not contain sexual or explicit content",
+      Vulgar: "Content must not contain profanity or offensive language",
+    },
+    message:
+      "Please revise your content to remove any inappropriate material and try again.",
+    originalError: errorMessage,
+  };
+  return error;
+}
+
 /**
  * Check for inappropriate content using keyword patterns
  */
 export function checkInappropriateContent(
   content: string
 ): ContentSafetyResult | null {
-  const normalizedContent = content.toLowerCase().trim();
+  if (!content || typeof content !== "string") {
+    return null;
+  }
 
-  for (const [category, patterns] of Object.entries(INAPPROPRIATE_PATTERNS)) {
-    for (const pattern of patterns) {
-      // Reset regex lastIndex to avoid issues with global regex
-      pattern.lastIndex = 0;
-      if (pattern.test(normalizedContent)) {
+  // Check for racism
+  for (const pattern of INAPPROPRIATE_PATTERNS.racism) {
+    if (pattern.test(content)) {
+      return {
+        isSafe: false,
+        category: "racism",
+        reason: "Content contains potentially racist language",
+      };
+    }
+  }
+
+  // Check for nudity
+  for (const pattern of INAPPROPRIATE_PATTERNS.nudity) {
+    if (pattern.test(content)) {
         return {
           isSafe: false,
-          reason: `Content contains inappropriate ${category} related content`,
-          category: category,
+        category: "nudity",
+        reason: "Content contains potentially explicit sexual content",
+      };
+    }
+  }
+
+  // Check for vulgar language
+  for (const pattern of INAPPROPRIATE_PATTERNS.vulgar) {
+    if (pattern.test(content)) {
+      return {
+        isSafe: false,
+        category: "vulgar",
+        reason: "Content contains potentially vulgar or offensive language",
         };
-      }
     }
   }
 
@@ -192,84 +276,20 @@ export function checkInappropriateContent(
 export function processModerationResult(
   moderationResult: any
 ): ContentSafetyResult | null {
-  if (!moderationResult?.flagged) {
+  if (!moderationResult || !moderationResult.categories) {
     return null;
   }
 
-  const categories = moderationResult.categories || {};
-  const flaggedCategories = Object.keys(categories).filter(
-    (key) => categories[key] === true
-  );
-
-  const foundCategory = flaggedCategories.find((cat) =>
-    RELEVANT_MODERATION_CATEGORIES.includes(cat)
-  );
-
-  if (foundCategory) {
-    let category = "inappropriate";
-    if (foundCategory.includes("hate")) category = "racism";
-    else if (foundCategory.includes("sexual")) category = "nudity";
-    else if (foundCategory.includes("violence")) category = "vulgar";
-
+  // Check relevant categories
+  for (const category of RELEVANT_MODERATION_CATEGORIES) {
+    if (moderationResult.categories[category] === true) {
     return {
       isSafe: false,
-      reason: `Content contains inappropriate ${category} related content`,
       category: category,
+        reason: `Content flagged by OpenAI moderation: ${category}`,
     };
+    }
   }
 
   return null;
 }
-
-// ==================== VALIDATION ====================
-/**
- * Keyword-based validation for real estate descriptions
- */
-export function validateWithKeywords(description: string): boolean {
-  const lowerDescription = description.toLowerCase();
-  return REAL_ESTATE_KEYWORDS.some((keyword) =>
-    lowerDescription.includes(keyword)
-  );
-}
-
-// ==================== ERROR HANDLING ====================
-/**
- * Check if error is a content moderation error
- */
-export function isContentModerationError(error: any): boolean {
-  const errorMessage =
-    error instanceof Error ? error.message : String(error);
-  return (
-    errorMessage.includes("CONTENT_MODERATION_ERROR") ||
-    errorMessage.includes("inappropriate") ||
-    errorMessage.includes("racism") ||
-    errorMessage.includes("nudity") ||
-    errorMessage.includes("vulgar")
-  );
-}
-
-/**
- * Check if error is a validation error
- */
-export function isValidationError(error: any): boolean {
-  const errorMessage =
-    error instanceof Error ? error.message : String(error);
-  return (
-    errorMessage.includes("not related to real estate") ||
-    errorMessage.includes("not real estate related")
-  );
-}
-
-/**
- * Format content moderation error message
- */
-export function formatContentModerationError(category?: string): string {
-  if (category === "racism") {
-    return "CONTENT_MODERATION_ERROR: Content contains racist or discriminatory language. Please use respectful and inclusive language.";
-  } else if (category === "nudity") {
-    return "CONTENT_MODERATION_ERROR: Content contains inappropriate sexual or nudity-related content. Please keep content professional and appropriate.";
-  } else {
-    return "CONTENT_MODERATION_ERROR: Content contains inappropriate vulgar or offensive language. Please use professional and respectful language.";
-  }
-}
-

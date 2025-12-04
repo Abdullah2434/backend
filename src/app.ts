@@ -2,28 +2,22 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import { json, urlencoded, raw } from "express";
+import { json, urlencoded } from "express";
 import mongoose from "mongoose";
 import { createServer } from "http";
 import routes from "./routes/index";
 import { ApiResponse } from "./types";
 import {
   apiRateLimiter,
-  videoAvatarRateLimiter,
   securityHeaders,
   validateRequest,
   sanitizeInputs,
   authenticate,
 } from "./middleware";
-import cron from "node-cron";
-import {
-  fetchAndStoreDefaultAvatars,
-  fetchAndStoreDefaultVoices,
-} from "./cron/fetchDefaultAvatars";
 import { startAvatarStatusCheckCron } from "./cron/checkAvatarStatus";
 import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
@@ -32,7 +26,6 @@ import { startElevenLabsVoicesSyncCron } from "./cron/fetchElevenLabsVoices";
 import "./queues/photoAvatarWorker";
 import { connectMongo } from "./config/mongoose";
 import { notificationService } from "./services/notification.service";
-// import { generateAndStoreTopicData } from './cron/generateTopicData'; // Removed - now using API endpoint
 
 const app = express();
 const server = createServer(app);
@@ -90,8 +83,6 @@ app.use("/api/v2/video_avatar", urlencoded({ extended: true, limit: "1gb" }));
 
 // Special middleware for video avatar endpoint to handle large files
 app.use("/api/v2/video_avatar", (req, res, next) => {
-  
-
   // Set specific headers for large file uploads
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -115,7 +106,6 @@ app.use((req, res, next) => {
     // Increase timeout for dynamic caption generation (OpenAI API calls)
     req.setTimeout(600000); // 10 minutes
     res.setTimeout(600000); // 10 minutes
-
   }
   next();
 });
@@ -170,7 +160,6 @@ app.use((req, res, next) => {
 // Rate limiting - Disable in serverless
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   app.use("/api", apiRateLimiter.middleware());
-
 }
 
 // ---------- Routes ----------
@@ -204,15 +193,13 @@ app.get("/mongo-status", async (_req, res) => {
 // Always connect before /api routes
 app.use(
   "/api",
-  async (req, res, next) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     await connectMongo();
     next();
   },
-  authenticate(),
+  authenticate() as express.RequestHandler,
   routes
 );
-
-
 
 // Start avatar status check cron job (runs every 5 minutes)
 startAvatarStatusCheckCron();
@@ -230,7 +217,6 @@ startSubscriptionSync();
 // Start ElevenLabs voices sync cron job (runs at 11:03 AM and 11:03 PM - every 12 hours)
 // Fetches voices from API, adds new ones, updates existing ones, and removes deleted ones (except cloned)
 startElevenLabsVoicesSyncCron();
-
 
 // 404
 app.use((_req, res) => {
@@ -250,8 +236,6 @@ app.use(
     res: express.Response,
     _next: express.NextFunction
   ) => {
-  
-
     const errorResponse: ApiResponse = {
       success: false,
       message: err.message || "Internal server error",

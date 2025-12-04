@@ -1,5 +1,15 @@
 import { ScheduleData } from "./types";
 import TimezoneService from "../../utils/timezone";
+import {
+  FREQUENCY_ONCE_WEEK,
+  FREQUENCY_TWICE_WEEK,
+  FREQUENCY_THREE_WEEK,
+  FREQUENCY_DAILY,
+  VALID_DAYS,
+  TIME_FORMAT_REGEX,
+  ERROR_MESSAGES,
+  MIN_SCHEDULE_BUFFER_MS,
+} from "../../constants/videoScheduleService.constants";
 
 export class VideoScheduleUtils {
   /**
@@ -10,50 +20,39 @@ export class VideoScheduleUtils {
 
     // Validate frequency-specific requirements
     switch (frequency) {
-      case "once_week":
+      case FREQUENCY_ONCE_WEEK:
         if (schedule.days.length !== 1 || schedule.times.length !== 1) {
-          throw new Error("Once a week requires exactly 1 day and 1 time");
+          throw new Error(ERROR_MESSAGES.ONCE_WEEK_REQUIREMENTS);
         }
         break;
-      case "twice_week":
+      case FREQUENCY_TWICE_WEEK:
         if (schedule.days.length !== 2 || schedule.times.length !== 2) {
-          throw new Error("Twice a week requires exactly 2 days and 2 times");
+          throw new Error(ERROR_MESSAGES.TWICE_WEEK_REQUIREMENTS);
         }
         break;
-      case "three_week":
+      case FREQUENCY_THREE_WEEK:
         if (schedule.days.length !== 3 || schedule.times.length !== 3) {
-          throw new Error(
-            "Three times a week requires exactly 3 days and 3 times"
-          );
+          throw new Error(ERROR_MESSAGES.THREE_WEEK_REQUIREMENTS);
         }
         break;
-      case "daily":
+      case FREQUENCY_DAILY:
         if (schedule.days.length !== 0 || schedule.times.length !== 1) {
-          throw new Error("Daily requires exactly 1 time and no specific days");
+          throw new Error(ERROR_MESSAGES.DAILY_REQUIREMENTS);
         }
         break;
     }
 
     // Validate time format
     schedule.times.forEach((time) => {
-      if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
-        throw new Error(`Invalid time format: ${time}. Use HH:MM format.`);
+      if (!TIME_FORMAT_REGEX.test(time)) {
+        throw new Error(`${ERROR_MESSAGES.INVALID_TIME_FORMAT}: ${time}. Use HH:MM format.`);
       }
     });
 
     // Validate days
-    const validDays = [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-      "Sunday",
-    ];
     schedule.days.forEach((day) => {
-      if (!validDays.includes(day)) {
-        throw new Error(`Invalid day: ${day}`);
+      if (!VALID_DAYS.includes(day as any)) {
+        throw new Error(`${ERROR_MESSAGES.INVALID_DAY}: ${day}`);
       }
     });
   }
@@ -75,21 +74,17 @@ export class VideoScheduleUtils {
     let numberOfVideos = 0;
 
     switch (frequency) {
-      case "once_week":
+      case FREQUENCY_ONCE_WEEK:
         numberOfVideos = weeks;
-
         break;
-      case "twice_week":
+      case FREQUENCY_TWICE_WEEK:
         numberOfVideos = weeks * 2;
-
         break;
-      case "three_week":
+      case FREQUENCY_THREE_WEEK:
         numberOfVideos = weeks * 3;
-
         break;
-      case "daily":
+      case FREQUENCY_DAILY:
         numberOfVideos = daysDiff;
-
         break;
       default:
         numberOfVideos = 1;
@@ -115,7 +110,7 @@ export class VideoScheduleUtils {
     let trendIndex = 0;
     const now = new Date();
 
-  
+   
 
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.toLocaleDateString("en-US", {
@@ -126,7 +121,7 @@ export class VideoScheduleUtils {
       let shouldSchedule = false;
       let timeIndex = 0;
 
-      if (frequency === "daily") {
+      if (frequency === FREQUENCY_DAILY) {
         shouldSchedule = true;
         timeIndex = 0;
       } else {
@@ -137,6 +132,7 @@ export class VideoScheduleUtils {
         }
       }
 
+  
       if (shouldSchedule) {
         const [hours, minutes] = schedule.times[timeIndex]
           .split(":")
@@ -144,7 +140,13 @@ export class VideoScheduleUtils {
 
         // Create the scheduled time by combining the current date with the scheduled time
         // in the user's timezone, then convert to UTC
-        const dateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+        // IMPORTANT: Get date string in user's timezone, not UTC
+        // Convert currentDate (UTC) to user's timezone first, then get the date string
+        const currentDateInUserTimezone = TimezoneService.convertFromUTC(
+          currentDate,
+          timezone
+        );
+        const dateString = currentDateInUserTimezone.split(" ")[0]; // Get YYYY-MM-DD from "YYYY-MM-DD HH:mm:ss"
         const timeString = `${hours.toString().padStart(2, "0")}:${minutes
           .toString()
           .padStart(2, "0")}:00`;
@@ -157,7 +159,8 @@ export class VideoScheduleUtils {
             : TimezoneService.ensureUTCDate(localDateTime, timezone);
 
 
-        // Edge case handling: Check if scheduled time is less than 40 minutes away
+
+        // Edge case handling: Check if scheduled time is less than minimum buffer away
         const shouldSkipDay = this.shouldSkipScheduledDay(
           finalScheduledTime,
           now,
@@ -165,6 +168,7 @@ export class VideoScheduleUtils {
           schedule.times[timeIndex]
         );
 
+    
         if (shouldSkipDay) {
           // Skip this day, move to next day
           currentDate.setDate(currentDate.getDate() + 1);
@@ -190,23 +194,26 @@ export class VideoScheduleUtils {
           !trendToUse.tiktok_caption ||
           !trendToUse.youtube_caption
         ) {
-         
           throw new Error(
-            `Trend at index ${trendIndex} is missing required fields`
+            `${ERROR_MESSAGES.TREND_MISSING_FIELDS} at index ${trendIndex}`
           );
         }
 
         scheduledTrends.push({
           ...trendToUse,
           scheduledFor: finalScheduledTime, // Use UTC time
-          status: "pending",
+          status: "pending" as const,
         });
+
+
 
         trendIndex++;
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
+
+  
 
     return scheduledTrends;
   }
@@ -240,7 +247,7 @@ export class VideoScheduleUtils {
       let shouldSchedule = false;
       let timeIndex = 0;
 
-      if (frequency === "daily") {
+      if (frequency === FREQUENCY_DAILY) {
         shouldSchedule = true;
         timeIndex = 0;
       } else {
@@ -263,8 +270,7 @@ export class VideoScheduleUtils {
 
         // Skip if the time is too close to now
         const timeDiff = finalScheduledTime.getTime() - now.getTime();
-        if (timeDiff < 40 * 60 * 1000) {
-          // Less than 40 minutes
+        if (timeDiff < MIN_SCHEDULE_BUFFER_MS) {
           currentDate.setDate(currentDate.getDate() + 1);
           continue;
         }
@@ -278,7 +284,7 @@ export class VideoScheduleUtils {
         scheduledTrends.push({
           ...trendToUse,
           scheduledFor: finalScheduledTime,
-          status: "pending",
+          status: "pending" as const,
         });
 
         trendIndex++;
@@ -304,15 +310,11 @@ export class VideoScheduleUtils {
     scheduledTimeString: string
   ): boolean {
     const timeDiff = scheduledTime.getTime() - currentTime.getTime();
-    const minutesUntilScheduled = timeDiff / (1000 * 60); // Convert to minutes
 
-
-    // Edge case: If scheduled time is less than 40 minutes away, skip this day
-    if (minutesUntilScheduled < 40) {
-
+    // Edge case: If scheduled time is less than minimum buffer away, skip this day
+    if (timeDiff < MIN_SCHEDULE_BUFFER_MS) {
       return true;
     }
-
 
     return false;
   }
@@ -323,11 +325,7 @@ export class VideoScheduleUtils {
   static getDaysUntilTargetDay(currentDay: string, targetDay: string): number {
     const daysOfWeek = [
       "Sunday",
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
+      ...VALID_DAYS,
       "Saturday",
     ];
     const currentIndex = daysOfWeek.indexOf(currentDay);

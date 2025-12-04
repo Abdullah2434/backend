@@ -3,44 +3,28 @@ import {
   generateRealEstateTrends,
   generateCityBasedTrends,
   generateFromDescription,
-} from "../services/trends.service";
+} from "../services/content";
 import { ResponseHelper } from "../utils/responseHelper";
 import {
   getCityBasedTrendsSchema,
   generateContentFromDescriptionSchema,
 } from "../validations/trends.validations";
-import AuthService from "../services/auth.service";
 import {
-  getUserExistingVideoTitles,
-  filterExistingTrends,
-} from "../utils/videoHelpers";
-
-// ==================== CONSTANTS ====================
-const DEFAULT_TREND_COUNT = 10;
-const MIN_TREND_COUNT = 1;
-const MAX_TREND_COUNT = 20;
-const SUPER_FAST_MAX_COUNT = 3;
-const FAST_MAX_COUNT = 5;
-const TEMPLATE_BASED_THRESHOLD = 5;
-
-const TOPIC_REAL_ESTATE = "real_estate";
-const LOCATION_AMERICA = "America";
-
-// Content moderation error keywords
-const CONTENT_MODERATION_KEYWORDS = [
-  "CONTENT_MODERATION_ERROR",
-  "inappropriate",
-  "racism",
-  "nudity",
-  "vulgar",
-];
-
-// Validation error keywords
-const VALIDATION_ERROR_KEYWORDS = [
-  "VALIDATION_ERROR",
-  "not related to real estate",
-  "not real estate related",
-];
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
+import { filterTrendsByExistingVideos } from "../utils/trendsHelpers";
+import {
+  MIN_TREND_COUNT,
+  MAX_TREND_COUNT,
+  SUPER_FAST_MAX_COUNT,
+  FAST_MAX_COUNT,
+  TEMPLATE_BASED_THRESHOLD,
+  TOPIC_REAL_ESTATE,
+  LOCATION_AMERICA,
+  CONTENT_MODERATION_KEYWORDS,
+  VALIDATION_ERROR_KEYWORDS,
+} from "../constants/trends.constants";
 
 // ==================== HELPER FUNCTIONS ====================
 /**
@@ -74,7 +58,7 @@ function getGenerationMethod(count: number): string {
  */
 function isContentModerationError(errorMessage: string): boolean {
   return CONTENT_MODERATION_KEYWORDS.some((keyword) =>
-    errorMessage.includes(keyword)
+    errorMessage.toLowerCase().includes(keyword.toLowerCase())
   );
 }
 
@@ -83,7 +67,7 @@ function isContentModerationError(errorMessage: string): boolean {
  */
 function isValidationError(errorMessage: string): boolean {
   return VALIDATION_ERROR_KEYWORDS.some((keyword) =>
-    errorMessage.includes(keyword)
+    errorMessage.toLowerCase().includes(keyword.toLowerCase())
   );
 }
 
@@ -176,50 +160,21 @@ function formatValidationError(errorMessage: string) {
   };
 }
 
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
 
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Get real estate trends
  * GET /api/trends/real-estate
  */
-export const getRealEstateTrends = async (req: Request, res: Response) => {
+export const getRealEstateTrends = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     const trends = await generateRealEstateTrends();
 
     // Optionally filter out trends that already have videos (if user is authenticated)
-    let filteredTrends = trends;
-    try {
-      const authService = new AuthService();
-      const token = (req.headers.authorization || "").replace("Bearer ", "");
-      
-      if (token) {
-        const user = await authService.getCurrentUser(token);
-        if (user) {
-          // Get user's existing video titles
-          const existingTitles = await getUserExistingVideoTitles(
-            user._id.toString(),
-            user.email
-          );
-          
-          // Filter out trends that match existing videos
-          filteredTrends = filterExistingTrends(trends, existingTitles);
-        }
-      }
-    } catch (authError) {
-      // If auth fails, just return all trends (don't break the API)
-      console.warn("Could not filter trends by existing videos:", authError);
-    }
+    const filteredTrends = await filterTrendsByExistingVideos(trends, req);
 
     return ResponseHelper.success(
       res,
@@ -231,14 +186,13 @@ export const getRealEstateTrends = async (req: Request, res: Response) => {
         count: filteredTrends.length,
       }
     );
-  } catch (error: any) {
-    console.error("Error in getRealEstateTrends:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Failed to generate real estate trends",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getRealEstateTrends",
+      "Failed to generate real estate trends"
+    );
   }
 };
 
@@ -246,15 +200,15 @@ export const getRealEstateTrends = async (req: Request, res: Response) => {
  * Get city-based trends
  * POST /api/trends/city-based
  */
-export const getCityBasedTrends = async (req: Request, res: Response) => {
+export const getCityBasedTrends = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
     // Validate request body
     const validationResult = getCityBasedTrendsSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -275,28 +229,7 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
     const endTime = Date.now();
 
     // Optionally filter out trends that already have videos (if user is authenticated)
-    let filteredTrends = trends;
-    try {
-      const authService = new AuthService();
-      const token = (req.headers.authorization || "").replace("Bearer ", "");
-      
-      if (token) {
-        const user = await authService.getCurrentUser(token);
-        if (user) {
-          // Get user's existing video titles
-          const existingTitles = await getUserExistingVideoTitles(
-            user._id.toString(),
-            user.email
-          );
-          
-          // Filter out trends that match existing videos
-          filteredTrends = filterExistingTrends(trends, existingTitles);
-        }
-      }
-    } catch (authError) {
-      // If auth fails, just return all trends (don't break the API)
-      console.warn("Could not filter trends by existing videos:", authError);
-    }
+    const filteredTrends = await filterTrendsByExistingVideos(trends, req);
 
     return ResponseHelper.success(
       res,
@@ -315,16 +248,15 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
         generation_method: getGenerationMethod(validCount),
       }
     );
-  } catch (error: any) {
-    console.error("Error in getCityBasedTrends:", error);
-    const status = getErrorStatus(error);
+  } catch (error) {
     const city = req.body?.city || "unknown";
     const position = req.body?.position || "unknown";
-    return res.status(status).json({
-      success: false,
-      message: `Failed to generate real estate trends for ${city} (${position})`,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    return handleControllerError(
+      error,
+      res,
+      "getCityBasedTrends",
+      `Failed to generate real estate trends for ${city} (${position})`
+    );
   }
 };
 
@@ -335,17 +267,14 @@ export const getCityBasedTrends = async (req: Request, res: Response) => {
 export const generateContentFromDescription = async (
   req: Request,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     // Validate request body
     const validationResult = generateContentFromDescriptionSchema.safeParse(
       req.body
     );
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -366,9 +295,7 @@ export const generateContentFromDescription = async (
         generation_method: "AI-generated",
       }
     );
-  } catch (error: any) {
-    console.error("Error in generateContentFromDescription:", error);
-
+  } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
 
@@ -383,11 +310,11 @@ export const generateContentFromDescription = async (
     }
 
     // Handle other errors
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: "Failed to generate content from description",
-      error: errorMessage,
-    });
+    return handleControllerError(
+      error,
+      res,
+      "generateContentFromDescription",
+      "Failed to generate content from description"
+    );
   }
 };

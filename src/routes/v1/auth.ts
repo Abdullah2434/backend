@@ -4,7 +4,8 @@ import {
   loginRateLimiter, 
   registerRateLimiter, 
   passwordResetRateLimiter,
-  authenticate
+  authenticate,
+  requireAdmin
 } from '../../middleware'
 
 const router = Router()
@@ -12,6 +13,8 @@ const router = Router()
 // PUBLIC ROUTES (no authentication required)
 router.post('/register', registerRateLimiter.middleware(), ctrl.register)
 router.post('/login', loginRateLimiter.middleware(), ctrl.login)
+router.post('/admin/login', loginRateLimiter.middleware(), ctrl.adminLogin)
+router.post('/admin/create-user', registerRateLimiter.middleware(), ctrl.createUser)
 router.post('/forgot-password', passwordResetRateLimiter.middleware(), ctrl.forgotPassword)
 router.post('/reset-password', passwordResetRateLimiter.middleware(), ctrl.resetPassword)
 router.post('/validate-reset-token', ctrl.validateResetToken)

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import WebhookService from "../services/webhook.service";
-import VideoScheduleService from "../services/videoSchedule.service";
+import { WebhookService } from "../services/webhook";
+import VideoScheduleService from "../services/videoSchedule";
 import { WebhookRequest } from "../types";
 import WorkflowHistory from "../models/WorkflowHistory";
 import { notificationService } from "../services/notification.service";
@@ -14,60 +14,37 @@ import {
   videoCompleteSchema,
   handleWorkflowErrorSchema,
 } from "../validations/webhook.validations";
-
-// ==================== CONSTANTS ====================
-const DEFAULT_WEBHOOK_URL = "https://webhook.site/test";
-const WEBHOOK_VERSION = "1.0.0";
-const USER_FRIENDLY_ERROR_MESSAGE =
-  "Video creation failed. Please try again or contact support if the issue persists.";
-
-const WEBHOOK_FEATURES = [
-  "User authentication",
-  "Signature verification",
-  "Custom payloads",
-  "Error handling",
-] as const;
+import {
+  extractAccessToken,
+  formatValidationErrors,
+  handleControllerError,
+} from "../utils/controllerHelpers";
+import {
+  DEFAULT_WEBHOOK_URL,
+  WEBHOOK_VERSION,
+  USER_FRIENDLY_ERROR_MESSAGE,
+  WEBHOOK_FEATURES,
+} from "../constants/webhook.constants";
 
 // ==================== SERVICE INSTANCE ====================
 const webhookService = new WebhookService();
 
 // ==================== HELPER FUNCTIONS ====================
-/**
- * Extract authorization token from request headers
- */
-function extractAuthToken(req: Request): string | undefined {
-  return req.headers.authorization;
-}
-
-/**
- * Determine HTTP status code based on error message
- */
-function getErrorStatus(error: Error): number {
-  const message = error.message.toLowerCase();
-
-  if (message.includes("not found")) {
-    return 404;
-  }
-  if (message.includes("invalid") || message.includes("required")) {
-    return 400;
-  }
-  return 500;
-}
 
 // ==================== CONTROLLER FUNCTIONS ====================
 /**
  * Custom webhook endpoint for video avatar notifications
  * POST /v2/webhook/avatar
  */
-export async function avatarWebhook(req: Request, res: Response) {
+export async function avatarWebhook(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = avatarWebhookSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -89,7 +66,7 @@ export async function avatarWebhook(req: Request, res: Response) {
     };
 
     // Get user token from headers
-    const userToken = extractAuthToken(req);
+    const userToken = extractAccessToken(req) || undefined;
 
     // Process webhook with user authentication
     const result = await webhookService.processWebhookWithAuth(
@@ -98,14 +75,18 @@ export async function avatarWebhook(req: Request, res: Response) {
       userToken
     );
 
-    return ResponseHelper.success(res, "Webhook processed successfully", result);
-  } catch (error: any) {
-    console.error("Error in avatarWebhook:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+    return ResponseHelper.success(
+      res,
+      "Webhook processed successfully",
+      result
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "avatarWebhook",
+      "Internal server error"
+    );
   }
 }
 
@@ -113,15 +94,15 @@ export async function avatarWebhook(req: Request, res: Response) {
  * Test webhook endpoint
  * POST /v2/webhook/test
  */
-export async function testWebhook(req: Request, res: Response) {
+export async function testWebhook(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = testWebhookSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -147,14 +128,18 @@ export async function testWebhook(req: Request, res: Response) {
       captions,
     });
 
-    return ResponseHelper.success(res, "Test webhook processed successfully", result);
-  } catch (error: any) {
-    console.error("Error in testWebhook:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+    return ResponseHelper.success(
+      res,
+      "Test webhook processed successfully",
+      result
+    );
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "testWebhook",
+      "Internal server error"
+    );
   }
 }
 
@@ -162,15 +147,15 @@ export async function testWebhook(req: Request, res: Response) {
  * Scheduled video complete webhook
  * POST /v2/webhook/scheduled-video-complete
  */
-export async function scheduledVideoComplete(req: Request, res: Response) {
+export async function scheduledVideoComplete(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = scheduledVideoCompleteSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -202,13 +187,13 @@ export async function scheduledVideoComplete(req: Request, res: Response) {
       "Scheduled video complete webhook processed successfully",
       result
     );
-  } catch (error: any) {
-    console.error("Error in scheduledVideoComplete:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "scheduledVideoComplete",
+      "Internal server error"
+    );
   }
 }
 
@@ -216,15 +201,15 @@ export async function scheduledVideoComplete(req: Request, res: Response) {
  * Verify webhook signature
  * POST /v2/webhook/verify
  */
-export async function verifyWebhook(req: Request, res: Response) {
+export async function verifyWebhook(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = verifyWebhookSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -237,13 +222,13 @@ export async function verifyWebhook(req: Request, res: Response) {
       isValid ? "Signature is valid" : "Signature is invalid",
       { isValid }
     );
-  } catch (error: any) {
-    console.error("Error in verifyWebhook:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "verifyWebhook",
+      "Internal server error"
+    );
   }
 }
 
@@ -251,24 +236,23 @@ export async function verifyWebhook(req: Request, res: Response) {
  * Get webhook status
  * GET /v2/webhook/status
  */
-export async function getWebhookStatus(req: Request, res: Response) {
+export async function getWebhookStatus(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
-    return ResponseHelper.success(
-      res,
-      "Webhook service is operational",
-      {
-        timestamp: new Date().toISOString(),
-        version: WEBHOOK_VERSION,
-        features: WEBHOOK_FEATURES,
-      }
-    );
-  } catch (error: any) {
-    console.error("Error in getWebhookStatus:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
+    return ResponseHelper.success(res, "Webhook service is operational", {
+      timestamp: new Date().toISOString(),
+      version: WEBHOOK_VERSION,
+      features: WEBHOOK_FEATURES,
     });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "getWebhookStatus",
+      "Internal server error"
+    );
   }
 }
 
@@ -276,15 +260,15 @@ export async function getWebhookStatus(req: Request, res: Response) {
  * Caption complete webhook
  * POST /webhook/caption-complete
  */
-export async function captionComplete(req: Request, res: Response) {
+export async function captionComplete(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = captionCompleteSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -302,13 +286,13 @@ export async function captionComplete(req: Request, res: Response) {
       "Caption complete webhook processed successfully",
       result
     );
-  } catch (error: any) {
-    console.error("Error in captionComplete:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "captionComplete",
+      "Internal server error"
+    );
   }
 }
 
@@ -316,15 +300,15 @@ export async function captionComplete(req: Request, res: Response) {
  * Video complete webhook (legacy function for v1 compatibility)
  * POST /webhook/video-complete
  */
-export async function videoComplete(req: Request, res: Response) {
+export async function videoComplete(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = videoCompleteSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -355,13 +339,13 @@ export async function videoComplete(req: Request, res: Response) {
       "Video complete webhook processed successfully",
       result
     );
-  } catch (error: any) {
-    console.error("Error in videoComplete:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
-    });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "videoComplete",
+      "Internal server error"
+    );
   }
 }
 
@@ -369,15 +353,15 @@ export async function videoComplete(req: Request, res: Response) {
  * Handle workflow error (legacy function for v1 compatibility)
  * POST /webhook/workflow-error
  */
-export async function handleWorkflowError(req: Request, res: Response) {
+export async function handleWorkflowError(
+  req: Request,
+  res: Response
+): Promise<Response> {
   try {
     // Validate request body
     const validationResult = handleWorkflowErrorSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errors = validationResult.error.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-      }));
+      const errors = formatValidationErrors(validationResult.error);
       return ResponseHelper.badRequest(res, "Validation failed", errors);
     }
 
@@ -432,23 +416,19 @@ export async function handleWorkflowError(req: Request, res: Response) {
       }
     );
 
-    return ResponseHelper.success(
-      res,
-      "Error notification sent successfully",
-      {
-        executionId,
-        email: workflowHistory.email,
-        originalError: errorMessage,
-        userMessage: USER_FRIENDLY_ERROR_MESSAGE,
-        timestamp: new Date().toISOString(),
-      }
-    );
-  } catch (error: any) {
-    console.error("Error in handleWorkflowError:", error);
-    const status = getErrorStatus(error);
-    return res.status(status).json({
-      success: false,
-      message: error.message || "Internal server error",
+    return ResponseHelper.success(res, "Error notification sent successfully", {
+      executionId,
+      email: workflowHistory.email,
+      originalError: errorMessage,
+      userMessage: USER_FRIENDLY_ERROR_MESSAGE,
+      timestamp: new Date().toISOString(),
     });
+  } catch (error) {
+    return handleControllerError(
+      error,
+      res,
+      "handleWorkflowError",
+      "Internal server error"
+    );
   }
 }

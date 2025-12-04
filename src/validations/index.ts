@@ -3,6 +3,8 @@
  * Export all validation schemas from a single entry point for easier imports
  */
 
+export * from "./contact.validations";
+export * from "./dynamicPost.validations";
 export * from "./elevenLabs.validations";
 export * from "./energyProfile.validations";
 export * from "./music.validations";

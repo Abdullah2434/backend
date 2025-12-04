@@ -45,12 +45,10 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
       ref: "User",
       required: true,
       unique: true,
-      index: true,
     },
     email: {
       type: String,
       required: true,
-      index: true,
       trim: true,
     },
     prompt: {
@@ -181,7 +179,7 @@ const userVideoSettingsSchema = new Schema<IUserVideoSettings>(
 );
 
 // Indexes for better performance
-userVideoSettingsSchema.index({ userId: 1 });
+// Note: userId already has an index from unique: true
 userVideoSettingsSchema.index({ email: 1 });
 
 export default mongoose.models.UserVideoSettings ||

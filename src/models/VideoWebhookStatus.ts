@@ -19,9 +19,9 @@ export interface IVideoWebhookStatus extends Document {
 
 const VideoWebhookStatusSchema = new Schema<IVideoWebhookStatus>(
   {
-    videoId: { type: String, required: true, unique: true, index: true },
-    email: { type: String, required: true, index: true },
-    title: { type: String, required: true, index: true },
+    videoId: { type: String, required: true, unique: true },
+    email: { type: String, required: true },
+    title: { type: String, required: true },
     videoWebhookCompleted: { type: Boolean, default: false },
     captionWebhookCompleted: { type: Boolean, default: false },
     allWebhooksCompleted: { type: Boolean, default: false },
@@ -33,7 +33,7 @@ const VideoWebhookStatusSchema = new Schema<IVideoWebhookStatus>(
 );
 
 // Index for efficient querying
-VideoWebhookStatusSchema.index({ videoId: 1 });
+// Note: videoId already has an index from unique: true
 VideoWebhookStatusSchema.index({ email: 1, title: 1 });
 VideoWebhookStatusSchema.index({ allWebhooksCompleted: 1 });
 

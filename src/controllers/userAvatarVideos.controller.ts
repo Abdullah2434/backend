@@ -1,0 +1,271 @@
+import { Response } from "express";
+import multer from "multer";
+import fs from "fs";
+import { UserAvatarVideosService } from "../services/user/userAvatarVideos.service";
+import { ResponseHelper } from "../utils/responseHelper";
+import { AuthenticatedRequest } from "../types";
+import { uploadAvatarVideosSchema } from "../validations/userAvatarVideos.validations";
+import {
+  formatValidationErrors,
+  handleControllerError,
+  getUserIdFromRequest,
+} from "../utils/controllerHelpers";
+
+// ==================== CONSTANTS ====================
+const TEMP_DIR = "/tmp/";
+const MAX_FILE_SIZE = 1000 * 1024 * 1024; // 1GB
+const MAX_FIELD_SIZE = 1000 * 1024 * 1024; // 1GB
+const MAX_FILES = 2;
+const MAX_FIELDS = 10;
+
+// ==================== SERVICE INSTANCE ====================
+const userAvatarVideosService = new UserAvatarVideosService();
+
+// ==================== MULTER CONFIGURATION ====================
+// Configure multer for file uploads with streaming to avoid memory issues
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, TEMP_DIR);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, file.fieldname + "-" + uniqueSuffix);
+    },
+  }),
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    fieldSize: MAX_FIELD_SIZE,
+    files: MAX_FILES,
+    fields: MAX_FIELDS,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only video files are allowed") as any);
+    }
+  },
+});
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Clean up temporary files
+ */
+function cleanupTempFiles(files: (Express.Multer.File | undefined)[]): void {
+  files.forEach((file) => {
+    if (file?.path && fs.existsSync(file.path)) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch (error) {
+        console.warn(`Failed to clean up temp file ${file.path}:`, error);
+      }
+    }
+  });
+}
+
+/**
+ * Validate file is not empty
+ */
+function validateFileNotEmpty(
+  file: Express.Multer.File | undefined,
+  fieldName: string
+): void {
+  if (file && (!file.path || file.size === 0)) {
+    throw new Error(`Empty ${fieldName} file`);
+  }
+}
+
+// ==================== MULTER MIDDLEWARE ====================
+/**
+ * Multer middleware for handling file uploads
+ */
+export const uploadAvatarVideosMiddleware = (req: any, res: any, next: any) => {
+  const mw = upload.fields([
+    { name: "consentVideo", maxCount: 1 },
+    { name: "trainingVideo", maxCount: 1 },
+  ]);
+  mw(req, res, (err: any) => {
+    if (err) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload error",
+        error: String(err),
+      });
+    }
+    next();
+  });
+};
+
+// ==================== CONTROLLER FUNCTIONS ====================
+
+/**
+ * Upload Avatar Videos
+ * POST /api/v1/user/avatar-videos
+ */
+export async function uploadAvatarVideos(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
+  let consentVideoFile: Express.Multer.File | undefined;
+  let trainingVideoFile: Express.Multer.File | undefined;
+
+  try {
+    // Get user ID from authenticated request
+    const userId = getUserIdFromRequest(req);
+
+    // Get files from multer
+    const rawFiles: any = (req as any).files || {};
+    consentVideoFile =
+      (rawFiles?.consentVideo?.[0] as Express.Multer.File) || undefined;
+    trainingVideoFile =
+      (rawFiles?.trainingVideo?.[0] as Express.Multer.File) || undefined;
+
+    // Validate at least one file is provided
+    if (!consentVideoFile && !trainingVideoFile) {
+      return ResponseHelper.badRequest(
+        res,
+        "At least one video file (consentVideo or trainingVideo) is required"
+      );
+    }
+
+    // Validate files are not empty
+    if (consentVideoFile) {
+      validateFileNotEmpty(consentVideoFile, "consentVideo");
+    }
+    if (trainingVideoFile) {
+      validateFileNotEmpty(trainingVideoFile, "trainingVideo");
+    }
+
+    // Validate request body
+    const validationResult = uploadAvatarVideosSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errors = formatValidationErrors(validationResult.error);
+      cleanupTempFiles([consentVideoFile, trainingVideoFile]);
+      return ResponseHelper.badRequest(res, "Validation failed", errors);
+    }
+
+    const { isAvatarCreated } = validationResult.data;
+
+    // Upload videos to Google Drive and save to database
+    const record = await userAvatarVideosService.uploadAvatarVideos(
+      userId,
+      {
+        consentVideo: consentVideoFile,
+        trainingVideo: trainingVideoFile,
+      },
+      isAvatarCreated
+    );
+
+    // Clean up temporary files after successful upload
+    cleanupTempFiles([consentVideoFile, trainingVideoFile]);
+
+    return ResponseHelper.success(
+      res,
+      "Avatar videos uploaded successfully",
+      {
+        id: record._id.toString(),
+        userId: record.userId.toString(),
+        consentVideoDriveId: record.consentVideoDriveId || null,
+        trainingVideoDriveId: record.trainingVideoDriveId || null,
+        isAvatarCreated: record.isAvatarCreated,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      }
+    );
+  } catch (error: any) {
+    // Clean up temporary files on error
+    cleanupTempFiles([consentVideoFile, trainingVideoFile]);
+    return handleControllerError(
+      error,
+      res,
+      "uploadAvatarVideos",
+      "Failed to upload avatar videos"
+    );
+  }
+}
+
+/**
+ * Get All User Avatar Videos
+ * GET /api/v1/user/avatar-videos
+ */
+export async function getUserAvatarVideos(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
+  try {
+    const userId = getUserIdFromRequest(req);
+
+    const records = await userAvatarVideosService.getUserAvatarVideos(userId);
+
+    return ResponseHelper.success(
+      res,
+      "Avatar videos retrieved successfully",
+      records.map((record) => ({
+        id: record._id.toString(),
+        userId: record.userId.toString(),
+        consentVideoDriveId: record.consentVideoDriveId || null,
+        trainingVideoDriveId: record.trainingVideoDriveId || null,
+        isAvatarCreated: record.isAvatarCreated,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      }))
+    );
+  } catch (error: any) {
+    return handleControllerError(
+      error,
+      res,
+      "getUserAvatarVideos",
+      "Failed to retrieve avatar videos"
+    );
+  }
+}
+
+/**
+ * Get Specific User Avatar Video by ID
+ * GET /api/v1/user/avatar-videos/:id
+ */
+export async function getUserAvatarVideoById(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<Response> {
+  try {
+    const userId = getUserIdFromRequest(req);
+    const { id } = req.params;
+
+    if (!id) {
+      return ResponseHelper.badRequest(res, "Record ID is required");
+    }
+
+    const record = await userAvatarVideosService.getUserAvatarVideoById(
+      userId,
+      id
+    );
+
+    if (!record) {
+      return ResponseHelper.notFound(
+        res,
+        "Avatar video record not found or access denied"
+      );
+    }
+
+    return ResponseHelper.success(res, "Avatar video retrieved successfully", {
+      id: record._id.toString(),
+      userId: record.userId.toString(),
+      consentVideoDriveId: record.consentVideoDriveId || null,
+      trainingVideoDriveId: record.trainingVideoDriveId || null,
+      isAvatarCreated: record.isAvatarCreated,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    });
+  } catch (error: any) {
+    return handleControllerError(
+      error,
+      res,
+      "getUserAvatarVideoById",
+      "Failed to retrieve avatar video"
+    );
+  }
+}
+
