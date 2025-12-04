@@ -1,5 +1,10 @@
+// Load environment variables first
+import dotenv from "dotenv";
+dotenv.config();
+
 import cron from "node-cron";
 import WorkflowHistory from "../models/WorkflowHistory";
+import { connectMongo } from "../config/mongoose";
 import CronMonitoringService from "../services/cronMonitoring.service";
 import {
   executeWithOverallTimeout,
@@ -25,24 +30,61 @@ export async function markStaleWorkflowsAsFailed(): Promise<{
   const config = getCronConfig(CRON_JOB_NAME);
 
   try {
-    // Calculate cutoff time: 40 minutes ago (UTC)
-    const cutoffTime = new Date(Date.now() - 40 * 60 * 1000);
+    // Connect to MongoDB
+    await connectMongo();
 
-    console.log(
-      `🔍 Checking for stale workflow histories older than ${cutoffTime.toISOString()}`
+    // Get current UTC time
+    const currentUtcTime = new Date();
+    const currentTimeMs = currentUtcTime.getTime();
+
+    // Threshold: 40 minutes in milliseconds
+    const thresholdMs = 40 * 60 * 1000; // 40 minutes = 2,400,000 ms
+
+    // Calculate cutoff time: currentTime - 40 minutes
+    // Logic: If createdAt < cutoffTime, then (currentTime - createdAt) > 40 minutes
+    const cutoffTime = new Date(currentTimeMs - thresholdMs);
+
+    // Find stale pending workflows first to log details
+    // Query: status="pending" AND createdAt < cutoffTime
+    // This means: (currentTime - createdAt) > 40 minutes
+    const staleWorkflows = await withDatabaseTimeout(
+      WorkflowHistory.find({
+        status: "pending",
+        createdAt: { $lt: cutoffTime }, // createdAt < (currentTime - 40min) means age > 40min
+      })
+        .select("executionId createdAt status")
+        .lean(),
+      config.databaseTimeoutMs
     );
 
-    // Find and update stale pending workflows with database timeout
+    if (staleWorkflows.length > 0) {
+     
+      staleWorkflows.forEach((workflow: any) => {
+        const createdAtMs = new Date(workflow.createdAt).getTime();
+        const ageMs = currentTimeMs - createdAtMs; // currentTime - createdAt
+        const ageMinutes = Math.floor(ageMs / (60 * 1000));
+        const ageSeconds = Math.floor((ageMs % (60 * 1000)) / 1000);
+        const exceedsThreshold = ageMs > thresholdMs;
+
+    
+      });
+    }
+
+    // Update stale pending workflows with database timeout
+    // Query: status="pending" AND createdAt < cutoffTime
+    // This means: (currentTime - createdAt) > 40 minutes
+    const errorMessage = "Video processing timeout - exceeded 40 minutes";
     const updateResult = await withDatabaseTimeout(
       WorkflowHistory.updateMany(
         {
           status: "pending",
-          createdAt: { $lt: cutoffTime },
+          createdAt: { $lt: cutoffTime }, // createdAt < (currentTime - 40min) means (currentTime - createdAt) > 40min
         },
         {
           $set: {
             status: "failed",
-            failedAt: new Date(),
+            completedAt: currentUtcTime,
+            errorMessage: errorMessage,
           },
         }
       ),
@@ -103,7 +145,10 @@ export function startWorkflowHistoryTimeoutCron() {
         `❌ Workflow history timeout cron job failed after ${duration}ms:`,
         error?.message || "Unknown error"
       );
-      cronMonitor.markJobFailed(CRON_JOB_NAME, error?.message || "Unknown error");
+      cronMonitor.markJobFailed(
+        CRON_JOB_NAME,
+        error?.message || "Unknown error"
+      );
     }
   });
 
@@ -124,4 +169,3 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
