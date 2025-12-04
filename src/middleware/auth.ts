@@ -24,8 +24,18 @@ const AUTH_ROUTES = {
     "/video/track-execution",
     "/video/mute",
     "/video/download",
+    "/video/create",
+    "/api/video/create",
+    "/video/generate-video",
+    "/api/video/generate-video",
+    "/elevenlabs/text-to-speech",
+    "/api/elevenlabs/text-to-speech",
     "/webhook/workflow-error",
     "/api/webhook/workflow-error",
+    // Also check without /api prefix since middleware is applied to /api routes
+    "/video/create",
+    "/video/generate-video",
+    "/elevenlabs/text-to-speech",
     "/socialbu/login",
     "/socialbu/save-token",
     "/socialbu/test",
@@ -71,10 +81,25 @@ const AUTH_ROUTES = {
 
 /**
  * Check if route requires authentication
+ * Note: Public routes are checked first in authenticate(), so this only applies to non-public routes
  */
 export function requiresAuth(pathname: string): boolean {
+  // Don't require auth if it's a public route (double-check)
+  if (isPublicRoute(pathname)) {
+    return false;
+  }
+  
   return (
-    AUTH_ROUTES.PROTECTED.some((route) => pathname.startsWith(route)) ||
+    AUTH_ROUTES.PROTECTED.some((route) => {
+      // For generic routes like "/video", exclude public video routes
+      if (route === "/video") {
+        const publicVideoRoutes = ["/video/create", "/video/generate-video", "/video/mute", "/video/download", "/video/track-execution"];
+        if (publicVideoRoutes.some(publicRoute => pathname.startsWith(publicRoute))) {
+          return false;
+        }
+      }
+      return pathname.startsWith(route);
+    }) ||
     AUTH_ROUTES.VIDEO.some((route) => pathname.startsWith(route))
   );
 }
@@ -83,7 +108,18 @@ export function requiresAuth(pathname: string): boolean {
  * Check if route is public
  */
 export function isPublicRoute(pathname: string): boolean {
-  return AUTH_ROUTES.PUBLIC.some((route) => pathname.startsWith(route));
+  // Check exact matches first, then startsWith
+  return AUTH_ROUTES.PUBLIC.some((route) => {
+    // Exact match
+    if (pathname === route) return true;
+    // Starts with match (for paths like /api/video/create matching /video/create)
+    if (pathname.startsWith(route)) return true;
+    // Also check without /api prefix (since middleware is on /api routes)
+    if (pathname.startsWith("/api" + route)) return true;
+    // Check if route without /api matches path without /api
+    if (route.startsWith("/api") && pathname.startsWith(route.substring(4))) return true;
+    return false;
+  });
 }
 
 /**

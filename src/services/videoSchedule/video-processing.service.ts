@@ -75,18 +75,13 @@ export class VideoScheduleProcessing {
     const trend = schedule.generatedTrends[trendIndex];
     if (!trend) throw new Error(ERROR_MESSAGES.TREND_NOT_FOUND);
 
-    // ⚠️ CRITICAL: Check if video is already processing or completed to prevent duplicate processing
+    // ⚠️ CRITICAL: Check if video is already processing or x to prevent duplicate processing
     if (trend.status === STATUS_PROCESSING) {
       throw new Error(ERROR_MESSAGES.VIDEO_ALREADY_PROCESSING);
     }
 
     if (trend.status === STATUS_COMPLETED) {
       throw new Error(ERROR_MESSAGES.VIDEO_ALREADY_COMPLETED);
-    }
-
-    // Only process if status is "pending"
-    if (trend.status !== STATUS_PENDING) {
-      throw new Error(`${ERROR_MESSAGES.CANNOT_PROCESS_STATUS}: ${trend.status}. ${ERROR_MESSAGES.EXPECTED_PENDING}`);
     }
 
     // Set status to processing atomically (prevents race conditions and duplicate processing)
@@ -135,9 +130,9 @@ export class VideoScheduleProcessing {
       );
       if (!videoLimit.canCreate) {
         // Update trend status to failed with detailed error message
-        const errorMessage = `${ERROR_MESSAGES.VIDEO_LIMIT_REACHED}. You have used ${
-          videoLimit.limit - videoLimit.remaining
-        } out of ${
+        const errorMessage = `${
+          ERROR_MESSAGES.VIDEO_LIMIT_REACHED
+        }. You have used ${videoLimit.limit - videoLimit.remaining} out of ${
           videoLimit.limit
         } videos this month. Your subscription will renew monthly.`;
         schedule.generatedTrends[trendIndex].status = STATUS_FAILED;
@@ -262,7 +257,6 @@ export class VideoScheduleProcessing {
         scheduleId: scheduleId,
         trendIndex: trendIndex,
       };
-     
 
       let enhancedContent: any;
       try {
@@ -270,7 +264,10 @@ export class VideoScheduleProcessing {
           videoCreationData
         );
       } catch (err: any) {
-        throw new Error(`${ERROR_MESSAGES.CREATE_VIDEO_API_FAILED}: ${err.message}`);
+
+        throw new Error(
+          `${ERROR_MESSAGES.CREATE_VIDEO_API_FAILED}: ${err.message}`
+        );
       }
 
       await new Promise((r) => setTimeout(r, API_CALL_DELAY_MS));
@@ -342,7 +339,9 @@ export class VideoScheduleProcessing {
       try {
         await VideoScheduleAPICalls.callGenerateVideoAPI(videoGenerationData);
       } catch (err: any) {
-        throw new Error(`${ERROR_MESSAGES.GENERATE_VIDEO_API_FAILED}: ${err.message}`);
+        throw new Error(
+          `${ERROR_MESSAGES.GENERATE_VIDEO_API_FAILED}: ${err.message}`
+        );
       }
 
       notificationService.notifyScheduledVideoProgress(
@@ -391,7 +390,9 @@ export class VideoScheduleProcessing {
     }
 
     if (schedule.generatedTrends[trendIndex]) {
-      schedule.generatedTrends[trendIndex].status = status as typeof STATUS_COMPLETED | typeof STATUS_FAILED;
+      schedule.generatedTrends[trendIndex].status = status as
+        | typeof STATUS_COMPLETED
+        | typeof STATUS_FAILED;
       if (videoId) {
         schedule.generatedTrends[trendIndex].videoId = videoId;
       }
