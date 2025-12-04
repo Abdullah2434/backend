@@ -6,6 +6,7 @@ export interface IWorkflowHistory extends Document {
   email: string;
   status: 'pending' | 'completed' | 'failed';
   completedAt?: Date;
+  failedAt?: Date;
   errorMessage?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -40,11 +41,18 @@ const WorkflowHistorySchema = new Schema<IWorkflowHistory>({
     type: Date,
     index: true
   },
+  failedAt: {
+    type: Date,
+    index: true
+  },
   errorMessage: {
     type: String
   }
 }, {
   timestamps: true
 });
+
+// Create compound index for efficient queries (status + createdAt)
+WorkflowHistorySchema.index({ status: 1, createdAt: 1 });
 
 export default mongoose.model<IWorkflowHistory>('WorkflowHistory', WorkflowHistorySchema);

@@ -23,6 +23,7 @@ import { startAllCronJobs } from "./cron/processScheduledVideos";
 import { startSubscriptionSync } from "./cron/syncSubscriptions";
 import { startHeyGenAvatarSyncCron } from "./cron/syncHeyGenAvatars";
 import { startElevenLabsVoicesSyncCron } from "./cron/fetchElevenLabsVoices";
+import { startWorkflowHistoryTimeoutCron } from "./cron/workflowHistoryTimeout";
 import "./queues/photoAvatarWorker";
 import { connectMongo } from "./config/mongoose";
 import { notificationService } from "./services/notification.service";
@@ -217,6 +218,10 @@ startSubscriptionSync();
 // Start ElevenLabs voices sync cron job (runs at 11:03 AM and 11:03 PM - every 12 hours)
 // Fetches voices from API, adds new ones, updates existing ones, and removes deleted ones (except cloned)
 startElevenLabsVoicesSyncCron();
+
+// Start workflow history timeout cron job (runs every 7 minutes)
+// Marks pending workflow histories older than 40 minutes as failed
+startWorkflowHistoryTimeoutCron();
 
 // 404
 app.use((_req, res) => {

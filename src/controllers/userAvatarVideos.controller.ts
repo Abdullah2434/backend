@@ -10,6 +10,8 @@ import {
   handleControllerError,
   getUserIdFromRequest,
 } from "../utils/controllerHelpers";
+import { sendAvatarVideoUploadNotification } from "../services/email.service";
+import User from "../models/User";
 
 // ==================== CONSTANTS ====================
 const TEMP_DIR = "/tmp/";
@@ -157,6 +159,55 @@ export async function uploadAvatarVideos(
       },
       isAvatarCreated
     );
+
+    // Generate preview links for email notification
+    let consentVideoPreviewLink: string | null = null;
+    let trainingVideoPreviewLink: string | null = null;
+
+    if (record.consentVideoDriveId) {
+      try {
+        consentVideoPreviewLink = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.consentVideoDriveId
+        );
+      } catch (error) {
+        console.error("Error generating consent video preview link:", error);
+      }
+    }
+
+    if (record.trainingVideoDriveId) {
+      try {
+        trainingVideoPreviewLink = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.trainingVideoDriveId
+        );
+      } catch (error) {
+        console.error("Error generating training video preview link:", error);
+      }
+    }
+
+    // Get user information for email
+    let userName: string = userId; // Default to userId if user not found
+    try {
+      const user = await User.findById(userId).select("firstName lastName");
+      if (user) {
+        userName = `${user.firstName} ${user.lastName}`.trim() || userId;
+      }
+    } catch (error) {
+      console.error("Error fetching user information:", error);
+    }
+
+    // Send email notification to admin
+    try {
+      await sendAvatarVideoUploadNotification(
+        "Shawheendn@gmail.com",
+        userId,
+        userName,
+        consentVideoPreviewLink,
+        trainingVideoPreviewLink
+      );
+    } catch (emailError) {
+      // Log error but don't fail the request if email fails
+      console.error("Failed to send avatar video upload notification email:", emailError);
+    }
 
     // Clean up temporary files after successful upload
     cleanupTempFiles([consentVideoFile, trainingVideoFile]);

@@ -22,6 +22,7 @@ const AUTH_ROUTES = {
     "/auth/google",
     "/auth/csrf-token",
     "/video/track-execution",
+    "/video/mute",
     "/webhook/workflow-error",
     "/socialbu/login",
     "/socialbu/save-token",

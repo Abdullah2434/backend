@@ -93,6 +93,15 @@ export const CRON_CONFIGS: Record<string, CronJobConfig> = {
     retryInitialDelayMs: 2000, // 2 seconds
     delayBetweenBatchesMs: 2000,
   },
+  "workflow-history-timeout": {
+    overallTimeoutMs: 5 * 60 * 1000, // 5 minutes
+    apiTimeoutMs: 60000, // 60 seconds (not used but required)
+    databaseTimeoutMs: 30000, // 30 seconds
+    batchSize: undefined, // No batching needed
+    maxRetries: 2,
+    retryInitialDelayMs: 1000, // 1 second
+    delayBetweenBatchesMs: 1000,
+  },
 };
 
 /**

@@ -20,7 +20,6 @@ export class EmailService {
 
     if (emailUser && emailPass) {
       try {
-    
         this.transporter = nodemailer.createTransport({
           host: emailHost,
           port: emailPort,
@@ -34,11 +33,9 @@ export class EmailService {
           },
         });
       } catch (error) {
-    
         this.transporter = null;
       }
     } else {
-     
     }
   }
 
@@ -99,7 +96,6 @@ export class EmailService {
   async send(to: string, subject: string, html: string): Promise<void> {
     if (!this.transporter) {
       if (this.isDevelopment) {
-
         return;
       }
       throw new Error("Email service not configured");
@@ -492,4 +488,104 @@ export async function sendContactFormConfirmation(
   `;
 
   await emailService.send(userEmail, "Thank you for contacting us", content);
+}
+
+export async function sendAvatarVideoUploadNotification(
+  adminEmail: string,
+  userId: string,
+  userName: string,
+  consentVideoPreviewLink?: string | null,
+  trainingVideoPreviewLink?: string | null
+) {
+  const content = `
+    <div style="text-align: center; margin-bottom: 32px;">
+      <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        New Avatar Video Upload 🎬
+      </h2>
+      <p style="color: #6b7280; margin: 0; font-size: 16px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        A user has uploaded avatar videos to Google Drive. Please review the videos using the links below.
+      </p>
+    </div>
+    
+    <div style="background-color: #f8fafc; padding: 24px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #5046E5;">
+      <h3 style="color: #1f2937; margin: 0 0 16px 0; font-size: 18px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Upload Details:
+      </h3>
+      <div style="color: #4b5563; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <p style="margin: 8px 0;"><strong>User Name:</strong> ${userName}</p>
+        <p style="margin: 8px 0;"><strong>User ID:</strong> ${userId}</p>
+        <p style="margin: 8px 0;"><strong>Upload Time:</strong> ${new Date().toLocaleString()}</p>
+      </div>
+    </div>
+    
+    ${
+      consentVideoPreviewLink
+        ? `
+    <div style="background-color: #f0fdf4; padding: 24px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #22c55e;">
+      <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 18px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        📹 Consent Video
+      </h3>
+      <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Click the link below to preview the consent video on Google Drive.
+      </p>
+      <div style="text-align: center; margin: 16px 0;">
+        <a href="${consentVideoPreviewLink}" style="display: inline-block; background-color: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.2s;">
+          View Consent Video
+        </a>
+      </div>
+      <p style="color: #6b7280; font-size: 12px; margin: 12px 0 0 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; word-break: break-all;">
+        <strong>Link:</strong> <a href="${consentVideoPreviewLink}" style="color: #5046E5;">${consentVideoPreviewLink}</a>
+      </p>
+    </div>
+    `
+        : ""
+    }
+    
+    ${
+      trainingVideoPreviewLink
+        ? `
+    <div style="background-color: #f0f9ff; padding: 24px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #0ea5e9;">
+      <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 18px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        🎥 Training Video
+      </h3>
+      <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Click the link below to preview the training video on Google Drive.
+      </p>
+      <div style="text-align: center; margin: 16px 0;">
+        <a href="${trainingVideoPreviewLink}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.2s;">
+          View Training Video
+        </a>
+      </div>
+      <p style="color: #6b7280; font-size: 12px; margin: 12px 0 0 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; word-break: break-all;">
+        <strong>Link:</strong> <a href="${trainingVideoPreviewLink}" style="color: #5046E5;">${trainingVideoPreviewLink}</a>
+      </p>
+    </div>
+    `
+        : ""
+    }
+    
+    ${
+      !consentVideoPreviewLink && !trainingVideoPreviewLink
+        ? `
+    <div style="background-color: #fef3c7; padding: 16px; border-radius: 6px; margin: 24px 0; border-left: 4px solid #f59e0b;">
+      <p style="color: #92400e; margin: 0; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <strong>Note:</strong> No video preview links are available at this time.
+      </p>
+    </div>
+    `
+        : ""
+    }
+    
+    <div style="background-color: #f8fafc; padding: 16px; border-radius: 6px; margin: 24px 0; border-left: 4px solid #5046E5;">
+      <p style="color: #4b5563; margin: 0; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <strong>Next Steps:</strong> Review the videos and process them as needed through the admin dashboard.
+      </p>
+    </div>
+  `;
+
+  await emailService.send(
+    adminEmail,
+    `New Avatar Video Upload - User ID: ${userId}`,
+    content
+  );
 }
