@@ -1,5 +1,6 @@
 import { ScheduleData } from "./types";
 import TimezoneService from "../../utils/timezone";
+import moment from "moment-timezone";
 import {
   FREQUENCY_ONCE_WEEK,
   FREQUENCY_TWICE_WEEK,
@@ -106,16 +107,31 @@ export class VideoScheduleUtils {
     const scheduledTrends = [];
     const { frequency, schedule, timezone } = scheduleData;
 
-    let currentDate = new Date(startDate);
+    // Convert startDate (UTC) to user's timezone to get the correct date
+    // This ensures we start from the correct day in the user's timezone
+    const startDateInUserTimezone = TimezoneService.convertFromUTC(
+      startDate,
+      timezone
+    );
+    const startDateString = startDateInUserTimezone.split(" ")[0]; // Get YYYY-MM-DD
+    
+    // Create currentDate from the start date string at midnight in user's timezone, then convert to UTC
+    // This ensures we're working with the correct date in user's timezone
+    const startDateTimeInUserTz = `${startDateString} 00:00:00`;
+    let currentDate = timezone === "UTC" 
+      ? new Date(`${startDateString}T00:00:00Z`)
+      : TimezoneService.ensureUTCDate(startDateTimeInUserTz, timezone);
+    
     let trendIndex = 0;
     const now = new Date();
 
-   
-
     while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.toLocaleDateString("en-US", {
-        weekday: "long",
-      });
+      // Get day of week in user's timezone (not UTC)
+      const currentDateInUserTz = TimezoneService.convertFromUTC(
+        currentDate,
+        timezone
+      );
+      const dayOfWeek = moment.tz(currentDate, timezone).format("dddd");
 
       // Check if this day should have a video
       let shouldSchedule = false;
