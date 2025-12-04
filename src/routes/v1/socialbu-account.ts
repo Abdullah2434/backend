@@ -8,7 +8,7 @@ import { authenticate } from '../../middleware/auth';
 const router = Router();
 
 // Account management routes
-router.delete('/:accountId', authenticate, disconnectAccount); // Disconnect account by ID
-router.get('/:accountId/check', authenticate, checkAccount); // Check if user has account
+router.delete('/:accountId', authenticate as any, disconnectAccount as any); // Disconnect account by ID
+router.get('/:accountId/check', authenticate as any, checkAccount as any); // Check if user has account
 
 export default router;

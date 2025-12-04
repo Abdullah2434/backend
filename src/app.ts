@@ -2,7 +2,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -193,11 +193,11 @@ app.get("/mongo-status", async (_req, res) => {
 // Always connect before /api routes
 app.use(
   "/api",
-  async (req, res, next) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     await connectMongo();
     next();
   },
-  authenticate(),
+  authenticate() as express.RequestHandler,
   routes
 );
 

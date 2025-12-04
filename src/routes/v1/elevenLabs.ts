@@ -28,11 +28,11 @@ const upload = multer({
   },
 });
 
-router.get("/voices", getVoices);
-router.get("/voices/:voice_id", getVoiceById);
-router.post("/text-to-speech", textToSpeech);
-router.post("/sync-voices", syncVoices);
-router.post("/voices/add", upload.array("files") as any, addCustomVoiceEndpoint);
+router.get("/voices", getVoices as any);
+router.get("/voices/:voice_id", getVoiceById as any);
+router.post("/text-to-speech", textToSpeech as any);
+router.post("/sync-voices", syncVoices as any);
+router.post("/voices/add", upload.array("files") as any, addCustomVoiceEndpoint as any);
 
 export default router;
 

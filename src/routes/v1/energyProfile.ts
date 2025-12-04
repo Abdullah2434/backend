@@ -9,9 +9,9 @@ import {
 const router = Router();
 
 // All routes require authentication
-router.post("/preset", setPresetProfile);
-router.post("/custom", setCustomVoiceMusic);
-router.get("/current", getCurrentProfile);
-router.get("/presets", getPresetConfigurations);
+router.post("/preset", setPresetProfile as any);
+router.post("/custom", setCustomVoiceMusic as any);
+router.get("/current", getCurrentProfile as any);
+router.get("/presets", getPresetConfigurations as any);
 
 export default router;
