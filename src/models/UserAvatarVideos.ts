@@ -3,8 +3,8 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IUserAvatarVideos extends Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
-  consentVideoDriveId?: string;
-  trainingVideoDriveId?: string;
+  consentVideoS3Key?: string;
+  trainingVideoS3Key?: string;
   isAvatarCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -18,11 +18,11 @@ const userAvatarVideosSchema = new Schema<IUserAvatarVideos>(
       required: true,
       index: true,
     },
-    consentVideoDriveId: {
+    consentVideoS3Key: {
       type: String,
       trim: true,
     },
-    trainingVideoDriveId: {
+    trainingVideoS3Key: {
       type: String,
       trim: true,
     },

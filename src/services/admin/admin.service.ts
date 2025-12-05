@@ -39,10 +39,10 @@ export interface UserAvatarVideoWithDownloadUrls {
     lastName: string;
     email: string;
   };
-  consentVideoDriveId?: string;
+  consentVideoS3Key?: string;
   consentVideoDownloadUrl?: string | null;
   consentVideoPreviewUrl?: string | null;
-  trainingVideoDriveId?: string;
+  trainingVideoS3Key?: string;
   trainingVideoDownloadUrl?: string | null;
   trainingVideoPreviewUrl?: string | null;
   isAvatarCreated: boolean;
@@ -174,27 +174,27 @@ export class AdminService {
       const user = userMap.get(userId);
 
       // Generate download URLs and preview URLs for both videos
-      const consentVideoDownloadUrl = videoAny.consentVideoDriveId
+      const consentVideoDownloadUrl = videoAny.consentVideoS3Key
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            videoAny.consentVideoDriveId
+            videoAny.consentVideoS3Key
           )
         : null;
 
-      const consentVideoPreviewUrl = videoAny.consentVideoDriveId
+      const consentVideoPreviewUrl = videoAny.consentVideoS3Key
         ? await this.userAvatarVideosService.generateAdminPreviewUrl(
-            videoAny.consentVideoDriveId
+            videoAny.consentVideoS3Key
           )
         : null;
 
-      const trainingVideoDownloadUrl = videoAny.trainingVideoDriveId
+      const trainingVideoDownloadUrl = videoAny.trainingVideoS3Key
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            videoAny.trainingVideoDriveId
+            videoAny.trainingVideoS3Key
           )
         : null;
 
-      const trainingVideoPreviewUrl = videoAny.trainingVideoDriveId
+      const trainingVideoPreviewUrl = videoAny.trainingVideoS3Key
         ? await this.userAvatarVideosService.generateAdminPreviewUrl(
-            videoAny.trainingVideoDriveId
+            videoAny.trainingVideoS3Key
           )
         : null;
 
@@ -206,10 +206,10 @@ export class AdminService {
           lastName: user?.lastName || "",
           email: user?.email || "",
         },
-        consentVideoDriveId: videoAny.consentVideoDriveId,
+        consentVideoS3Key: videoAny.consentVideoS3Key,
         consentVideoDownloadUrl,
         consentVideoPreviewUrl,
-        trainingVideoDriveId: videoAny.trainingVideoDriveId,
+        trainingVideoS3Key: videoAny.trainingVideoS3Key,
         trainingVideoDownloadUrl,
         trainingVideoPreviewUrl,
         isAvatarCreated: videoAny.isAvatarCreated,
@@ -244,27 +244,27 @@ export class AdminService {
     for (const video of avatarVideos) {
       const videoAny = video as any;
       // Generate download URLs and preview URLs for both videos
-      const consentVideoDownloadUrl = videoAny.consentVideoDriveId
+      const consentVideoDownloadUrl = videoAny.consentVideoS3Key
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            videoAny.consentVideoDriveId
+            videoAny.consentVideoS3Key
           )
         : null;
 
-      const consentVideoPreviewUrl = videoAny.consentVideoDriveId
+      const consentVideoPreviewUrl = videoAny.consentVideoS3Key
         ? await this.userAvatarVideosService.generateAdminPreviewUrl(
-            videoAny.consentVideoDriveId
+            videoAny.consentVideoS3Key
           )
         : null;
 
-      const trainingVideoDownloadUrl = videoAny.trainingVideoDriveId
+      const trainingVideoDownloadUrl = videoAny.trainingVideoS3Key
         ? await this.userAvatarVideosService.generateAdminDownloadUrl(
-            videoAny.trainingVideoDriveId
+            videoAny.trainingVideoS3Key
           )
         : null;
 
-      const trainingVideoPreviewUrl = videoAny.trainingVideoDriveId
+      const trainingVideoPreviewUrl = videoAny.trainingVideoS3Key
         ? await this.userAvatarVideosService.generateAdminPreviewUrl(
-            videoAny.trainingVideoDriveId
+            videoAny.trainingVideoS3Key
           )
         : null;
 
@@ -276,10 +276,10 @@ export class AdminService {
           lastName: user.lastName,
           email: user.email,
         },
-        consentVideoDriveId: videoAny.consentVideoDriveId,
+        consentVideoS3Key: videoAny.consentVideoS3Key,
         consentVideoDownloadUrl,
         consentVideoPreviewUrl,
-        trainingVideoDriveId: videoAny.trainingVideoDriveId,
+        trainingVideoS3Key: videoAny.trainingVideoS3Key,
         trainingVideoDownloadUrl,
         trainingVideoPreviewUrl,
         isAvatarCreated: videoAny.isAvatarCreated,

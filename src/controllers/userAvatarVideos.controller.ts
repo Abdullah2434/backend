@@ -150,7 +150,7 @@ export async function uploadAvatarVideos(
 
     const { isAvatarCreated } = validationResult.data;
 
-    // Upload videos to Google Drive and save to database
+    // Upload videos to S3 and save to database
     const record = await userAvatarVideosService.uploadAvatarVideos(
       userId,
       {
@@ -164,20 +164,20 @@ export async function uploadAvatarVideos(
     let consentVideoPreviewLink: string | null = null;
     let trainingVideoPreviewLink: string | null = null;
 
-    if (record.consentVideoDriveId) {
+    if (record.consentVideoS3Key) {
       try {
         consentVideoPreviewLink = await userAvatarVideosService.generateAdminPreviewUrl(
-          record.consentVideoDriveId
+          record.consentVideoS3Key
         );
       } catch (error) {
         console.error("Error generating consent video preview link:", error);
       }
     }
 
-    if (record.trainingVideoDriveId) {
+    if (record.trainingVideoS3Key) {
       try {
         trainingVideoPreviewLink = await userAvatarVideosService.generateAdminPreviewUrl(
-          record.trainingVideoDriveId
+          record.trainingVideoS3Key
         );
       } catch (error) {
         console.error("Error generating training video preview link:", error);
@@ -212,14 +212,40 @@ export async function uploadAvatarVideos(
     // Clean up temporary files after successful upload
     cleanupTempFiles([consentVideoFile, trainingVideoFile]);
 
+    // Generate signed URLs for response
+    let consentVideoUrl: string | null = null;
+    let trainingVideoUrl: string | null = null;
+
+    if (record.consentVideoS3Key) {
+      try {
+        consentVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.consentVideoS3Key
+        );
+      } catch (error) {
+        console.error("Error generating consent video URL:", error);
+      }
+    }
+
+    if (record.trainingVideoS3Key) {
+      try {
+        trainingVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.trainingVideoS3Key
+        );
+      } catch (error) {
+        console.error("Error generating training video URL:", error);
+      }
+    }
+
     return ResponseHelper.success(
       res,
       "Avatar videos uploaded successfully",
       {
         id: record._id.toString(),
         userId: record.userId.toString(),
-        consentVideoDriveId: record.consentVideoDriveId || null,
-        trainingVideoDriveId: record.trainingVideoDriveId || null,
+        consentVideoS3Key: record.consentVideoS3Key || null,
+        trainingVideoS3Key: record.trainingVideoS3Key || null,
+        consentVideoUrl,
+        trainingVideoUrl,
         isAvatarCreated: record.isAvatarCreated,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -250,18 +276,50 @@ export async function getUserAvatarVideos(
 
     const records = await userAvatarVideosService.getUserAvatarVideos(userId);
 
+    // Generate signed URLs for each record
+    const recordsWithUrls = await Promise.all(
+      records.map(async (record) => {
+        let consentVideoUrl: string | null = null;
+        let trainingVideoUrl: string | null = null;
+
+        if (record.consentVideoS3Key) {
+          try {
+            consentVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+              record.consentVideoS3Key
+            );
+          } catch (error) {
+            console.error("Error generating consent video URL:", error);
+          }
+        }
+
+        if (record.trainingVideoS3Key) {
+          try {
+            trainingVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+              record.trainingVideoS3Key
+            );
+          } catch (error) {
+            console.error("Error generating training video URL:", error);
+          }
+        }
+
+        return {
+          id: record._id.toString(),
+          userId: record.userId.toString(),
+          consentVideoS3Key: record.consentVideoS3Key || null,
+          trainingVideoS3Key: record.trainingVideoS3Key || null,
+          consentVideoUrl,
+          trainingVideoUrl,
+          isAvatarCreated: record.isAvatarCreated,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+        };
+      })
+    );
+
     return ResponseHelper.success(
       res,
       "Avatar videos retrieved successfully",
-      records.map((record) => ({
-        id: record._id.toString(),
-        userId: record.userId.toString(),
-        consentVideoDriveId: record.consentVideoDriveId || null,
-        trainingVideoDriveId: record.trainingVideoDriveId || null,
-        isAvatarCreated: record.isAvatarCreated,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-      }))
+      recordsWithUrls
     );
   } catch (error: any) {
     return handleControllerError(
@@ -301,11 +359,37 @@ export async function getUserAvatarVideoById(
       );
     }
 
+    // Generate signed URLs for response
+    let consentVideoUrl: string | null = null;
+    let trainingVideoUrl: string | null = null;
+
+    if (record.consentVideoS3Key) {
+      try {
+        consentVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.consentVideoS3Key
+        );
+      } catch (error) {
+        console.error("Error generating consent video URL:", error);
+      }
+    }
+
+    if (record.trainingVideoS3Key) {
+      try {
+        trainingVideoUrl = await userAvatarVideosService.generateAdminPreviewUrl(
+          record.trainingVideoS3Key
+        );
+      } catch (error) {
+        console.error("Error generating training video URL:", error);
+      }
+    }
+
     return ResponseHelper.success(res, "Avatar video retrieved successfully", {
       id: record._id.toString(),
       userId: record.userId.toString(),
-      consentVideoDriveId: record.consentVideoDriveId || null,
-      trainingVideoDriveId: record.trainingVideoDriveId || null,
+      consentVideoS3Key: record.consentVideoS3Key || null,
+      trainingVideoS3Key: record.trainingVideoS3Key || null,
+      consentVideoUrl,
+      trainingVideoUrl,
       isAvatarCreated: record.isAvatarCreated,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,

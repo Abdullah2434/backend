@@ -503,7 +503,7 @@ export async function sendAvatarVideoUploadNotification(
         New Avatar Video Upload 🎬
       </h2>
       <p style="color: #6b7280; margin: 0; font-size: 16px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        A user has uploaded avatar videos to Google Drive. Please review the videos using the links below.
+        A user has uploaded avatar videos to S3. Please review the videos using the links below.
       </p>
     </div>
     
@@ -526,7 +526,7 @@ export async function sendAvatarVideoUploadNotification(
         📹 Consent Video
       </h3>
       <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        Click the link below to preview the consent video on Google Drive.
+        Click the link below to preview the consent video (S3 signed URL).
       </p>
       <div style="text-align: center; margin: 16px 0;">
         <a href="${consentVideoPreviewLink}" style="display: inline-block; background-color: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.2s;">
@@ -549,7 +549,7 @@ export async function sendAvatarVideoUploadNotification(
         🎥 Training Video
       </h3>
       <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        Click the link below to preview the training video on Google Drive.
+        Click the link below to preview the training video (S3 signed URL).
       </p>
       <div style="text-align: center; margin: 16px 0;">
         <a href="${trainingVideoPreviewLink}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.2s;">
