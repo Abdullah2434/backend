@@ -378,6 +378,7 @@ export function buildPostsRequestBody(requestData: {
   account_id?: number;
   limit?: number;
   offset?: number;
+  page?: number;
 }): Record<string, any> {
   const body: Record<string, any> = {};
 
@@ -398,6 +399,10 @@ export function buildPostsRequestBody(requestData: {
 
   if (requestData.offset) {
     body.offset = requestData.offset;
+  }
+
+  if (requestData.page) {
+    body.page = requestData.page;
   }
 
   return body;

@@ -118,12 +118,18 @@ class SocialBuService {
 
       const url = `${SOCIALBU_API_BASE_URL}${endpoint}`;
 
-      const config = {
+      const config: any = {
         method,
         url,
         headers: buildAuthHeaders(token),
-        ...(data && { data }),
       };
+
+      // For GET requests, use params (query string), for others use data (body)
+      if (method === 'GET' && data) {
+        config.params = data;
+      } else if (data) {
+        config.data = data;
+      }
 
       const response: AxiosResponse<T> = await axios(config);
 
