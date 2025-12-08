@@ -126,6 +126,11 @@ export const rateLimitConfigs = {
     message:
       "Too many video avatar creation requests. Please wait before creating another avatar.",
   },
+  otpVerification: {
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 10, // 10 OTP verification attempts per 5 minutes
+    message: "Too many OTP verification attempts. Please try again in 5 minutes.",
+  },
 };
 
 // Create rate limiters
@@ -135,6 +140,9 @@ export const registerRateLimiter = new ServerRateLimiter(
 );
 export const passwordResetRateLimiter = new ServerRateLimiter(
   rateLimitConfigs.passwordReset
+);
+export const otpVerificationRateLimiter = new ServerRateLimiter(
+  rateLimitConfigs.otpVerification
 );
 export const generalAuthRateLimiter = new ServerRateLimiter(
   rateLimitConfigs.general
