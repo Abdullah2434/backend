@@ -347,7 +347,110 @@ export async function sendResendVerificationEmail(
 
   await emailService.send(email, `New EdgeAI Verification Link`, content);
 }
+export async function sendOTPEmail(
+  email: string,
+  otp: string,
+  firstName?: string
+) {
+  const name = firstName ? ` ${firstName}` : "";
 
+  const content = `
+    <div style="text-align: center; margin-bottom: 32px;">
+      <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Welcome to EdgeAI${name}!
+      </h2>
+      <p style="color: #6b7280; margin: 0; font-size: 16px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Thank you for joining our AI-powered video creation platform. Please verify your email address using the OTP code below.
+      </p>
+    </div>
+    
+    <div style="background-color: #f8fafc; padding: 32px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #5046E5; text-align: center;">
+      <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; font-weight: 500; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-transform: uppercase; letter-spacing: 1px;">
+        Your Verification Code
+      </p>
+      <div style="background-color: #ffffff; border: 2px solid #5046E5; border-radius: 8px; padding: 24px; display: inline-block; margin: 16px 0;">
+        <p style="color: #1f2937; margin: 0; font-size: 36px; font-weight: 700; font-family: 'Courier New', monospace; letter-spacing: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          ${otp}
+        </p>
+      </div>
+      <p style="color: #6b7280; margin: 16px 0 0 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Enter this code in the app to verify your email address.
+      </p>
+    </div>
+    
+    <div style="background-color: #fef3c7; padding: 16px; border-radius: 6px; margin: 24px 0; border-left: 4px solid #f59e0b;">
+      <p style="color: #92400e; margin: 0; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <strong>Security Note:</strong> This verification code will expire in 10 minutes. If you didn't create an account with EdgeAI, please ignore this email.
+      </p>
+    </div>
+    
+    <div style="background-color: #f8fafc; padding: 24px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #5046E5;">
+      <h3 style="color: #1f2937; margin: 0 0 12px 0; font-size: 18px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Next Steps:
+      </h3>
+      <ol style="color: #4b5563; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <li>Enter the verification code in the app</li>
+        <li>Complete your profile setup</li>
+        <li>Start creating amazing AI videos</li>
+      </ol>
+    </div>
+  `;
+
+  await emailService.send(email, `Verify Your EdgeAI Account - OTP Code`, content);
+}
+
+export async function sendPasswordResetOTPEmail(
+  email: string,
+  otp: string,
+  firstName?: string
+) {
+  const name = firstName ? ` ${firstName}` : "";
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 32px;">
+      <h2 style="color: #1f2937; margin: 0 0 16px 0; font-size: 24px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Password Reset Request${name}
+      </h2>
+      <p style="color: #6b7280; margin: 0; font-size: 16px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        We received a request to reset your password for your EdgeAI account. Please use the OTP code below to verify your identity and reset your password.
+      </p>
+    </div>
+    
+    <div style="background-color: #f8fafc; padding: 32px; border-radius: 8px; margin: 24px 0; border-left: 4px solid #5046E5; text-align: center;">
+      <p style="color: #4b5563; margin: 0 0 16px 0; font-size: 14px; font-weight: 500; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-transform: uppercase; letter-spacing: 1px;">
+        Your Password Reset Code
+      </p>
+      <div style="background-color: #ffffff; border: 2px solid #5046E5; border-radius: 8px; padding: 24px; display: inline-block; margin: 16px 0;">
+        <p style="color: #1f2937; margin: 0; font-size: 36px; font-weight: 700; font-family: 'Courier New', monospace; letter-spacing: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          ${otp}
+        </p>
+      </div>
+      <p style="color: #6b7280; margin: 16px 0 0 0; font-size: 14px; line-height: 1.6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Enter this code in the app to reset your password.
+      </p>
+    </div>
+    
+    <div style="background-color: #fef2f2; padding: 16px; border-radius: 6px; margin: 24px 0; border-left: 4px solid #ef4444;">
+      <p style="color: #dc2626; margin: 0; font-size: 14px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <strong>Security Alert:</strong> This password reset code will expire in 10 minutes for your security. If you didn't request this password reset, please ignore this email and your password will remain unchanged.
+      </p>
+    </div>
+    
+    <div style="background-color: #f0f9ff; padding: 16px; border-radius: 6px; margin: 24px 0; border-left: 4px solid #0ea5e9;">
+      <h4 style="color: #0c4a6e; margin: 0 0 8px 0; font-size: 14px; font-weight: 600; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        Password Security Tips:
+      </h4>
+      <ul style="color: #0369a1; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <li>Use a combination of letters, numbers, and symbols</li>
+        <li>Make it at least 8 characters long</li>
+        <li>Avoid using personal information</li>
+        <li>Don't reuse passwords from other accounts</li>
+      </ul>
+    </div>
+  `;
+
+  await emailService.send(email, `Reset Your EdgeAI Password - OTP Code`, content);
+}
 // Additional professional email templates
 export async function sendAvatarReadyNotification(
   email: string,

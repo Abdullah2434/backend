@@ -4,6 +4,7 @@ import {
   loginRateLimiter, 
   registerRateLimiter, 
   passwordResetRateLimiter,
+  otpVerificationRateLimiter,
   authenticate,
   requireAdmin
 } from '../../middleware'
@@ -17,9 +18,12 @@ router.post('/admin/login', loginRateLimiter.middleware(), ctrl.adminLogin)
 router.post('/admin/create-user', registerRateLimiter.middleware(), ctrl.createUser)
 router.post('/forgot-password', passwordResetRateLimiter.middleware(), ctrl.forgotPassword)
 router.post('/reset-password', passwordResetRateLimiter.middleware(), ctrl.resetPassword)
+router.post('/verify-password-reset-otp', otpVerificationRateLimiter.middleware(), ctrl.verifyPasswordResetOtp)
+router.post('/reset-password-with-otp', passwordResetRateLimiter.middleware(), ctrl.resetPasswordWithOtp)
 router.post('/validate-reset-token', ctrl.validateResetToken)
 router.post('/debug-password-hash', ctrl.debugPasswordHash)
 router.get('/verify-email', ctrl.verifyEmail)
+router.post('/verify-otp', otpVerificationRateLimiter.middleware(), ctrl.verifyOtp)
 router.post('/resend-verification', ctrl.resendVerification)
 router.get('/check-email', ctrl.checkEmail)
 router.post('/check-email-verification', ctrl.checkEmailVerification)

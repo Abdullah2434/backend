@@ -23,7 +23,7 @@ export class SocialBuPostsService {
   async getUserPosts(
     token: string,
     requestData: GetPostsRequest = {}
-  ): Promise<SocialBuApiResponse<SocialBuPost[]>> {
+  ): Promise<SocialBuApiResponse<any>> {
     try {
       const authService = new (await import("../../services/auth.service")).default();
 
@@ -53,32 +53,95 @@ export class SocialBuPostsService {
         }
       }
 
-      // Build request body for SocialBu API
-      const requestBody = buildPostsRequestBody(requestData);
-
-      // Get posts from SocialBu API
-      const postsResult = await socialBuService.makeAuthenticatedRequest(
+      // Build base request body for SocialBu API (without page)
+      const baseRequestBody = buildPostsRequestBody(requestData);
+      
+      // Fetch first page to get pagination info
+      console.log('=== Fetching Posts - Page 1 ===');
+      const firstPageResult = await socialBuService.makeAuthenticatedRequest(
         'GET',
         POSTS_ENDPOINT,
-        requestBody
+        { ...baseRequestBody, page: 1 }
       );
+      
+      console.log('First page result:', {
+        success: firstPageResult.success,
+        hasData: !!firstPageResult.data,
+      });
 
-      if (!postsResult.success || !postsResult.data) {
+      if (!firstPageResult.success || !firstPageResult.data) {
         return {
           success: false,
-          message: postsResult.message || ERROR_MESSAGES.FAILED_TO_GET_POSTS,
-          error: postsResult.error
+          message: firstPageResult.message || ERROR_MESSAGES.FAILED_TO_GET_POSTS,
+          error: firstPageResult.error
         };
       }
 
-      // Extract posts data from API response
-      const postsData = extractPostsData(postsResult.data);
+      // Extract pagination info from first page
+      const firstPageData = firstPageResult.data;
+      const lastPage = firstPageData?.lastPage || 1;
+      const currentPage = firstPageData?.currentPage || 1;
+      const totalFromSocialBu = firstPageData?.total || 0;
+
+      console.log('Pagination Info:', {
+        currentPage,
+        lastPage,
+        totalFromSocialBu,
+      });
+
+      // Extract posts from first page
+      let allPosts = extractPostsData(firstPageData);
+      console.log(`Page 1: Fetched ${allPosts.length} posts`);
+
+      // Fetch remaining pages if there are more
+      if (lastPage > 1) {
+        console.log(`=== Fetching remaining pages (2 to ${lastPage}) ===`);
+        const pagePromises: Promise<any>[] = [];
+
+        // Fetch all remaining pages in parallel
+        for (let page = 2; page <= lastPage; page++) {
+          pagePromises.push(
+            socialBuService.makeAuthenticatedRequest(
+              'GET',
+              POSTS_ENDPOINT,
+              { ...baseRequestBody, page }
+            ).then((result) => {
+              if (result.success && result.data) {
+                const pagePosts = extractPostsData(result.data);
+                console.log(`Page ${page}: Fetched ${pagePosts.length} posts`);
+                return pagePosts;
+              }
+              console.warn(`Page ${page}: Failed to fetch - ${result.message}`);
+              return [];
+            }).catch((error) => {
+              console.error(`Page ${page}: Error -`, error.message);
+              return [];
+            })
+          );
+        }
+
+        // Wait for all pages to be fetched
+        const remainingPagesResults = await Promise.all(pagePromises);
+        
+        // Combine all posts from all pages
+        remainingPagesResults.forEach((pagePosts, index) => {
+          allPosts = [...allPosts, ...pagePosts];
+        });
+
+        console.log(`=== All Pages Fetched ===`);
+        console.log(`Total posts from all pages: ${allPosts.length}`);
+      }
 
       // Filter posts that belong to this user's connected accounts
       const userAccountIds = user.socialbu_account_ids || [];
-      const userPosts = postsData.filter((post: any) =>
+      console.log('User Account IDs:', userAccountIds);
+      console.log('Filtering posts by user account IDs...');
+      
+      const userPosts = allPosts.filter((post: any) =>
         userAccountIds.includes(Number(post.account_id))
       );
+
+      console.log(`Filtered posts: ${userPosts.length} out of ${allPosts.length} total posts`);
 
       // Add account details to posts
       const postsWithAccountDetails = addAccountDetailsToPosts(
@@ -90,12 +153,22 @@ export class SocialBuPostsService {
       // Prepare user data for response
       const userData = buildUserDataForResponse(user);
 
-      // Build response data with pagination info
-      const responseData = buildUserPostsResponseData(
-        userData,
-        postsWithAccountDetails,
-        postsResult.data
-      );
+      // Build response data with aggregated pagination info
+      const responseData = {
+        user: userData,
+        posts: postsWithAccountDetails,
+        total: postsWithAccountDetails.length,
+        currentPage: 1, // Since we aggregated all pages, show as page 1
+        lastPage: 1, // Since we aggregated all pages, show as single page
+        nextPage: null, // No next page since we fetched all
+        totalFromSocialBu: totalFromSocialBu, // Total from SocialBu API
+        pagesFetched: lastPage, // Number of pages we actually fetched
+        totalPostsBeforeFilter: allPosts.length, // Total posts before filtering by user accounts
+      };
+
+      console.log('=== Final Response ===');
+      console.log(`Total filtered posts: ${responseData.total}`);
+      console.log(`Pages fetched: ${responseData.pagesFetched}`);
 
       return {
         success: true,
@@ -103,7 +176,8 @@ export class SocialBuPostsService {
         data: responseData,
       };
     } catch (error) {
-
+      console.error('=== Error in getUserPosts ===');
+      console.error('Error:', error);
       return {
         success: false,
         message: ERROR_MESSAGES.FAILED_TO_RETRIEVE_USER_POSTS,
