@@ -19,6 +19,7 @@ import {
   buildCaptionPrompt,
   generateFallbackCaptions,
 } from "../../utils/captionGenerationHelpers";
+import { truncateSocialMediaCaptions } from "../../utils/captionTruncationHelpers";
 
 // Re-export for backward compatibility
 export type { SocialMediaCaptions, UserContext };
@@ -80,7 +81,10 @@ export class CaptionGenerationService {
       // Validate captions using helper function
       validateCaptions(cleanedCaptions);
 
-      return cleanedCaptions;
+      // Truncate captions to platform-specific limits
+      const truncatedCaptions = truncateSocialMediaCaptions(cleanedCaptions);
+
+      return truncatedCaptions as SocialMediaCaptions;
     } catch (error: any) {
       // Return fallback captions on error
       return generateFallbackCaptions(topic, keyPoints);

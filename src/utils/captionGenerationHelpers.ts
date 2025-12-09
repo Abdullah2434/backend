@@ -122,12 +122,14 @@ CRITICAL: Do NOT use separate sections like [HASHTAGS] or [CONCLUSION]. Everythi
 IMPORTANT: Do NOT include quotation marks ("") in your captions. Write clean, natural text without any quotation marks.
 
 PLATFORM SPECIFICATIONS:
-- Instagram (max 2200 chars): Visual storytelling, use line breaks, include 10-15 hashtags, multiple emojis
-- Facebook (max 63206 chars): Detailed storytelling, community engagement, include 15-20 hashtags, emojis
+- Instagram (max 2000 chars): Visual storytelling, use line breaks, include 10-15 hashtags, multiple emojis
+- Facebook (max 5000 chars): Detailed storytelling, community engagement, include 15-20 hashtags, emojis
 - LinkedIn (max 3000 chars): Professional tone, industry insights, include 8-12 hashtags, minimal emojis
 - Twitter (max 280 chars): Concise, punchy, include 3-5 hashtags, 1-2 emojis
-- TikTok (max 150 chars): Catchy, trendy, include 5-8 hashtags, multiple emojis
+- TikTok (max 2200 chars): Catchy, trendy, include 5-8 hashtags, multiple emojis
 - YouTube (max 5000 chars): SEO-optimized, detailed description, include 15-20 hashtags, emojis
+
+CRITICAL: Each caption MUST NOT exceed its platform's character limit. Generate content within the limit. Count characters carefully to ensure compliance.
 
 FORMAT YOUR RESPONSE AS JSON:
 {

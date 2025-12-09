@@ -85,9 +85,30 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
       });
     }
 
-    const videosWithUrls = await videoService.getUserVideosWithDownloadUrls(
-      user._id.toString()
+    // Extract and validate query parameters
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10)) || 1;
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(String(req.query.limit || "6"), 10)) || 6
     );
+    const sortParam = String(req.query.sort || "newest").toLowerCase();
+    const sort: "oldest" | "newest" | "all" =
+      sortParam === "oldest" || sortParam === "newest" || sortParam === "all"
+        ? sortParam
+        : "newest";
+    const search = req.query.search ? String(req.query.search).trim() : undefined;
+
+    // Get paginated videos
+    const { videos: videosWithUrls, total } =
+      await videoService.getUserVideosWithDownloadUrlsPaginated(
+        user._id.toString(),
+        page,
+        limit,
+        sort,
+        search
+      );
+
+    // Get stats (calculated from all user videos, not filtered)
     const stats = await videoService.getUserVideoStats(user._id.toString());
 
     const formattedVideos = videosWithUrls.map((video: any) => {
@@ -113,15 +134,26 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
       };
     });
 
+    // Calculate total pages
+    const totalPages = Math.ceil(total / limit);
+
     return res.json({
       success: true,
       message: "Video gallery retrieved successfully",
       data: {
         videos: formattedVideos,
-        totalCount: stats.totalCount,
-        readyCount: stats.readyCount,
-        processingCount: stats.processingCount,
-        failedCount: stats.failedCount,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+        },
+        stats: {
+          totalCount: stats.totalCount,
+          readyCount: stats.readyCount,
+          processingCount: stats.processingCount,
+          failedCount: stats.failedCount,
+        },
       },
     });
   } catch (error) {

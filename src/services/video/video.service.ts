@@ -204,9 +204,15 @@ export class VideoService {
       youtube_caption?: string;
     }
   ): Promise<IVideo | null> {
+    // Truncate captions to platform-specific limits
+    const { truncateSocialMediaCaptions } = await import(
+      "../../utils/captionTruncationHelpers"
+    );
+    const truncatedCaptions = truncateSocialMediaCaptions(captions);
+
     const video = await Video.findOneAndUpdate(
       { videoId },
-      { socialMediaCaptions: captions },
+      { socialMediaCaptions: truncatedCaptions },
       { new: true }
     ).select("+secretKey");
 
@@ -431,6 +437,126 @@ export class VideoService {
     );
 
     return videosWithUrls;
+  }
+
+  /**
+   * Get user videos with download URLs (paginated, filtered, and searchable)
+   */
+  async getUserVideosWithDownloadUrlsPaginated(
+    userId: string,
+    page: number = 1,
+    limit: number = 6,
+    sort: "oldest" | "newest" | "all" = "newest",
+    search?: string
+  ): Promise<{ videos: IVideo[]; total: number }> {
+    // Build query filter
+    const queryFilter: any = { userId };
+
+    // Add search filter if provided
+    if (search && search.trim()) {
+      queryFilter.title = { $regex: search.trim(), $options: "i" };
+    }
+
+    // Determine sort order
+    let sortOrder: { createdAt: 1 | -1 };
+    if (sort === "oldest") {
+      sortOrder = { createdAt: 1 };
+    } else {
+      // "newest" or "all" - default to newest
+      sortOrder = { createdAt: -1 };
+    }
+
+    // Get total count for pagination
+    const total = await Video.countDocuments(queryFilter);
+
+    // Calculate skip value
+    const skip = (page - 1) * limit;
+
+    // Fetch paginated videos
+    const videos = await Video.find(queryFilter)
+      .select("+secretKey")
+      .sort(sortOrder)
+      .skip(skip)
+      .limit(limit);
+
+    // Add download URLs for ready videos
+    const videosWithUrls = await Promise.all(
+      videos.map(async (video) => {
+        if (video.status === VIDEO_STATUS_READY) {
+          try {
+            const downloadResult = await this.s3Service.createDownloadUrl(
+              video.s3Key,
+              video.secretKey,
+              DOWNLOAD_URL_EXPIRY_SECONDS
+            );
+            (video as any).downloadUrl = downloadResult.downloadUrl;
+          } catch (s3Error) {
+            // Continue without download URL
+          }
+        }
+
+        // Check if captions are missing and generate them on-the-fly
+        if (
+          video.status === VIDEO_STATUS_READY &&
+          areCaptionsMissing(video.socialMediaCaptions)
+        ) {
+          try {
+            // Get user settings to retrieve language preference and user context
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
+
+            // Generate captions using the video title as topic
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
+              language
+            );
+
+            // Update the video with generated captions
+            await this.updateVideoCaptions(video.videoId, captions);
+
+            // Update the video object for this response
+            (video as any).socialMediaCaptions = captions;
+          } catch (captionError) {
+            // Continue without captions
+          }
+        } else if (
+          video.status === VIDEO_STATUS_READY &&
+          video.socialMediaCaptions &&
+          isYoutubeCaptionMissing(video.socialMediaCaptions)
+        ) {
+          // Check if youtube_caption is missing even if other captions exist
+          try {
+            // Get user settings to retrieve language preference and user context
+            const userSettings = await UserVideoSettings.findOne({
+              email: video.email,
+            });
+            const language = userSettings?.language;
+
+            // Generate captions using the video title as topic
+            const captions = await generateCaptionsForVideo(
+              video.title,
+              userSettings,
+              language
+            );
+
+            // Update the video with generated captions
+            await this.updateVideoCaptions(video.videoId, captions);
+
+            // Update the video object for this response
+            (video as any).socialMediaCaptions = captions;
+          } catch (captionError) {
+            // Continue without captions
+          }
+        }
+
+        return video;
+      })
+    );
+
+    return { videos: videosWithUrls, total };
   }
 
   /**

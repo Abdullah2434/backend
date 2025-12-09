@@ -17,6 +17,7 @@ import {
   validatePostIndex,
   getDynamicCaption,
 } from "../../utils/videoScheduleServiceHelpers";
+import { truncateSocialMediaCaptions } from "../../utils/captionTruncationHelpers";
 
 export class VideoSchedulePostManagement {
   /**
@@ -193,7 +194,7 @@ export class VideoSchedulePostManagement {
           );
 
         // Extract captions using the helper method
-        const generatedCaptions = {
+        const rawCaptions = {
           instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
           facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
           linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
@@ -201,6 +202,9 @@ export class VideoSchedulePostManagement {
           tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
           youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
         };
+
+        // Truncate captions to platform-specific limits
+        const generatedCaptions = truncateSocialMediaCaptions(rawCaptions);
 
         // Replace ALL old captions with new generated ones (ignore user-provided captions when description changes)
         post.instagram_caption = generatedCaptions.instagram_caption;
@@ -238,23 +242,48 @@ export class VideoSchedulePostManagement {
     // - If description didn't change: only update captions that are explicitly provided
     if (!descriptionChanged) {
       // Description didn't change - use user-provided captions (only update provided ones)
+      // Truncate manual caption updates to platform-specific limits
+      const manualCaptions: any = {};
       if (updateData.instagram_caption !== undefined) {
-        post.instagram_caption = updateData.instagram_caption;
+        manualCaptions.instagram_caption = updateData.instagram_caption;
       }
       if (updateData.facebook_caption !== undefined) {
-        post.facebook_caption = updateData.facebook_caption;
+        manualCaptions.facebook_caption = updateData.facebook_caption;
       }
       if (updateData.linkedin_caption !== undefined) {
-        post.linkedin_caption = updateData.linkedin_caption;
+        manualCaptions.linkedin_caption = updateData.linkedin_caption;
       }
       if (updateData.twitter_caption !== undefined) {
-        post.twitter_caption = updateData.twitter_caption;
+        manualCaptions.twitter_caption = updateData.twitter_caption;
       }
       if (updateData.tiktok_caption !== undefined) {
-        post.tiktok_caption = updateData.tiktok_caption;
+        manualCaptions.tiktok_caption = updateData.tiktok_caption;
       }
       if (updateData.youtube_caption !== undefined) {
-        post.youtube_caption = updateData.youtube_caption;
+        manualCaptions.youtube_caption = updateData.youtube_caption;
+      }
+
+      // Truncate manual captions
+      const truncatedManualCaptions = truncateSocialMediaCaptions(manualCaptions);
+
+      // Apply truncated captions
+      if (truncatedManualCaptions.instagram_caption !== undefined) {
+        post.instagram_caption = truncatedManualCaptions.instagram_caption;
+      }
+      if (truncatedManualCaptions.facebook_caption !== undefined) {
+        post.facebook_caption = truncatedManualCaptions.facebook_caption;
+      }
+      if (truncatedManualCaptions.linkedin_caption !== undefined) {
+        post.linkedin_caption = truncatedManualCaptions.linkedin_caption;
+      }
+      if (truncatedManualCaptions.twitter_caption !== undefined) {
+        post.twitter_caption = truncatedManualCaptions.twitter_caption;
+      }
+      if (truncatedManualCaptions.tiktok_caption !== undefined) {
+        post.tiktok_caption = truncatedManualCaptions.tiktok_caption;
+      }
+      if (truncatedManualCaptions.youtube_caption !== undefined) {
+        post.youtube_caption = truncatedManualCaptions.youtube_caption;
       }
     }
 
