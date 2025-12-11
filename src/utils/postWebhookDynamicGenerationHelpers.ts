@@ -4,6 +4,7 @@
 
 import UserVideoSettings from "../models/UserVideoSettings";
 import { DEFAULT_USER_CONTEXT, PLATFORM_CAPTION_MAPPINGS } from "../constants/postWebhookDynamicGeneration.constants";
+import { truncateSocialMediaCaptions } from "./captionTruncationHelpers";
 
 // ==================== USER CONTEXT TYPES ====================
 export interface UserContext {
@@ -75,7 +76,9 @@ export function convertDynamicPostsToCaptions(
     }
   }
 
-  return captions;
+  // Truncate captions to platform-specific limits
+  const truncatedCaptions = truncateSocialMediaCaptions(captions);
+  return truncatedCaptions as SocialMediaCaptions;
 }
 
 /**

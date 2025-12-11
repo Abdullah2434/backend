@@ -13,54 +13,64 @@ import {
 export function getPlatformGuidelines(platform: string): string {
   const guidelines: Record<string, string> = {
     youtube: `
-- Description should be 300-500 words, comprehensive
+- MAX CHARACTER LIMIT: 5000 characters (STRICTLY ENFORCED - stay under this limit)
+- Description should be comprehensive but within 5000 character limit
 - Include timestamps if video has clear sections
 - Always include contact info and about section
 - Use 3-5 hashtags max
 - SEO-optimize title (60-70 chars)
-- Include clear CTA for likes, comments, subscribes`,
+- Include clear CTA for likes, comments, subscribes
+- Count characters as you write - stop before 5000`,
 
     instagram: `
-- Caption should be 150-300 words
+- MAX CHARACTER LIMIT: 2000 characters (STRICTLY ENFORCED - stay under this limit)
+- Caption should be engaging but within 2000 character limit
 - Lead with strong hook in first 1-2 lines
 - Use line breaks for readability (blank lines between sections)
 - Use emojis strategically (2-3 per section, not excessive)
 - 5-8 hashtags in caption, 20-25 in first comment
 - CTA should encourage saves, tags, or DMs
-- Conversational "you" language`,
+- Conversational "you" language
+- Count characters as you write - stop before 2000`,
 
     tiktok: `
-- Caption MUST be 100-150 characters max (TikTok users don't read long)
+- MAX CHARACTER LIMIT: 2200 characters (STRICTLY ENFORCED - stay under this limit)
 - Ultra-punchy, scroll-stopping hook
 - 3-5 hashtags only
 - 1-2 emojis max
 - No long paragraphs - keep it snappy
-- Always include #fyp`,
+- Always include #fyp
+- Count characters as you write - stop before 2200`,
 
     facebook: `
-- Keep it short: 50-100 words
+- MAX CHARACTER LIMIT: 5000 characters (STRICTLY ENFORCED - stay under this limit)
 - Friendly, community-focused tone
 - 2-3 emojis total (moderate use)
 - Ask questions to drive comments
 - 1-3 hashtags max (optional)
-- Focus on local community connection`,
+- Focus on local community connection
+- Count characters as you write - stop before 5000`,
 
     linkedin: `
-- Professional length: 150-250 words
+- MAX CHARACTER LIMIT: 3000 characters (STRICTLY ENFORCED - stay under this limit)
+- Professional tone, stay within 3000 character limit
 - Use paragraphs with line breaks (not walls of text)
 - NO EMOJIS (maintain professional credibility)
 - First-person or analytical perspective
 - Industry insights and thought leadership
 - 3-5 professional hashtags
-- CTA should be consultative or discussion-focused`,
+- CTA should be consultative or discussion-focused
+- Count characters as you write - stop before 3000`,
 
     twitter: `
-- Keep it concise: 50-280 characters
+- MAX CHARACTER LIMIT: 280 characters (STRICTLY ENFORCED - stay under this limit)
+- Keep it concise and punchy - must be under 280 characters
 - Use trending topics when relevant
 - 2-5 hashtags
 - Engaging, conversational tone
 - Include questions or calls to action
-- Use line breaks for readability`,
+- Use line breaks for readability
+- Count characters as you write - stop before 280`,
   };
 
   return guidelines[platform] || "";

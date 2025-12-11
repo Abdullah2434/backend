@@ -121,13 +121,21 @@ Each caption must be ONE FLOWING PARAGRAPH that naturally includes:
 CRITICAL: Do NOT use separate sections like [HASHTAGS] or [CONCLUSION]. Everything must flow as ONE NATURAL PARAGRAPH.
 IMPORTANT: Do NOT include quotation marks ("") in your captions. Write clean, natural text without any quotation marks.
 
-PLATFORM SPECIFICATIONS:
-- Instagram (max 2200 chars): Visual storytelling, use line breaks, include 10-15 hashtags, multiple emojis
-- Facebook (max 63206 chars): Detailed storytelling, community engagement, include 15-20 hashtags, emojis
-- LinkedIn (max 3000 chars): Professional tone, industry insights, include 8-12 hashtags, minimal emojis
-- Twitter (max 280 chars): Concise, punchy, include 3-5 hashtags, 1-2 emojis
-- TikTok (max 150 chars): Catchy, trendy, include 5-8 hashtags, multiple emojis
-- YouTube (max 5000 chars): SEO-optimized, detailed description, include 15-20 hashtags, emojis
+PLATFORM SPECIFICATIONS AND CHARACTER LIMITS (STRICTLY ENFORCED):
+- Instagram: MAX 2000 characters (NOT MORE). Visual storytelling, use line breaks, include 10-15 hashtags, multiple emojis
+- Facebook: MAX 5000 characters (NOT MORE). Detailed storytelling, community engagement, include 15-20 hashtags, emojis
+- LinkedIn: MAX 3000 characters (NOT MORE). Professional tone, industry insights, include 8-12 hashtags, minimal emojis
+- Twitter: MAX 280 characters (NOT MORE). Concise, punchy, include 3-5 hashtags, 1-2 emojis
+- TikTok: MAX 2200 characters (NOT MORE). Catchy, trendy, include 5-8 hashtags, multiple emojis
+- YouTube: MAX 5000 characters (NOT MORE). SEO-optimized, detailed description, include 15-20 hashtags, emojis
+
+CRITICAL CHARACTER LIMIT REQUIREMENTS:
+1. You MUST count characters for each caption as you write it
+2. Each caption MUST be UNDER its platform's maximum limit (not equal, not over)
+3. If a caption would exceed the limit, shorten it by removing less essential words while keeping the core message
+4. Instagram: Stay under 2000 chars | Facebook: Stay under 5000 chars | LinkedIn: Stay under 3000 chars | Twitter: Stay under 280 chars | TikTok: Stay under 2200 chars | YouTube: Stay under 5000 chars
+5. DO NOT generate captions that exceed these limits - they will be rejected
+6. Verify character count before finalizing each caption
 
 FORMAT YOUR RESPONSE AS JSON:
 {

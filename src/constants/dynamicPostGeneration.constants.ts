@@ -122,13 +122,15 @@ export const OPENAI_TEMPERATURE = 0.75;
 export const OPENAI_MAX_TOKENS = 1500;
 
 // Platform-specific character limits
+// These are used for AI generation guidance
+// Hard limits are enforced by truncateSocialMediaCaptions utility
 export const PLATFORM_CHARACTER_LIMITS = {
-  instagram: { min: 150, max: 300 },
-  facebook: { min: 50, max: 100 },
-  linkedin: { min: 150, max: 250 },
+  instagram: { min: 150, max: 2000 },
+  facebook: { min: 50, max: 5000 },
+  linkedin: { min: 150, max: 3000 },
   twitter: { min: 50, max: 280 },
-  tiktok: { min: 100, max: 150 },
-  youtube: { min: 300, max: 500 },
+  tiktok: { min: 100, max: 2200 },
+  youtube: { min: 300, max: 5000 },
 } as const;
 
 // Platform-specific hashtag counts

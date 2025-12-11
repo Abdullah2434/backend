@@ -15,6 +15,7 @@ import {
   getDynamicCaption,
   buildCaptionUpdateObject,
 } from "../../utils/videoScheduleServiceHelpers";
+import { truncateSocialMediaCaptions } from "../../utils/captionTruncationHelpers";
 
 export class VideoScheduleCaptionGeneration {
   /**
@@ -53,15 +54,21 @@ export class VideoScheduleCaptionGeneration {
           );
 
         // Create enhanced trend with dynamic captions
-        const enhancedTrend = {
-          ...trend,
-          // Update captions with dynamic content
+        const rawCaptions = {
           instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
           facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
           linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
           twitter_caption: getDynamicCaption(dynamicPosts, "twitter"),
           tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
           youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
+        };
+
+        // Truncate captions to platform-specific limits
+        const truncatedCaptions = truncateSocialMediaCaptions(rawCaptions);
+
+        const enhancedTrend = {
+          ...trend,
+          ...truncatedCaptions,
           // Add metadata
           enhanced_with_dynamic_posts: true,
           enhancement_timestamp: new Date().toISOString(),
@@ -238,22 +245,32 @@ export class VideoScheduleCaptionGeneration {
         );
 
       // Update captions with dynamic content
-      const updatedCaptions = {
+      const rawCaptions = {
         instagram_caption: getDynamicCaption(dynamicPosts, "instagram"),
         facebook_caption: getDynamicCaption(dynamicPosts, "facebook"),
         linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin"),
         twitter_caption: getDynamicCaption(dynamicPosts, "twitter"),
         tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok"),
         youtube_caption: getDynamicCaption(dynamicPosts, "youtube"),
-        enhanced_with_dynamic_posts: true,
-        caption_status: CAPTION_STATUS_READY,
-        caption_processed_at: new Date(),
+      };
+
+      // Truncate captions to platform-specific limits
+      const truncatedCaptions = truncateSocialMediaCaptions(rawCaptions);
+
+      // Ensure all captions are strings (not undefined) for buildCaptionUpdateObject
+      const captionsForUpdate = {
+        instagram_caption: truncatedCaptions.instagram_caption || "",
+        facebook_caption: truncatedCaptions.facebook_caption || "",
+        linkedin_caption: truncatedCaptions.linkedin_caption || "",
+        twitter_caption: truncatedCaptions.twitter_caption || "",
+        tiktok_caption: truncatedCaptions.tiktok_caption || "",
+        youtube_caption: truncatedCaptions.youtube_caption || "",
       };
 
       // Update the specific trend in the schedule using helper function
-      const updateObject = buildCaptionUpdateObject(trendIndex, updatedCaptions);
+      const updateObject = buildCaptionUpdateObject(trendIndex, captionsForUpdate);
       updateObject[`generatedTrends.${trendIndex}.caption_processed_at`] =
-        updatedCaptions.caption_processed_at;
+        new Date();
 
       await VideoSchedule.findByIdAndUpdate(scheduleId, {
         $set: updateObject,
@@ -344,15 +361,27 @@ export class VideoScheduleCaptionGeneration {
           );
 
         // Update trend with dynamic captions using helper function
+        const rawCaptions = {
+          instagram_caption: getDynamicCaption(dynamicPosts, "instagram") || "",
+          facebook_caption: getDynamicCaption(dynamicPosts, "facebook") || "",
+          linkedin_caption: getDynamicCaption(dynamicPosts, "linkedin") || "",
+          twitter_caption: getDynamicCaption(dynamicPosts, "twitter") || "",
+          tiktok_caption: getDynamicCaption(dynamicPosts, "tiktok") || "",
+          youtube_caption: getDynamicCaption(dynamicPosts, "youtube") || "",
+        };
+
+        // Truncate captions to platform-specific limits
+        const truncatedCaptions = truncateSocialMediaCaptions(rawCaptions);
+
         const trend = schedule.generatedTrends[trendIndex];
         trend.instagram_caption =
-          getDynamicCaption(dynamicPosts, "instagram") || trend.instagram_caption;
+          truncatedCaptions.instagram_caption || trend.instagram_caption;
         trend.facebook_caption =
-          getDynamicCaption(dynamicPosts, "facebook") || trend.facebook_caption;
+          truncatedCaptions.facebook_caption || trend.facebook_caption;
         trend.linkedin_caption =
-          getDynamicCaption(dynamicPosts, "linkedin") || trend.linkedin_caption;
+          truncatedCaptions.linkedin_caption || trend.linkedin_caption;
         trend.twitter_caption =
-          getDynamicCaption(dynamicPosts, "twitter") || trend.twitter_caption;
+          truncatedCaptions.twitter_caption || trend.twitter_caption;
         trend.tiktok_caption =
           getDynamicCaption(dynamicPosts, "tiktok") || trend.tiktok_caption;
         trend.youtube_caption =
