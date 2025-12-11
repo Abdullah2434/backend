@@ -116,6 +116,24 @@ CRITICAL INSTRUCTIONS:
 10. Weave the call-to-action naturally into the content, not as a separate section
 11. IMPORTANT: Do NOT include quotation marks ("") in your content. Write clean, natural text without any quotation marks.
 
+CHARACTER LIMIT ENFORCEMENT (MANDATORY):
+${(() => {
+  const limits: Record<string, number> = {
+    instagram: 2000,
+    facebook: 5000,
+    linkedin: 3000,
+    twitter: 280,
+    tiktok: 2200,
+    youtube: 5000,
+  };
+  const limit = limits[platform.toLowerCase()] || 1000;
+  return `- Your post MUST be UNDER ${limit} characters (NOT ${limit}, but UNDER ${limit})
+- Count characters as you write - stop before reaching ${limit} characters
+- If you approach the limit, shorten by removing less essential words while keeping core message
+- DO NOT exceed ${limit} characters - your post will be rejected if it does
+- Verify final character count is under ${limit} before submitting`;
+})()}
+
 Platform-Specific Guidelines:
 ${platformGuidelines}
 
