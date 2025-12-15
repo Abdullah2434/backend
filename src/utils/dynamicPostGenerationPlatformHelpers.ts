@@ -63,14 +63,11 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 3000`,
 
     twitter: `
-- TARGET 260-270 characters. ABSOLUTE MAX: 280 (stay UNDER).
-- Keep it concise and punchy - must be under 280 characters
-- Use trending topics when relevant
-- 2-5 hashtags
-- Engaging, conversational tone
-- Include questions or calls to action
-- Use line breaks for readability
-- Count characters as you write - stop before 280`,
+⚠️ CRITICAL: Response MUST be 250-280 characters (count every character).
+- Summarize ALL content to fit - use shorter words, remove filler, be punchy
+- Count characters as you write - if over 280, rewrite shorter
+- Complete summarized message within 250-280 characters
+- 2-5 hashtags, engaging tone, include questions or CTAs`,
   };
 
   return guidelines[platform] || "";

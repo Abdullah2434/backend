@@ -38,6 +38,7 @@ function truncateToWordBoundary(text: string, limit: number): string {
 /**
  * Truncate social media captions to platform-specific character limits
  * Uses word-boundary truncation to avoid mid-word cuts and preserves null/undefined values
+ * NOTE: Twitter/X captions are NOT truncated - AI generates summarized content ≤280 chars
  */
 export function truncateSocialMediaCaptions(
   captions: Partial<SocialMediaCaptions>
@@ -51,10 +52,15 @@ export function truncateSocialMediaCaptions(
     if (caption === null || caption === undefined) {
       truncated[captionKey] = caption;
     } else if (typeof caption === "string") {
-      truncated[captionKey] =
-        caption.length > limit
-          ? truncateToWordBoundary(caption, limit)
-          : caption;
+      // Skip truncation for Twitter/X - AI handles summarization
+      if (key === "twitter_caption") {
+        truncated[captionKey] = caption;
+      } else {
+        truncated[captionKey] =
+          caption.length > limit
+            ? truncateToWordBoundary(caption, limit)
+            : caption;
+      }
     }
   }
 
