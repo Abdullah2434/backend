@@ -5,7 +5,7 @@
 import { SocialMediaCaptions } from "../types/captionGeneration.types";
 
 // Platform-specific character limits
-const CAPTION_LIMITS = {
+export const CAPTION_LIMITS = {
   instagram_caption: 2000,
   youtube_caption: 5000,
   tiktok_caption: 2200,
@@ -14,27 +14,47 @@ const CAPTION_LIMITS = {
   twitter_caption: 280,
 } as const;
 
+function truncateToWordBoundary(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+
+  // Find last space before limit to avoid cutting words
+  const slice = text.substring(0, limit);
+  const lastSpace = slice.lastIndexOf(" ");
+
+  // If no space found, hard cut at limit
+  const trimmed = lastSpace > 0 ? slice.substring(0, lastSpace) : slice;
+
+  // Add ellipsis only if we removed content and the text doesn't already end with punctuation
+  const needsEllipsis = trimmed.length < text.length;
+  const endsWithPunctuation = /[.!?]$/.test(trimmed.trim());
+
+  if (needsEllipsis && !endsWithPunctuation) {
+    return `${trimmed}...`;
+  }
+
+  return trimmed;
+}
+
 /**
  * Truncate social media captions to platform-specific character limits
- * Preserves null/undefined values and only truncates if caption exceeds limit
+ * Uses word-boundary truncation to avoid mid-word cuts and preserves null/undefined values
  */
 export function truncateSocialMediaCaptions(
   captions: Partial<SocialMediaCaptions>
 ): Partial<SocialMediaCaptions> {
   const truncated: Partial<SocialMediaCaptions> = {};
 
-  // Process each caption type
   for (const [key, limit] of Object.entries(CAPTION_LIMITS)) {
     const captionKey = key as keyof SocialMediaCaptions;
     const caption = captions[captionKey];
 
     if (caption === null || caption === undefined) {
-      // Preserve null/undefined values
       truncated[captionKey] = caption;
     } else if (typeof caption === "string") {
-      // Truncate if exceeds limit
       truncated[captionKey] =
-        caption.length > limit ? caption.substring(0, limit) : caption;
+        caption.length > limit
+          ? truncateToWordBoundary(caption, limit)
+          : caption;
     }
   }
 

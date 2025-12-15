@@ -13,7 +13,7 @@ import {
 export function getPlatformGuidelines(platform: string): string {
   const guidelines: Record<string, string> = {
     youtube: `
-- MAX CHARACTER LIMIT: 5000 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 4900-4950 characters. ABSOLUTE MAX: 5000 (stay UNDER).
 - Description should be comprehensive but within 5000 character limit
 - Include timestamps if video has clear sections
 - Always include contact info and about section
@@ -23,7 +23,7 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 5000`,
 
     instagram: `
-- MAX CHARACTER LIMIT: 2000 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 1900-1950 characters. ABSOLUTE MAX: 2000 (stay UNDER).
 - Caption should be engaging but within 2000 character limit
 - Lead with strong hook in first 1-2 lines
 - Use line breaks for readability (blank lines between sections)
@@ -34,7 +34,7 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 2000`,
 
     tiktok: `
-- MAX CHARACTER LIMIT: 2200 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 2100-2150 characters. ABSOLUTE MAX: 2200 (stay UNDER).
 - Ultra-punchy, scroll-stopping hook
 - 3-5 hashtags only
 - 1-2 emojis max
@@ -43,7 +43,7 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 2200`,
 
     facebook: `
-- MAX CHARACTER LIMIT: 5000 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 4900-4950 characters. ABSOLUTE MAX: 5000 (stay UNDER).
 - Friendly, community-focused tone
 - 2-3 emojis total (moderate use)
 - Ask questions to drive comments
@@ -52,7 +52,7 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 5000`,
 
     linkedin: `
-- MAX CHARACTER LIMIT: 3000 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 2900-2950 characters. ABSOLUTE MAX: 3000 (stay UNDER).
 - Professional tone, stay within 3000 character limit
 - Use paragraphs with line breaks (not walls of text)
 - NO EMOJIS (maintain professional credibility)
@@ -63,7 +63,7 @@ export function getPlatformGuidelines(platform: string): string {
 - Count characters as you write - stop before 3000`,
 
     twitter: `
-- MAX CHARACTER LIMIT: 280 characters (STRICTLY ENFORCED - stay under this limit)
+- TARGET 260-270 characters. ABSOLUTE MAX: 280 (stay UNDER).
 - Keep it concise and punchy - must be under 280 characters
 - Use trending topics when relevant
 - 2-5 hashtags
@@ -206,4 +206,3 @@ export function getPlatformHashtagCounts(platform: string): {
     ] || { min: 3, max: 5 }
   );
 }
-

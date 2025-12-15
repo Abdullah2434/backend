@@ -19,7 +19,10 @@ import {
   buildCaptionPrompt,
   generateFallbackCaptions,
 } from "../../utils/captionGenerationHelpers";
-import { truncateSocialMediaCaptions } from "../../utils/captionTruncationHelpers";
+import {
+  CAPTION_LIMITS,
+  truncateSocialMediaCaptions,
+} from "../../utils/captionTruncationHelpers";
 
 // Re-export for backward compatibility
 export type { SocialMediaCaptions, UserContext };
@@ -80,6 +83,17 @@ export class CaptionGenerationService {
 
       // Validate captions using helper function
       validateCaptions(cleanedCaptions);
+
+      // Warn if any caption exceeds platform limits before truncation
+      for (const [key, limit] of Object.entries(CAPTION_LIMITS)) {
+        const captionKey = key as keyof SocialMediaCaptions;
+        const value = cleanedCaptions[captionKey];
+        if (value && value.length > limit) {
+          console.warn(
+            `[CaptionGeneration] ${captionKey} length ${value.length} exceeds limit ${limit} before truncation`
+          );
+        }
+      }
 
       // Truncate captions to platform-specific limits
       const truncatedCaptions = truncateSocialMediaCaptions(cleanedCaptions);

@@ -127,11 +127,24 @@ ${(() => {
     youtube: 5000,
   };
   const limit = limits[platform.toLowerCase()] || 1000;
-  return `- Your post MUST be UNDER ${limit} characters (NOT ${limit}, but UNDER ${limit})
-- Count characters as you write - stop before reaching ${limit} characters
-- If you approach the limit, shorten by removing less essential words while keeping core message
-- DO NOT exceed ${limit} characters - your post will be rejected if it does
-- Verify final character count is under ${limit} before submitting`;
+  const targetRanges: Record<string, string> = {
+    instagram: "1900-1950",
+    facebook: "4900-4950",
+    linkedin: "2900-2950",
+    twitter: "260-270",
+    tiktok: "2100-2150",
+    youtube: "4900-4950",
+  };
+  const targetRange = targetRanges[platform.toLowerCase()] || `${Math.max(
+    limit - 150,
+    0
+  )}-${Math.max(limit - 50, 0)}`;
+  return `- TARGET LENGTH: ${targetRange} characters. ABSOLUTE MAX: ${limit} (must be UNDER, not equal).
+- Count characters as you write; stay inside the target range.
+- If you approach the target max, FINISH the current sentence and STOP—do NOT start a new sentence.
+- If needed, shorten by removing less essential words while keeping the core message.
+- DO NOT exceed ${limit} characters—content over max is rejected.
+- Verify the final character count is under ${limit} before submitting.`;
 })()}
 
 Platform-Specific Guidelines:

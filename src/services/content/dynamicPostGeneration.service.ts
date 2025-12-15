@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_PLATFORMS,
   POST_HISTORY_LIMIT,
+  PLATFORM_CHARACTER_LIMITS,
 } from "../../constants/dynamicPostGeneration.constants";
 import {
   analyzeTopic,
@@ -178,6 +179,17 @@ export class DynamicPostGenerationService {
       userHistory,
       language
     );
+
+    // Warn if generated content exceeds platform max before any downstream truncation
+    const limits =
+      PLATFORM_CHARACTER_LIMITS[
+        platform as keyof typeof PLATFORM_CHARACTER_LIMITS
+      ];
+    if (limits && content.length > limits.max) {
+      console.warn(
+        `[DynamicPostGeneration] ${platform} content length ${content.length} exceeds max ${limits.max}`
+      );
+    }
 
     // Step 6: Extract metadata
     const metadata = extractMetadata(content);
