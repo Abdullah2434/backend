@@ -35,6 +35,22 @@ import {
   buildSystemMessage,
 } from "../../prompts/dynamicPostGeneration.prompts";
 
+function cleanMetadataArtifacts(content: string): string {
+  if (!content) return content;
+
+  const removedMeta = content
+    .replace(
+      /\b(Tone:|Max Length:|Hashtag Count:|Emoji Usage:|Line Breaks:|Call to Action:)[^\n]*/gi,
+      ""
+    )
+    .replace(/\bCharacter\s*count\s*=?\s*\d+/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+
+  return removedMeta || content.trim();
+}
+
 export class DynamicPostGenerationService {
   /**
    * Generate dynamic multi-platform posts with Smart Memory System
@@ -180,19 +196,21 @@ export class DynamicPostGenerationService {
       language
     );
 
+    const cleanedContent = cleanMetadataArtifacts(content);
+
     // Warn if generated content exceeds platform max before any downstream truncation
     const limits =
       PLATFORM_CHARACTER_LIMITS[
         platform as keyof typeof PLATFORM_CHARACTER_LIMITS
       ];
-    if (limits && content.length > limits.max) {
+    if (limits && cleanedContent.length > limits.max) {
       console.warn(
-        `[DynamicPostGeneration] ${platform} content length ${content.length} exceeds max ${limits.max}`
+        `[DynamicPostGeneration] ${platform} content length ${cleanedContent.length} exceeds max ${limits.max}`
       );
     }
 
     // Step 6: Extract metadata
-    const metadata = extractMetadata(content);
+    const metadata = extractMetadata(cleanedContent);
 
     // Step 7: Save to history
     await this.saveToHistory(
@@ -203,18 +221,18 @@ export class DynamicPostGenerationService {
       hookType,
       tone,
       ctaType,
-      content,
+      cleanedContent,
       metadata
     );
 
     return {
       platform,
-      content,
+      content: cleanedContent,
       templateVariant,
       hookType,
       tone,
       ctaType,
-      hashtags: extractHashtags(content),
+      hashtags: extractHashtags(cleanedContent),
       metadata,
     };
   }
