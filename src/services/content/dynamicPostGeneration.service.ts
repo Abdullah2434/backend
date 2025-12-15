@@ -44,11 +44,30 @@ function cleanMetadataArtifacts(content: string): string {
       ""
     )
     .replace(/\bCharacter\s*count\s*=?\s*\d+/gi, "")
+    .replace(/\d+\s*characters?/gi, "")
+    .replace(/char\s*count\s*:?\s*\d+/gi, "")
+    .replace(/length\s*:?\s*\d+/gi, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{2,}/g, "\n")
     .trim();
 
   return removedMeta || content.trim();
+}
+
+/**
+ * Remove all placeholder lines from YouTube captions
+ * Removes lines containing [placeholder] completely
+ */
+function removeYouTubePlaceholders(content: string): string {
+  if (!content) return content;
+
+  // Remove lines containing [placeholder] (case-insensitive)
+  const lines = content.split("\n");
+  const filteredLines = lines.filter(
+    (line) => !line.toLowerCase().includes("[placeholder]")
+  );
+
+  return filteredLines.join("\n").trim();
 }
 
 export class DynamicPostGenerationService {
@@ -196,7 +215,12 @@ export class DynamicPostGenerationService {
       language
     );
 
-    const cleanedContent = cleanMetadataArtifacts(content);
+    let cleanedContent = cleanMetadataArtifacts(content);
+
+    // Step 5.5: Remove placeholders from YouTube captions
+    if (platform.toLowerCase() === "youtube") {
+      cleanedContent = removeYouTubePlaceholders(cleanedContent);
+    }
 
     // Warn if generated content exceeds platform max before any downstream truncation
     const limits =

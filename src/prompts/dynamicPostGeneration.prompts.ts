@@ -72,12 +72,14 @@ export function buildGenerationPrompt(
   language?: string
 ): string {
   // Default to English if language is not provided or empty
-  const captionLanguage = language && language.trim() ? language.trim() : "English";
-  
+  const captionLanguage =
+    language && language.trim() ? language.trim() : "English";
+
   // Language instruction for the prompt
-  const languageInstruction = captionLanguage === "Spanish" 
-    ? "Generate all content in Spanish (Español). All text, hashtags, and content must be in Spanish."
-    : "Generate all content in English.";
+  const languageInstruction =
+    captionLanguage === "Spanish"
+      ? "Generate all content in Spanish (Español). All text, hashtags, and content must be in Spanish."
+      : "Generate all content in English.";
 
   return `You are an expert social media copywriter specializing in real estate content for ${platform}.
 
@@ -135,10 +137,21 @@ ${(() => {
     tiktok: "2100-2150",
     youtube: "4900-4950",
   };
-  const targetRange = targetRanges[platform.toLowerCase()] || `${Math.max(
-    limit - 150,
-    0
-  )}-${Math.max(limit - 50, 0)}`;
+  const targetRange =
+    targetRanges[platform.toLowerCase()] ||
+    `${Math.max(limit - 150, 0)}-${Math.max(limit - 50, 0)}`;
+
+  // Special handling for Twitter/X - emphasize summarization
+  if (platform.toLowerCase() === "twitter") {
+    return `⚠️ CRITICAL TWITTER/X REQUIREMENT ⚠️
+- Your response MUST be EXACTLY 250-280 characters (count every character including spaces).
+- You MUST summarize and condense ALL content to fit within this limit.
+- Write your response, then COUNT the characters. If over 280, rewrite it shorter.
+- Use shorter words, remove filler words, make it punchy and concise.
+- DO NOT exceed 280 characters - content over this limit will be rejected.
+- Your final response must be a complete, summarized message within 250-280 characters.`;
+  }
+
   return `- TARGET LENGTH: ${targetRange} characters. ABSOLUTE MAX: ${limit} (must be UNDER, not equal).
 - Count characters as you write; stay inside the target range.
 - If you approach the target max, FINISH the current sentence and STOP—do NOT start a new sentence.
@@ -157,6 +170,8 @@ Generate the post now, following the template structure and variation requiremen
  * Build system message for OpenAI
  */
 export function buildSystemMessage(platform: string): string {
+  if (platform.toLowerCase() === "twitter") {
+    return `You are an expert social media copywriter specializing in real estate content for Twitter/X. You write authentic, engaging posts that are ALWAYS 250-280 characters. You MUST count characters and summarize content to fit this strict limit. Never exceed 280 characters.`;
+  }
   return `You are an expert social media copywriter specializing in real estate content for ${platform}. You write authentic, engaging posts that follow platform best practices and avoid repetitive patterns.`;
 }
-

@@ -1665,16 +1665,13 @@ NO EMOJIS`,
 
 async function initializeEnhancedTemplates(): Promise<void> {
   try {
-
     const mongoUri =
       process.env.MONGODB_URI || "mongodb://localhost:27017/edge-ai";
-    
-    await mongoose.connect(mongoUri);
 
+    await mongoose.connect(mongoUri);
 
     // Clear existing templates
     await ContentTemplate.deleteMany({});
- 
 
     // Add enhanced templates one by one
     let addedCount = 0;
@@ -1683,10 +1680,7 @@ async function initializeEnhancedTemplates(): Promise<void> {
         const newTemplate = new ContentTemplate(template);
         await newTemplate.save();
         addedCount++;
-     
-      } catch (error) {
-     
-      }
+      } catch (error) {}
     }
 
     const platformCounts: any = enhancedTemplates.reduce(
@@ -1697,18 +1691,13 @@ async function initializeEnhancedTemplates(): Promise<void> {
       {}
     );
 
-
     Object.entries(platformCounts).forEach(([platform, count]) => {
       console.log(`  ${platform}: ${count} templates`);
     });
-
-
   } catch (error) {
-   
     throw error;
   } finally {
     await mongoose.disconnect();
-  
   }
 }
 
