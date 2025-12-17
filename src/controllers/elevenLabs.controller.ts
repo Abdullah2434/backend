@@ -285,6 +285,7 @@ export async function textToSpeech(req: Request, res: Response) {
 
     const {
       voice_id,
+      text,
       hook,
       body,
       conclusion,
@@ -313,34 +314,16 @@ export async function textToSpeech(req: Request, res: Response) {
       return ResponseHelper.notFound(res, "Voice not found in database");
     }
 
-    // Handle cloned voice authentication
+    // No authentication required - use default voice settings for cloned voices if needed
     let voice_settings: VoiceSettings | null = null;
-    if (isClonedVoice(voice.category)) {
-      const accessToken = extractAccessToken(req);
-      if (!accessToken) {
-        return ResponseHelper.unauthorized(
-          res,
-          "Authentication required for cloned voices"
-        );
-      }
-
-      const authResult = await validateClonedVoiceAccess(
-        accessToken,
-        authService
-      );
-      if (!authResult) {
-        return ResponseHelper.unauthorized(res, "Invalid authentication token");
-      }
-
-      voice_settings = authResult.voiceSettings;
-    }
+    // Optional: If you want to use default preset settings for cloned voices, uncomment below
+    // if (isClonedVoice(voice.category)) {
+    //   voice_settings = getVoiceSettingsByPreset("professional") || null;
+    // }
 
     // Generate speech
-    const result = await generateSpeech({
+    const speechOptions: any = {
       voice_id,
-      hook: hook.trim(),
-      body: body.trim(),
-      conclusion: conclusion.trim(),
       output_format: output_format || DEFAULT_OUTPUT_FORMAT,
       model_id: model_id || undefined,
       voice_settings: voice_settings || undefined,
@@ -348,14 +331,33 @@ export async function textToSpeech(req: Request, res: Response) {
       seed: seed || undefined,
       pronunciation_dictionary_locators:
         pronunciation_dictionary_locators || undefined,
-    });
+    };
 
-    return ResponseHelper.success(res, "Speech generated successfully", {
-      hook_url: result.hook_url,
-      body_url: result.body_url,
-      conclusion_url: result.conclusion_url,
-      model_id: result.model_id,
-    });
+    // Handle single text field OR hook/body/conclusion
+    if (text) {
+      speechOptions.text = text.trim();
+    } else {
+      speechOptions.hook = hook!.trim();
+      speechOptions.body = body!.trim();
+      speechOptions.conclusion = conclusion!.trim();
+    }
+
+    const result = await generateSpeech(speechOptions);
+
+    // Return appropriate response based on input format
+    if (text) {
+      return ResponseHelper.success(res, "Speech generated successfully", {
+        text_url: result.text_url,
+        model_id: result.model_id,
+      });
+    } else {
+      return ResponseHelper.success(res, "Speech generated successfully", {
+        hook_url: result.hook_url,
+        body_url: result.body_url,
+        conclusion_url: result.conclusion_url,
+        model_id: result.model_id,
+      });
+    }
   } catch (error: any) {
     console.error("Error in textToSpeech:", error);
     return ResponseHelper.serverError(
