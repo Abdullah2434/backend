@@ -11,9 +11,11 @@ export interface VoiceSettings {
 }
 
 export interface TextToSpeechOptions {
-  hook: string;
-  body: string;
-  conclusion: string;
+  // Either text (single field) OR hook/body/conclusion (three fields)
+  text?: string;
+  hook?: string;
+  body?: string;
+  conclusion?: string;
   voice_id: string;
   output_format?: string;
   model_id?: string; // Optional: Override model (e.g., "eleven_turbo_v2_5" for 40k chars, "eleven_flash_v2_5" for 40k chars)

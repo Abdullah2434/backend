@@ -38,6 +38,52 @@ export async function generateSpeech(options: TextToSpeechOptions) {
       );
     }
 
+    const output_format = options.output_format || DEFAULT_OUTPUT_FORMAT;
+
+    // Handle single text field
+    if (options.text) {
+      // Calculate text length for optimal model selection
+      const textLength = options.text.length;
+      const textLengths = {
+        hook: textLength,
+        body: 0,
+        conclusion: 0,
+      };
+
+      // Automatically select optimal model based on text length
+      const model_id = selectOptimalModel(
+        options.model_id,
+        voice.verified_language_en?.model_id,
+        textLengths
+      );
+
+      // Generate speech for single text
+      const result = await generateSpeechPart(
+        options.voice_id,
+        options.text,
+        model_id,
+        output_format,
+        "text",
+        options.voice_settings,
+        options.apply_text_normalization,
+        options.seed,
+        options.pronunciation_dictionary_locators
+      );
+
+      return {
+        text_url: result.url,
+        model_id: model_id,
+        contentType: "audio/mpeg",
+      };
+    }
+
+    // Handle hook/body/conclusion format
+    if (!options.hook || !options.body || !options.conclusion) {
+      throw new Error(
+        "Either 'text' field OR all of 'hook', 'body', and 'conclusion' fields must be provided"
+      );
+    }
+
     // Calculate text lengths for optimal model selection
     const textLengths = {
       hook: options.hook.length,
@@ -51,8 +97,6 @@ export async function generateSpeech(options: TextToSpeechOptions) {
       voice.verified_language_en?.model_id,
       textLengths
     );
-
-    const output_format = options.output_format || DEFAULT_OUTPUT_FORMAT;
 
     // Generate speech for all three parts in parallel
     const [hookResult, bodyResult, conclusionResult] = await Promise.all([
