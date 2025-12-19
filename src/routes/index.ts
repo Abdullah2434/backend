@@ -22,6 +22,7 @@ import energyProfileRoutes from "./v1/energyProfile";
 import musicRoutes from "./v1/music";
 import elevenLabsRoutes from "./v1/elevenLabs";
 import adminRoutes from "./v1/admin";
+import audioDurationRoutes from "./v1/audioDuration";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use("/cron", cronHealthRoutes);
 router.use("/energy-profile", energyProfileRoutes);
 router.use("/music", musicRoutes);
 router.use("/elevenlabs", elevenLabsRoutes);
+router.use("/audio", audioDurationRoutes);
 router.use("/webhook", webhookRoutes);
 
 // V2 routes mounted without v2 prefix (for backward compatibility)
