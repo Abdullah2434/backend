@@ -3,8 +3,15 @@ import multer from "multer";
 import axios from "axios";
 import { getS3 } from "../services/s3.service";
 import DefaultAvatar from "../models/avatar";
-import { ESTIMATED_COMPLETION_MINUTES } from "../constants/video.constants";
+import User from "../models/User";
+import PendingCaptions from "../models/PendingCaptions";
+import {
+  ESTIMATED_COMPLETION_MINUTES,
+  SOCIAL_MEDIA_PLATFORMS,
+} from "../constants/video.constants";
 import { sendFireAndForgetWebhook } from "../utils/videoControllerHelpers";
+import { CaptionGenerationService } from "../services/content/captionGeneration.service";
+import { truncateSocialMediaCaptions } from "../utils/captionTruncationHelpers";
 import {
   propertyImagesSchema,
   PropertyImagesPayload,
@@ -176,6 +183,7 @@ export async function uploadPropertyImages(
     );
 
     // Call webhook with the uploaded URLs (field name `imageurl` as requested)
+    // Wait for webhook response before returning
     let webhookResponse: any = null;
     try {
       const timestamp = data.timestamp || new Date().toISOString();
@@ -187,11 +195,14 @@ export async function uploadPropertyImages(
           imageurl: u.imageUrl,
         })),
       };
+
+      // Wait for webhook response with longer timeout
       const resp = await axios.post(WEBHOOK_URL, webhookPayload, {
         headers: { "Content-Type": "application/json" },
-        timeout: 15000,
+        timeout: 120000, // 120 seconds timeout - wait for webhook response
       });
       webhookResponse = resp.data;
+      console.log("Webhook response received:", resp.status);
     } catch (err: any) {
       console.error("Webhook call failed:", err?.message || err);
       webhookResponse = {
@@ -374,6 +385,78 @@ export async function forwardPropertyWebhook(
 
     // Forward to webhook asynchronously (fire and forget)
     sendFireAndForgetWebhook(PROPERTY_WEBHOOK_URL, payload);
+
+    // Generate captions in background using webhookResponse texts
+    (async () => {
+      try {
+        // Extract texts from webhookResponse array
+        const webhookTexts =
+          data.webhookResponse
+            ?.map((item: { text: string }) => item.text)
+            .filter((text: string) => text && text.trim())
+            .join(" ") || "";
+
+        if (webhookTexts) {
+          // Get user for userContext
+          const user = await User.findOne({ email: data.email });
+          const userContext = {
+            name: data.name || "",
+            position: "",
+            companyName: "",
+            city: "",
+            socialHandles: data.social_handles || "",
+          };
+
+          // Generate 6 different platform-specific captions using OpenAI
+          // OpenAI will summarize/create unique captions based on webhookResponse texts
+          const captions = await CaptionGenerationService.generateCaptions(
+            data.title || "Property Listing Video", // Topic
+            webhookTexts, // Key Points (all webhookResponse texts combined)
+            userContext,
+            undefined // language will be determined from user settings if available
+          );
+
+          // Truncate captions to platform limits
+          const truncatedCaptions = truncateSocialMediaCaptions(captions);
+
+          // Verify all 6 captions were generated
+          const captionCount = Object.keys(truncatedCaptions).filter(
+            (key) => truncatedCaptions[key as keyof typeof truncatedCaptions]
+          ).length;
+
+          // Store captions in PendingCaptions for later attachment to video
+          await PendingCaptions.findOneAndUpdate(
+            { email: data.email, title: data.title },
+            {
+              email: data.email,
+              title: data.title,
+              captions: truncatedCaptions,
+              topic: data.title || "Property Listing Video",
+              keyPoints: webhookTexts,
+              userContext,
+              userId: user?._id?.toString(),
+              platforms: [...SOCIAL_MEDIA_PLATFORMS],
+              isDynamic: false,
+              isPending: false, // Captions are ready, just waiting for video
+            },
+            { upsert: true, new: true }
+          );
+
+          console.log(
+            `✅ Generated ${captionCount} unique platform captions for property video: ${data.title} (${data.email})`
+          );
+          console.log(
+            `   Platforms: Instagram, Facebook, LinkedIn, Twitter, TikTok, YouTube`
+          );
+        }
+      } catch (captionError: any) {
+        // Silently fail - captions are optional
+        console.error(
+          "Failed to generate captions for property webhook:",
+          captionError?.message || captionError
+        );
+      }
+    })();
 
     // Return immediately without waiting for webhook response
     return res.json({
