@@ -190,6 +190,10 @@ export async function uploadPropertyImages(
       const webhookPayload = {
         ...data,
         timestamp,
+        price: data.price,
+        city: data.city,
+        address: data.address,
+        mainSellingPoints: data.mainSellingPoints,
         images: uploads.map((u) => ({
           type: u.type,
           imageurl: u.imageUrl,
@@ -220,6 +224,10 @@ export async function uploadPropertyImages(
         name: data.name,
         social_handles: data.social_handles,
         propertyType: data.propertyType,
+        price: data.price,
+        city: data.city,
+        address: data.address,
+        mainSellingPoints: data.mainSellingPoints,
         images: uploads,
         webhookResponse,
       },
