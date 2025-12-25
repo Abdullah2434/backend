@@ -11,6 +11,9 @@ export const propertyImagesSchema = z.object({
   address: z.string().optional(),
   mainSellingPoints: z.array(z.string()).optional(),
   size: z.string().optional(),
+  bedroomCount: z.number().int().positive().optional(),
+  livingRoomCount: z.number().int().positive().optional(),
+  bathroomCount: z.number().int().positive().optional(),
   // Accept array or string (JSON or comma-separated); we normalize in controller
   types: z.union([z.array(z.string().min(1)), z.string()]).optional(),
 });
@@ -18,17 +21,21 @@ export const propertyImagesSchema = z.object({
 export type PropertyImagesPayload = z.infer<typeof propertyImagesSchema>;
 
 export const propertyWebhookSchema = z.object({
-  images: z.array(
-    z.object({
-      type: z.string().min(1),
-      imageurl: z.string().url(),
-    })
-  ).min(1),
-  webhookResponse: z.array(
-    z.object({
-      text: z.string(),
-    })
-  ).optional(),
+  images: z
+    .array(
+      z.object({
+        type: z.string().min(1),
+        imageurl: z.string().url(),
+      })
+    )
+    .min(1),
+  webhookResponse: z
+    .array(
+      z.object({
+        text: z.string(),
+      })
+    )
+    .optional(),
   email: z.string().email(),
   timestamp: z.string().datetime().optional(),
   name: z.string().min(1),
@@ -44,4 +51,3 @@ export const propertyWebhookSchema = z.object({
 });
 
 export type PropertyWebhookPayload = z.infer<typeof propertyWebhookSchema>;
-
