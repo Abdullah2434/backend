@@ -10,6 +10,7 @@ export const propertyImagesSchema = z.object({
   city: z.string().optional(),
   address: z.string().optional(),
   mainSellingPoints: z.array(z.string()).optional(),
+  size: z.string().optional(),
   // Accept array or string (JSON or comma-separated); we normalize in controller
   types: z.union([z.array(z.string().min(1)), z.string()]).optional(),
 });

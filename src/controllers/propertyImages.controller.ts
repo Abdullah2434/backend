@@ -194,6 +194,7 @@ export async function uploadPropertyImages(
         city: data.city,
         address: data.address,
         mainSellingPoints: data.mainSellingPoints,
+        size: data.size,
         images: uploads.map((u) => ({
           type: u.type,
           imageurl: u.imageUrl,
@@ -228,6 +229,7 @@ export async function uploadPropertyImages(
         city: data.city,
         address: data.address,
         mainSellingPoints: data.mainSellingPoints,
+        size: data.size,
         images: uploads,
         webhookResponse,
       },
