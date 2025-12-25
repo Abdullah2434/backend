@@ -11,9 +11,9 @@ export const propertyImagesSchema = z.object({
   address: z.string().optional(),
   mainSellingPoints: z.array(z.string()).optional(),
   size: z.string().optional(),
-  bedroomCount: z.number().int().positive().optional(),
-  livingRoomCount: z.number().int().positive().optional(),
-  bathroomCount: z.number().int().positive().optional(),
+  bedroomCount: z.string().optional(),
+  livingRoomCount: z.string().optional(),
+  bathroomCount: z.string().optional(),
   // Accept array or string (JSON or comma-separated); we normalize in controller
   types: z.union([z.array(z.string().min(1)), z.string()]).optional(),
 });
