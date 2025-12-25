@@ -3,6 +3,8 @@ import {
   uploadPropertyImages,
   uploadPropertyImagesMiddleware,
   forwardPropertyWebhook,
+  uploadMusicVideo,
+  uploadPropertyVideoMiddleware,
 } from "../../controllers/propertyImages.controller";
 
 const router = Router();
@@ -12,6 +14,9 @@ router.post("/property-images", uploadPropertyImagesMiddleware, uploadPropertyIm
 
 // JSON body: forward property data to webhook
 router.post("/property-webhook", forwardPropertyWebhook);
+
+// Multipart/form-data: music video with startImage and restImages
+router.post("/music-video", uploadPropertyVideoMiddleware, uploadMusicVideo);
 
 export default router;
 

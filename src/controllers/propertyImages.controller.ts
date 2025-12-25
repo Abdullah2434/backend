@@ -17,6 +17,8 @@ import {
   PropertyImagesPayload,
   propertyWebhookSchema,
   PropertyWebhookPayload,
+  propertyVideoSchema,
+  PropertyVideoPayload,
 } from "../validations/propertyImages.validations";
 
 // Store uploaded images in memory; we immediately stream to S3
@@ -41,6 +43,8 @@ const WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/cca3a948-947c-4532-bd8b-3d7d0c3cf97a";
 const PROPERTY_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/438c63f4-902b-40c5-b954-552370924e51";
+const MUSIC_VIDEO_WEBHOOK_URL =
+  "https://edgeaimedia.app.n8n.cloud/webhook/tour-video"; // Using same webhook URL, can be changed if needed
 
 /**
  * Normalize incoming types (string JSON, comma-separated, or array) to array
@@ -115,6 +119,27 @@ function extractTypes(
 }
 
 export const uploadPropertyImagesMiddleware = upload.array("images", 20);
+
+// Multer middleware for property video endpoint (startImage and restImages)
+const propertyVideoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 21, // 1 startImage + up to 20 restImages
+    fileSize: 20 * 1024 * 1024, // 20MB per image
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype?.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
+export const uploadPropertyVideoMiddleware = propertyVideoUpload.fields([
+  { name: "startImage", maxCount: 1 },
+  { name: "restImages", maxCount: 20 },
+]);
 
 export async function uploadPropertyImages(
   req: Request,
@@ -486,6 +511,109 @@ export async function forwardPropertyWebhook(
     return res.status(500).json({
       success: false,
       message: "Failed to forward data to webhook",
+      error: error?.message || "Unknown error",
+    });
+  }
+}
+
+/**
+ * Upload music video images and forward to webhook
+ * POST /api/music-video
+ */
+export async function uploadMusicVideo(
+  req: Request,
+  res: Response
+): Promise<Response> {
+  try {
+    // Get files from multer
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const startImage = files?.startImage?.[0];
+    const restImages = files?.restImages || [];
+
+    // Validate that startImage exists
+    if (!startImage) {
+      return res.status(400).json({
+        success: false,
+        message: "startImage is required",
+      });
+    }
+
+    // Validate request body
+    const parsed = propertyVideoSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: parsed.error.flatten(),
+      });
+    }
+
+    const data = parsed.data;
+
+    const s3 = getS3();
+
+    // Upload startImage to S3
+    const startImageKey = buildS3Key("start", startImage.originalname || "start-image");
+    const startImageUrl = await s3.uploadBuffer({
+      Key: startImageKey,
+      Body: startImage.buffer,
+      ContentType: startImage.mimetype || "image/jpeg",
+      Bucket: PROPERTY_IMAGE_BUCKET,
+    });
+
+    // Upload restImages to S3
+    const restImageUploads = await Promise.all(
+      restImages.map(async (file, idx) => {
+        const key = buildS3Key("rest", file.originalname || `rest-image-${idx}`);
+        const url = await s3.uploadBuffer({
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype || "image/jpeg",
+          Bucket: PROPERTY_IMAGE_BUCKET,
+        });
+        return url;
+      })
+    );
+
+    // Combine all images into single array (first image is startImage, rest are restImages)
+    const allImages = [startImageUrl, ...restImageUploads];
+
+    // Prepare webhook payload
+    const webhookPayload = {
+      topic: data.topic,
+      price: data.price,
+      size: data.size,
+      bedroomCount: data.bedroomCount,
+      washroomCount: data.washroomCount,
+      livingRoomCount: data.livingRoomCount,
+      socialHandles: data.socialHandles,
+      city: data.city,
+      address: data.address,
+      email: data.email,
+      music: data.music,
+      images: allImages,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Forward to webhook (fire and forget)
+    sendFireAndForgetWebhook(MUSIC_VIDEO_WEBHOOK_URL, webhookPayload);
+
+    return res.json({
+      success: true,
+      message: "Music video images uploaded successfully",
+      data: {
+        email: data.email,
+        topic: data.topic,
+        timestamp: new Date().toISOString(),
+        images: allImages,
+        webhookSent: true,
+      },
+    });
+  } catch (error: any) {
+    console.error("Failed to upload music video images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload images",
       error: error?.message || "Unknown error",
     });
   }

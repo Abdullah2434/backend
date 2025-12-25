@@ -45,3 +45,19 @@ export const propertyWebhookSchema = z.object({
 
 export type PropertyWebhookPayload = z.infer<typeof propertyWebhookSchema>;
 
+export const propertyVideoSchema = z.object({
+  topic: z.string().min(1),
+  price: z.string().optional(),
+  size: z.string().optional(),
+  bedroomCount: z.string().optional(),
+  washroomCount: z.string().optional(),
+  livingRoomCount: z.string().optional(),
+  socialHandles: z.string().optional(),
+  city: z.string().optional(),
+  address: z.string().optional(),
+  email: z.string().email(),
+  music: z.string().url().optional(),
+});
+
+export type PropertyVideoPayload = z.infer<typeof propertyVideoSchema>;
+
