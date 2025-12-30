@@ -17,6 +17,8 @@ import {
   PropertyImagesPayload,
   propertyWebhookSchema,
   PropertyWebhookPayload,
+  tourVideoSchema,
+  TourVideoPayload,
 } from "../validations/propertyImages.validations";
 
 // Store uploaded images in memory; we immediately stream to S3
@@ -41,6 +43,8 @@ const WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/cca3a948-947c-4532-bd8b-3d7d0c3cf97a";
 const PROPERTY_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/438c63f4-902b-40c5-b954-552370924e51";
+const TOUR_VIDEO_WEBHOOK_URL =
+  "https://edgeaimedia.app.n8n.cloud/webhook/tour-video";
 
 /**
  * Normalize incoming types (string JSON, comma-separated, or array) to array
@@ -115,6 +119,27 @@ function extractTypes(
 }
 
 export const uploadPropertyImagesMiddleware = upload.array("images", 20);
+
+// Multer configuration for tour video (startImage + restImages)
+const tourVideoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 21, // 1 startImage + up to 20 restImages
+    fileSize: 20 * 1024 * 1024, // 20MB per image
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype?.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
+export const uploadTourVideoMiddleware = tourVideoUpload.fields([
+  { name: "startImage", maxCount: 1 },
+  { name: "restImages", maxCount: 20 },
+]);
 
 export async function uploadPropertyImages(
   req: Request,
@@ -496,6 +521,125 @@ export async function forwardPropertyWebhook(
     return res.status(500).json({
       success: false,
       message: "Failed to forward data to webhook",
+      error: error?.message || "Unknown error",
+    });
+  }
+}
+
+/**
+ * Upload tour video images and forward to webhook
+ * POST /api/tour-video
+ */
+export async function uploadTourVideo(
+  req: Request,
+  res: Response
+): Promise<Response> {
+  try {
+    // Extract files from multer fields
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const startImageFiles = files?.startImage || [];
+    const restImageFiles = files?.restImages || [];
+
+    // Validate that we have at least startImage
+    if (startImageFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "startImage is required",
+      });
+    }
+
+    // Validate request body
+    const parsed = tourVideoSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: parsed.error.flatten(),
+      });
+    }
+
+    const data = parsed.data;
+    const s3 = getS3();
+
+    // Upload startImage first
+    const startImageFile = startImageFiles[0];
+    const startImageKey = `tour-video/${Date.now()}_start_${startImageFile.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") || "start.jpg"}`;
+    const startImageUrl = await s3.uploadBuffer({
+      Key: startImageKey,
+      Body: startImageFile.buffer,
+      ContentType: startImageFile.mimetype || "image/jpeg",
+      Bucket: PROPERTY_IMAGE_BUCKET,
+    });
+
+    // Upload restImages
+    const restImageUploads = await Promise.all(
+      restImageFiles.map(async (file, idx) => {
+        const key = `tour-video/${Date.now()}_${idx}_${file.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") || `rest_${idx}.jpg`}`;
+        const url = await s3.uploadBuffer({
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype || "image/jpeg",
+          Bucket: PROPERTY_IMAGE_BUCKET,
+        });
+        return { imageurl: url };
+      })
+    );
+
+    // Combine images: startImage first, then restImages
+    const allImages = [
+      { imageurl: startImageUrl },
+      ...restImageUploads,
+    ];
+
+    
+    const webhookPayload = {
+      images: allImages,
+      email: data.email,
+      timestamp: data.timestamp,
+      name: data.name,
+      social_handles: data.social_handles,
+      propertyType: data.propertyType,
+      music: data.music,
+      title: data.title,
+      city: data.city,
+      address: data.address,
+      price: data.price,
+      size: data.size,
+      bedRoomCount: data.bedRoomCount,
+      bathRoomCount: data.bathRoomCount,
+    };
+
+    // Send to webhook (fire and forget)
+    // Uses HTTPS POST with Content-Type: application/json
+    // Body is JSON.stringify(webhookPayload)
+    sendFireAndForgetWebhook(TOUR_VIDEO_WEBHOOK_URL, webhookPayload);
+
+    return res.json({
+      success: true,
+      message: "Tour video images uploaded successfully",
+      data: {
+        email: data.email,
+        timestamp: data.timestamp,
+        name: data.name,
+        social_handles: data.social_handles,
+        propertyType: data.propertyType,
+        title: data.title,
+        city: data.city,
+        address: data.address,
+        price: data.price,
+        size: data.size,
+        bedRoomCount: data.bedRoomCount,
+        bathRoomCount: data.bathRoomCount,
+        music: data.music,
+        images: allImages,
+        note: "Video generation is running in the background. The video will be available when ready.",
+      },
+    });
+  } catch (error: any) {
+    console.error("Failed to upload tour video images:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload tour video images",
       error: error?.message || "Unknown error",
     });
   }
