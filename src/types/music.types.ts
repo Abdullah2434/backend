@@ -23,6 +23,7 @@ export interface CreateMusicTrackData {
   fullTrackBuffer: Buffer;
   filename: string;
   contentType: string;
+  userId?: string;
   metadata?: MusicTrackMetadata;
 }
 
@@ -43,6 +44,7 @@ export interface MusicTracksStats {
     high: number;
     mid: number;
     low: number;
+    custom: number;
   };
 }
 

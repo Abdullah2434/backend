@@ -13,7 +13,7 @@ export const PREVIEW_URL_EXPIRATION = 3600;
 /**
  * Valid energy categories for music tracks
  */
-export const VALID_ENERGY_CATEGORIES = ["high", "mid", "low"] as const;
+export const VALID_ENERGY_CATEGORIES = ["high", "mid", "low", "custom"] as const;
 
 /**
  * Default AWS region

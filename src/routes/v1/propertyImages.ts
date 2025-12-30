@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, RequestHandler } from "express";
 import {
   uploadPropertyImages,
   uploadPropertyImagesMiddleware,
@@ -8,10 +8,13 @@ import {
 const router = Router();
 
 // Multipart/form-data: field "images" for files, "payload" (JSON string) for metadata
-router.post("/property-images", uploadPropertyImagesMiddleware, uploadPropertyImages);
+router.post(
+  "/analyse-listing-image",
+  uploadPropertyImagesMiddleware as unknown as RequestHandler,
+  uploadPropertyImages
+);
 
 // JSON body: forward property data to webhook
-router.post("/property-webhook", forwardPropertyWebhook);
+router.post("/listing-create-video", forwardPropertyWebhook);
 
 export default router;
-

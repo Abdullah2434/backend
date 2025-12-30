@@ -67,6 +67,7 @@ export class VideoService {
       s3Key: videoData.s3Key,
       status: videoData.status || VIDEO_STATUS_PROCESSING,
       metadata: videoData.metadata,
+      videoType: videoData.videoType,
     });
 
     await video.save();
@@ -604,7 +605,8 @@ export class VideoService {
   async downloadAndUploadVideo(
     videoUrl: string,
     email: string,
-    title: string
+    title: string,
+    videoType?: string
   ): Promise<VideoDownloadResult> {
     const user = await User.findOne({ email });
     if (!user) {
@@ -682,6 +684,7 @@ export class VideoService {
         size: videoBuffer.byteLength,
         format: contentType,
       },
+      videoType,
     });
 
     return {

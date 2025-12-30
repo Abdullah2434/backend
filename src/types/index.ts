@@ -185,6 +185,7 @@ export interface CreateVideoData {
   secretKey?: string;
   status?: "processing" | "ready" | "failed";
   metadata?: VideoMetadata;
+  videoType?: string;
 }
 
 export interface UpdateVideoData {

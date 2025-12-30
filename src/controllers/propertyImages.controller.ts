@@ -196,8 +196,9 @@ export async function uploadPropertyImages(
         mainSellingPoints: data.mainSellingPoints,
         size: data.size,
         bedroomCount: data.bedroomCount,
-        livingRoomCount: data.livingRoomCount,
         bathroomCount: data.bathroomCount,
+        lotSize: data.lotSize,
+        preferredTone: data.preferredTone,
         images: uploads.map((u) => ({
           type: u.type,
           imageurl: u.imageUrl,
@@ -234,8 +235,9 @@ export async function uploadPropertyImages(
         mainSellingPoints: data.mainSellingPoints,
         size: data.size,
         bedroomCount: data.bedroomCount,
-        livingRoomCount: data.livingRoomCount,
         bathroomCount: data.bathroomCount,
+        lotSize: data.lotSize,
+        preferredTone: data.preferredTone,
         images: uploads,
         webhookResponse,
       },
@@ -392,11 +394,13 @@ export async function forwardPropertyWebhook(
     const payload: PropertyWebhookPayload & {
       avatarType: string;
       videoType: string;
+      useMusic?: boolean | string;
     } = {
       ...data,
       avatarType,
       videoType: data.videoType || "VideoListing",
       timestamp: data.timestamp || new Date().toISOString(),
+      useMusic: data.useMusic,
     };
 
     // Forward to webhook asynchronously (fire and forget)
@@ -477,7 +481,7 @@ export async function forwardPropertyWebhook(
     // Return immediately without waiting for webhook response
     return res.json({
       success: true,
-      message: "Your video is in progress",
+      message: "Listing video creating successfully",
       data: {
         status: "processing",
         timestamp: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   uploadMusicTrack,
+  uploadCustomMusicTrack,
   getAllMusicTracks,
   getMusicTracksByEnergy,
   getMusicTrackById,
@@ -21,6 +22,7 @@ router.get("/stats", getMusicTracksStats);
 
 // Protected POST/DELETE endpoints (admin operations)
 router.post("/upload", upload.single("audioFile") as any, uploadMusicTrack);
+router.post("/upload-custom", upload.single("audioFile") as any, uploadCustomMusicTrack);
 router.delete("/track/:trackId", deleteMusicTrack);
 
 export default router;
