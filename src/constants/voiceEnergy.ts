@@ -30,7 +30,7 @@ export const VOICE_ENERGY_PRESETS = {
 } as const;
 
 export type VoiceEnergyLevel = keyof typeof VOICE_ENERGY_PRESETS;
-export type MusicEnergyLevel = "high" | "mid" | "low";
+export type MusicEnergyLevel = "high" | "mid" | "low" | "custom";
 
 export interface VoiceEnergyParams {
   stability: number;

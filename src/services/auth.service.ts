@@ -311,13 +311,8 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if user exists or not for security
-      return {
-        message:
-          platform === "mobile"
-            ? "If an account with that email exists, a password reset OTP has been sent"
-            : "If an account with that email exists, a password reset link has been sent",
-      };
+      // Throw error if account with email does not exist
+      throw new Error("Account with this email does not exist");
     }
 
     // For mobile app, generate and send OTP

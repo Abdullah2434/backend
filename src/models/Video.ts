@@ -22,6 +22,7 @@ export interface IVideo extends Document {
     youtube_caption?: string;
   };
   note?: string | null;
+  videoType?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +52,7 @@ const videoSchema = new Schema<IVideo>(
       youtube_caption: { type: String, trim: true },
     },
     note: { type: String, default: null, trim: true },
+    videoType: { type: String, trim: true },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

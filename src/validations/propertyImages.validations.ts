@@ -12,8 +12,9 @@ export const propertyImagesSchema = z.object({
   mainSellingPoints: z.array(z.string()).optional(),
   size: z.string().optional(),
   bedroomCount: z.string().optional(),
-  livingRoomCount: z.string().optional(),
   bathroomCount: z.string().optional(),
+  lotSize: z.string().optional(),
+  preferredTone: z.string().optional(),
   // Accept array or string (JSON or comma-separated); we normalize in controller
   types: z.union([z.array(z.string().min(1)), z.string()]).optional(),
 });
@@ -48,6 +49,7 @@ export const propertyWebhookSchema = z.object({
   voiceId: z.string().min(1),
   title: z.string().min(1),
   videoType: z.string().optional().default("VideoListing"),
+  useMusic: z.union([z.boolean(), z.string()]).optional(),
 });
 
 export type PropertyWebhookPayload = z.infer<typeof propertyWebhookSchema>;

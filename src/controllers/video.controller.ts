@@ -309,7 +309,7 @@ export async function checkPendingWorkflows(
 // ==================== VIDEO DOWNLOAD ====================
 export async function download(req: Request, res: Response): Promise<Response> {
   try {
-    const { videoUrl, email, title, executionId, scheduleId, trendIndex } =
+    const { videoUrl, email, title, executionId, scheduleId, trendIndex, videoType } =
       req.body;
 
     // Validate required fields
@@ -346,7 +346,8 @@ export async function download(req: Request, res: Response): Promise<Response> {
     const result = await videoService.downloadAndUploadVideo(
       videoUrl,
       email,
-      title
+      title,
+      videoType
     );
 
     // Mark whether this video was auto-generated (scheduled) or manual

@@ -5,11 +5,12 @@ import crypto from "crypto";
 
 export interface CreateMusicTrackData {
   name: string;
-  energyCategory: "high" | "mid" | "low";
+  energyCategory: "high" | "mid" | "low" | "custom";
   duration: number;
   fullTrackBuffer: Buffer;
   filename: string;
   contentType: string;
+  userId?: string;
   metadata?: {
     artist?: string;
     source?: string;
@@ -58,6 +59,7 @@ export class MusicService {
         s3FullTrackUrl: uploadResult.fullTrackUrl,
         s3PreviewUrl: uploadResult.previewUrl,
         duration: data.duration,
+        userId: data.userId ? (data.userId as any) : undefined,
         metadata: data.metadata || {},
       });
 
@@ -71,22 +73,72 @@ export class MusicService {
 
   /**
    * Get all music tracks by energy category with clean MP3 URLs
+   * For custom tracks, only returns tracks for the specified user
+   * For other categories, returns default tracks (no userId)
    */
   async getMusicTracksByEnergy(
-    energyCategory: "high" | "mid" | "low"
+    energyCategory: "high" | "mid" | "low" | "custom",
+    userId?: string
   ): Promise<IMusicTrack[]> {
-    const tracks = await MusicTrack.find({ energyCategory }).sort({ createdAt: -1 });
+    let filter: any = { energyCategory };
+    
+    if (energyCategory === "custom") {
+      // Custom tracks: only return user's own tracks
+      if (userId) {
+        filter.userId = userId;
+      } else {
+        // No userId provided, return empty array for custom
+        return [];
+      }
+    } else {
+      // Default tracks (high/mid/low): only return tracks without userId
+      filter.userId = { $exists: false };
+    }
+    
+    const tracks = await MusicTrack.find(filter).sort({ createdAt: -1 });
     // Generate clean URLs for all tracks
     return Promise.all(tracks.map(track => this.generateCleanUrlsForTrack(track)));
   }
 
   /**
    * Get all music tracks (with optional energy filter) with clean MP3 URLs
+   * When no filter is provided, returns all default tracks (high/mid/low) + user's custom tracks
+   * When filter is provided, applies same logic as getMusicTracksByEnergy
    */
   async getAllMusicTracks(
-    energyCategory?: "high" | "mid" | "low"
+    energyCategory?: "high" | "mid" | "low" | "custom",
+    userId?: string
   ): Promise<IMusicTrack[]> {
-    const filter = energyCategory ? { energyCategory } : {};
+    let filter: any = {};
+    
+    if (energyCategory) {
+      if (energyCategory === "custom") {
+        // Custom tracks: only return user's own tracks
+        if (userId) {
+          filter = { energyCategory, userId };
+        } else {
+          // No userId provided, return empty array for custom
+          return [];
+        }
+      } else {
+        // Default tracks (high/mid/low): only return tracks without userId
+        filter = { energyCategory, userId: { $exists: false } };
+      }
+    } else {
+      // No filter: return default tracks + user's custom tracks
+      if (userId) {
+        filter = {
+          $or: [
+            { userId: { $exists: false } }, // Default tracks
+            { userId, energyCategory: "custom" } // User's custom tracks
+          ]
+        };
+      } else {
+        // No userId: only return default tracks
+        filter = { userId: { $exists: false } };
+      }
+    }
+    
     const tracks = await MusicTrack.find(filter).sort({ createdAt: -1 });
     // Generate clean URLs for all tracks
     return Promise.all(tracks.map(track => this.generateCleanUrlsForTrack(track)));
@@ -105,7 +157,7 @@ export class MusicService {
    * Get random music track by energy category with clean URLs
    */
   async getRandomTrackByEnergy(
-    energyCategory: "high" | "mid" | "low"
+    energyCategory: "high" | "mid" | "low" | "custom"
   ): Promise<IMusicTrack | null> {
     const tracks = await MusicTrack.find({ energyCategory });
     if (tracks.length === 0) return null;
@@ -198,21 +250,33 @@ export class MusicService {
 
   /**
    * Get music tracks count by energy category
+   * For custom, counts only user's tracks if userId provided
    */
-  async getMusicTracksCount(): Promise<{
+  async getMusicTracksCount(userId?: string): Promise<{
     high: number;
     mid: number;
     low: number;
+    custom: number;
     total: number;
   }> {
-    const [high, mid, low, total] = await Promise.all([
-      MusicTrack.countDocuments({ energyCategory: "high" }),
-      MusicTrack.countDocuments({ energyCategory: "mid" }),
-      MusicTrack.countDocuments({ energyCategory: "low" }),
-      MusicTrack.countDocuments(),
+    const [high, mid, low, custom, total] = await Promise.all([
+      MusicTrack.countDocuments({ energyCategory: "high", userId: { $exists: false } }),
+      MusicTrack.countDocuments({ energyCategory: "mid", userId: { $exists: false } }),
+      MusicTrack.countDocuments({ energyCategory: "low", userId: { $exists: false } }),
+      userId 
+        ? MusicTrack.countDocuments({ energyCategory: "custom", userId })
+        : MusicTrack.countDocuments({ energyCategory: "custom" }),
+      userId
+        ? MusicTrack.countDocuments({
+            $or: [
+              { userId: { $exists: false } },
+              { userId, energyCategory: "custom" }
+            ]
+          })
+        : MusicTrack.countDocuments({ userId: { $exists: false } }),
     ]);
 
-    return { high, mid, low, total };
+    return { high, mid, low, custom, total };
   }
 }
 

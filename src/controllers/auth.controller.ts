@@ -223,6 +223,12 @@ export async function forgotPassword(req: Request, res: Response) {
     const result = await authService.forgotPassword(email, platformType);
     return res.json({ success: true, message: result.message });
   } catch (e: any) {
+    // Check if error is about email not existing
+    if (e.message && e.message.includes("does not exist")) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Account with this email does not exist" });
+    }
     return res
       .status(400)
       .json({ success: false, message: e.message || "Internal server error" });

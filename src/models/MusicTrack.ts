@@ -4,10 +4,11 @@ export interface IMusicTrack extends Document {
   _id: mongoose.Types.ObjectId;
   trackId: string;
   name: string;
-  energyCategory: "high" | "mid" | "low";
+  energyCategory: "high" | "mid" | "low" | "custom";
   s3FullTrackUrl: string;
   s3PreviewUrl: string;
   duration: number;
+  userId?: mongoose.Types.ObjectId;
   metadata: {
     artist?: string;
     source?: string;
@@ -32,7 +33,7 @@ const musicTrackSchema = new Schema<IMusicTrack>(
     },
     energyCategory: {
       type: String,
-      enum: ["high", "mid", "low"],
+      enum: ["high", "mid", "low", "custom"],
       required: true,
     },
     s3FullTrackUrl: {
@@ -46,6 +47,11 @@ const musicTrackSchema = new Schema<IMusicTrack>(
     duration: {
       type: Number,
       required: true,
+    },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
     },
     metadata: {
       artist: { type: String, trim: true },
@@ -63,6 +69,8 @@ const musicTrackSchema = new Schema<IMusicTrack>(
 
 // Indexes for better performance
 musicTrackSchema.index({ energyCategory: 1 });
+musicTrackSchema.index({ userId: 1 });
+musicTrackSchema.index({ energyCategory: 1, userId: 1 });
 // Note: trackId already has an index from unique: true
 
 export default mongoose.models.MusicTrack ||
