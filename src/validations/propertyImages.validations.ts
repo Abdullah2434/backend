@@ -68,6 +68,7 @@ export const tourVideoSchema = z.object({
   name: z.string().min(1),
   timestamp: z.string().datetime(),
   music: z.string().url(),
+  mainSellingPoints: z.array(z.string()).optional(),
 });
 
 export type TourVideoPayload = z.infer<typeof tourVideoSchema>;

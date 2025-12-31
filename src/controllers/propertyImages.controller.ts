@@ -9,9 +9,13 @@ import {
   ESTIMATED_COMPLETION_MINUTES,
   SOCIAL_MEDIA_PLATFORMS,
 } from "../constants/video.constants";
-import { sendFireAndForgetWebhook } from "../utils/videoControllerHelpers";
+import {
+  sendFireAndForgetWebhook,
+  checkVideoCreationLimit,
+} from "../utils/videoControllerHelpers";
 import { CaptionGenerationService } from "../services/content/captionGeneration.service";
 import { truncateSocialMediaCaptions } from "../utils/captionTruncationHelpers";
+import { VideoService } from "../services/video";
 import {
   propertyImagesSchema,
   PropertyImagesPayload,
@@ -45,6 +49,9 @@ const PROPERTY_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/438c63f4-902b-40c5-b954-552370924e51";
 const TOUR_VIDEO_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/tour-video";
+
+// Service instance
+const videoService = new VideoService();
 
 /**
  * Normalize incoming types (string JSON, comma-separated, or array) to array
@@ -146,6 +153,41 @@ export async function uploadPropertyImages(
   res: Response
 ): Promise<Response> {
   try {
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    const email = String(req.body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const videoLimit = await checkVideoCreationLimit(email, videoService);
+
+    if (!videoLimit.canCreate) {
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${
+          videoLimit.used || 0
+        } out of ${
+          videoLimit.limit || 0
+        } videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.used,
+        },
+      });
+    }
+
     const files = (req.files || []) as Express.Multer.File[];
     // Normalize types before validation so string inputs pass schema
     let normalizedTypes: string[] | undefined;
@@ -367,6 +409,41 @@ export async function forwardPropertyWebhook(
   res: Response
 ): Promise<Response> {
   try {
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    const email = String(req.body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const videoLimit = await checkVideoCreationLimit(email, videoService);
+
+    if (!videoLimit.canCreate) {
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${
+          videoLimit.used || 0
+        } out of ${
+          videoLimit.limit || 0
+        } videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.used,
+        },
+      });
+    }
+
     // Normalize arrays before validation
     const normalizedBody = normalizeArrays(req.body);
 
@@ -535,6 +612,41 @@ export async function uploadTourVideo(
   res: Response
 ): Promise<Response> {
   try {
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    const email = String(req.body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const videoLimit = await checkVideoCreationLimit(email, videoService);
+
+    if (!videoLimit.canCreate) {
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${
+          videoLimit.used || 0
+        } out of ${
+          videoLimit.limit || 0
+        } videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.used,
+        },
+      });
+    }
+
     // Extract files from multer fields
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const startImageFiles = files?.startImage || [];
@@ -563,7 +675,10 @@ export async function uploadTourVideo(
 
     // Upload startImage first
     const startImageFile = startImageFiles[0];
-    const startImageKey = `tour-video/${Date.now()}_start_${startImageFile.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") || "start.jpg"}`;
+    const startImageKey = `tour-video/${Date.now()}_start_${
+      startImageFile.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") ||
+      "start.jpg"
+    }`;
     const startImageUrl = await s3.uploadBuffer({
       Key: startImageKey,
       Body: startImageFile.buffer,
@@ -574,7 +689,10 @@ export async function uploadTourVideo(
     // Upload restImages
     const restImageUploads = await Promise.all(
       restImageFiles.map(async (file, idx) => {
-        const key = `tour-video/${Date.now()}_${idx}_${file.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") || `rest_${idx}.jpg`}`;
+        const key = `tour-video/${Date.now()}_${idx}_${
+          file.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") ||
+          `rest_${idx}.jpg`
+        }`;
         const url = await s3.uploadBuffer({
           Key: key,
           Body: file.buffer,
@@ -586,12 +704,13 @@ export async function uploadTourVideo(
     );
 
     // Combine images: startImage first, then restImages
-    const allImages = [
-      { imageurl: startImageUrl },
-      ...restImageUploads,
-    ];
+    const allImages = [{ imageurl: startImageUrl }, ...restImageUploads];
 
-    
+    // Convert string fields to numbers
+    const priceNumber = parseFloat(data.price) || 0;
+    const bedRoomCountNumber = parseInt(data.bedRoomCount, 10) || 0;
+    const bathRoomCountNumber = parseInt(data.bathRoomCount, 10) || 0;
+
     const webhookPayload = {
       images: allImages,
       email: data.email,
@@ -603,10 +722,13 @@ export async function uploadTourVideo(
       title: data.title,
       city: data.city,
       address: data.address,
-      price: data.price,
+      price: priceNumber,
       size: data.size,
-      bedRoomCount: data.bedRoomCount,
-      bathRoomCount: data.bathRoomCount,
+      bedRoomCount: bedRoomCountNumber,
+      bathRoomCount: bathRoomCountNumber,
+      ...(data.mainSellingPoints && data.mainSellingPoints.length > 0
+        ? { mainSellingPoints: data.mainSellingPoints }
+        : {}),
     };
 
     // Send to webhook (fire and forget)
@@ -626,11 +748,14 @@ export async function uploadTourVideo(
         title: data.title,
         city: data.city,
         address: data.address,
-        price: data.price,
+        price: priceNumber,
         size: data.size,
-        bedRoomCount: data.bedRoomCount,
-        bathRoomCount: data.bathRoomCount,
+        bedRoomCount: bedRoomCountNumber,
+        bathRoomCount: bathRoomCountNumber,
         music: data.music,
+        ...(data.mainSellingPoints && data.mainSellingPoints.length > 0
+          ? { mainSellingPoints: data.mainSellingPoints }
+          : {}),
         images: allImages,
         note: "Video generation is running in the background. The video will be available when ready.",
       },
