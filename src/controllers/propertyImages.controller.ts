@@ -736,6 +736,109 @@ export async function uploadTourVideo(
     // Body is JSON.stringify(webhookPayload)
     sendFireAndForgetWebhook(TOUR_VIDEO_WEBHOOK_URL, webhookPayload);
 
+    // Generate captions in background using form data
+    (async () => {
+      try {
+        // Build key points from form data
+        const keyPointsArray: string[] = [];
+
+        // Add property details
+        if (data.propertyType) {
+          keyPointsArray.push(`${data.propertyType}`);
+        }
+        if (priceNumber > 0) {
+          keyPointsArray.push(`Price: $${priceNumber.toLocaleString()}`);
+        }
+        if (data.size) {
+          keyPointsArray.push(`Size: ${data.size}`);
+        }
+        if (bedRoomCountNumber > 0) {
+          keyPointsArray.push(
+            `${bedRoomCountNumber} bedroom${bedRoomCountNumber > 1 ? "s" : ""}`
+          );
+        }
+        if (bathRoomCountNumber > 0) {
+          keyPointsArray.push(
+            `${bathRoomCountNumber} bathroom${
+              bathRoomCountNumber > 1 ? "s" : ""
+            }`
+          );
+        }
+        if (data.city) {
+          keyPointsArray.push(`Located in ${data.city}`);
+        }
+        if (data.address) {
+          keyPointsArray.push(`Address: ${data.address}`);
+        }
+
+        // Add main selling points if provided
+        if (data.mainSellingPoints && data.mainSellingPoints.length > 0) {
+          keyPointsArray.push(...data.mainSellingPoints);
+        }
+
+        const keyPoints = keyPointsArray.join(". ");
+
+        if (keyPoints) {
+          // Get user for userContext
+          const user = await User.findOne({ email: data.email });
+          const userContext = {
+            name: data.name || "",
+            position: "",
+            companyName: "",
+            city: data.city || "",
+            socialHandles: data.social_handles || "",
+          };
+
+          // Generate 6 different platform-specific captions using OpenAI
+          const captions = await CaptionGenerationService.generateCaptions(
+            data.title || "Property Tour Video", // Topic
+            keyPoints, // Key Points (form data combined)
+            userContext,
+            undefined // language will be determined from user settings if available
+          );
+
+          // Truncate captions to platform limits
+          const truncatedCaptions = truncateSocialMediaCaptions(captions);
+
+          // Verify all 6 captions were generated
+          const captionCount = Object.keys(truncatedCaptions).filter(
+            (key) => truncatedCaptions[key as keyof typeof truncatedCaptions]
+          ).length;
+
+          // Store captions in PendingCaptions for later attachment to video
+          await PendingCaptions.findOneAndUpdate(
+            { email: data.email, title: data.title },
+            {
+              email: data.email,
+              title: data.title,
+              captions: truncatedCaptions,
+              topic: data.title || "Property Tour Video",
+              keyPoints: keyPoints,
+              userContext,
+              userId: user?._id?.toString(),
+              platforms: [...SOCIAL_MEDIA_PLATFORMS],
+              isDynamic: false,
+              isPending: false, // Captions are ready, just waiting for video
+            },
+            { upsert: true, new: true }
+          );
+
+          console.log(
+            `✅ Generated ${captionCount} unique platform captions for tour video: ${data.title} (${data.email})`
+          );
+          console.log(
+            `   Platforms: Instagram, Facebook, LinkedIn, Twitter, TikTok, YouTube`
+          );
+        }
+      } catch (captionError: any) {
+        // Silently fail - captions are optional
+        console.error(
+          "Failed to generate captions for tour video:",
+          captionError?.message || captionError
+        );
+      }
+    })();
+
     return res.json({
       success: true,
       message: "Tour video images uploaded successfully",
