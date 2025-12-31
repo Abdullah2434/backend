@@ -97,6 +97,16 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
         ? sortParam
         : "newest";
     const search = req.query.search ? String(req.query.search).trim() : undefined;
+    
+    // Extract and validate videoType (optional - if not provided, return all videos)
+    let videoType: string | undefined = undefined;
+    if (req.query.videoType) {
+      const videoTypeParam = String(req.query.videoType).trim();
+      const validVideoTypes = ["talkingHead", "listingVideo", "tourVideo"];
+      if (validVideoTypes.includes(videoTypeParam)) {
+        videoType = videoTypeParam;
+      }
+    }
 
     // Get paginated videos
     const { videos: videosWithUrls, total } =
@@ -105,7 +115,8 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
         page,
         limit,
         sort,
-        search
+        search,
+        videoType
       );
 
     // Get stats (calculated from all user videos, not filtered)
@@ -131,6 +142,7 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
           ? socialMediaCaptions
           : null,
         note: video.note || null,
+        videoType: video.videoType || "talkingHead",
       };
     });
 

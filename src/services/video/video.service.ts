@@ -448,10 +448,26 @@ export class VideoService {
     page: number = 1,
     limit: number = 6,
     sort: "oldest" | "newest" | "all" = "newest",
-    search?: string
+    search?: string,
+    videoType?: string
   ): Promise<{ videos: IVideo[]; total: number }> {
     // Build query filter
     const queryFilter: any = { userId };
+
+    // Add videoType filter only if provided
+    if (videoType) {
+      // If videoType is "talkingHead", also include videos where videoType is null/undefined (for backward compatibility)
+      if (videoType === "talkingHead") {
+        queryFilter.$or = [
+          { videoType: "talkingHead" },
+          { videoType: { $exists: false } },
+          { videoType: null },
+        ];
+      } else {
+        queryFilter.videoType = videoType;
+      }
+    }
+    // If videoType is not provided, don't filter by videoType (return all videos)
 
     // Add search filter if provided
     if (search && search.trim()) {
