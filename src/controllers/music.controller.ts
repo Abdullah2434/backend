@@ -10,6 +10,11 @@ import { ResponseHelper } from "../utils/responseHelper";
 import { ValidationError } from "../types";
 import axios from "axios";
 import {
+  callGrokAPI,
+  parseTrackNamesFromGrok,
+  generateGrokPrompt,
+} from "../utils/grokHelpers";
+import {
   uploadMusicTrackSchema,
   getMusicTracksByEnergySchema,
   getMusicTrackByIdSchema,
@@ -526,31 +531,107 @@ export async function getMusicTracksStats(req: Request, res: Response) {
 }
 
 /**
- * Get trending music from Jamendo API
+ * Get trending music from Jamendo API based on city
+ * Uses Grok API to find trending track names, then fetches details from Jamendo
  * Returns music URL, music name, and artist name
  */
 export async function getTrendingMusic(req: Request, res: Response) {
   try {
-    const JAMENDO_API_URL =
-      "https://api.jamendo.com/v3.0/tracks/?client_id=ee904f5f&format=json&order=popularity_week&limit=15&audioformat=mp32&durationbetween=30_90&include=musicinfo+licenses&vocalinstrumental=vocal&ccsa=true";
+    const city = req.query.city as string;
 
-    // Fetch trending music from Jamendo API
-    const response = await axios.get(JAMENDO_API_URL, {
-      timeout: 10000, // 10 seconds timeout
-    });
+    // Validate city parameter
+    if (!city || typeof city !== "string" || city.trim().length === 0) {
+      return ResponseHelper.badRequest(
+        res,
+        "City parameter is required (e.g., ?city=Lahore)"
+      );
+    }
 
-    // Extract and format the response
-    const tracks = response.data?.results || [];
-    const formattedTracks = tracks.map((track: any) => ({
-      musicUrl: track.audio || null,
-      musicName: track.name || null,
-      artistName: track.artist_name || null,
-    }));
+    // Step 1: Call Grok API to get trending track names
+    const grokPrompt = generateGrokPrompt(city.trim());
+    let grokResponse: string;
+    try {
+      grokResponse = await callGrokAPI(grokPrompt);
+    } catch (error: any) {
+      console.error("Error calling Grok API:", error);
+      return ResponseHelper.serverError(
+        res,
+        `Failed to fetch trending track names: ${error.message}`
+      );
+    }
+
+    // Step 2: Parse track names from Grok response
+    const trackNames = parseTrackNamesFromGrok(grokResponse);
+    if (trackNames.length === 0) {
+      return ResponseHelper.serverError(
+        res,
+        "Could not extract track names from Grok response"
+      );
+    }
+
+    console.log(`Found ${trackNames.length} track names from Grok for city: ${city}`);
+
+    // Step 3: Fetch track details from Jamendo API for each track name
+    const allTracks: Array<{
+      musicUrl: string;
+      musicName: string;
+      artistName: string;
+    }> = [];
+    const seenTrackIds = new Set<string>(); // To avoid duplicates
+
+    for (const trackName of trackNames) {
+      if (allTracks.length >= 10) break; // We have enough tracks
+
+      try {
+        const jamendoUrl = `https://api.jamendo.com/v3.0/playlists/tracks/?client_id=ee904f5f&format=json&limit=15&audioformat=mp32&name=${encodeURIComponent(trackName)}`;
+        
+        const jamendoResponse = await axios.get(jamendoUrl, {
+          timeout: 10000, // 10 seconds timeout
+        });
+
+        const results = jamendoResponse.data?.results || [];
+        
+        // Extract tracks from results[].tracks[] array
+        for (const result of results) {
+          if (allTracks.length >= 10) break;
+          
+          const tracks = result.tracks || [];
+          for (const track of tracks) {
+            if (allTracks.length >= 10) break;
+            
+            // Skip if we've already seen this track
+            if (seenTrackIds.has(track.id)) continue;
+            
+            // Only add tracks that have audio URL
+            if (track.audio && track.name && track.artist_name) {
+              allTracks.push({
+                musicUrl: track.audio,
+                musicName: track.name,
+                artistName: track.artist_name,
+              });
+              seenTrackIds.add(track.id);
+            }
+          }
+        }
+      } catch (error: any) {
+        // If one track name fails, continue with next one
+        console.warn(`Failed to fetch tracks for "${trackName}":`, error.message);
+        continue;
+      }
+    }
+
+    // Step 4: Validate we have at least some tracks
+    if (allTracks.length === 0) {
+      return ResponseHelper.serverError(
+        res,
+        "Could not find any tracks for the specified city. Please try a different city."
+      );
+    }
 
     return ResponseHelper.success(
       res,
-      "Trending music retrieved successfully",
-      formattedTracks
+      `Trending music retrieved successfully for ${city}`,
+      allTracks
     );
   } catch (error: any) {
     console.error("Error in getTrendingMusic:", error);
