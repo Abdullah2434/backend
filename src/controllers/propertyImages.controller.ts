@@ -673,12 +673,22 @@ export async function uploadTourVideo(
     const data = parsed.data;
     const s3 = getS3();
 
+    // Helper function to normalize filename while preserving original extension
+    const normalizeFilename = (
+      filename: string | undefined,
+      defaultName: string
+    ): string => {
+      if (!filename) return `${defaultName}.jpg`;
+      // Replace special chars but preserve extension
+      return filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+    };
+
     // Upload startImage first
     const startImageFile = startImageFiles[0];
-    const startImageKey = `tour-video/${Date.now()}_start_${
-      startImageFile.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") ||
-      "start.jpg"
-    }`;
+    const startImageKey = `tour-video/${Date.now()}_start_${normalizeFilename(
+      startImageFile.originalname,
+      "start"
+    )}`;
     const startImageUrl = await s3.uploadBuffer({
       Key: startImageKey,
       Body: startImageFile.buffer,
@@ -689,10 +699,10 @@ export async function uploadTourVideo(
     // Upload restImages
     const restImageUploads = await Promise.all(
       restImageFiles.map(async (file, idx) => {
-        const key = `tour-video/${Date.now()}_${idx}_${
-          file.originalname?.replace(/[^a-zA-Z0-9.-]/g, "_") ||
-          `rest_${idx}.jpg`
-        }`;
+        const key = `tour-video/${Date.now()}_${idx}_${normalizeFilename(
+          file.originalname,
+          `rest_${idx}`
+        )}`;
         const url = await s3.uploadBuffer({
           Key: key,
           Body: file.buffer,
