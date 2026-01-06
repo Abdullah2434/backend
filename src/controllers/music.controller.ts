@@ -8,6 +8,7 @@ import multer from "multer";
 import { MusicEnergyLevel } from "../constants/voiceEnergy";
 import { ResponseHelper } from "../utils/responseHelper";
 import { ValidationError } from "../types";
+import axios from "axios";
 import {
   uploadMusicTrackSchema,
   getMusicTracksByEnergySchema,
@@ -520,6 +521,58 @@ export async function getMusicTracksStats(req: Request, res: Response) {
     return ResponseHelper.serverError(
       res,
       error.message || "Failed to get music tracks statistics"
+    );
+  }
+}
+
+/**
+ * Get trending music from Jamendo API
+ * Returns music URL, music name, and artist name
+ */
+export async function getTrendingMusic(req: Request, res: Response) {
+  try {
+    const JAMENDO_API_URL =
+      "https://api.jamendo.com/v3.0/tracks/?client_id=ee904f5f&format=json&order=popularity_week&limit=15&audioformat=mp32&durationbetween=30_90&include=musicinfo+licenses&vocalinstrumental=vocal&ccsa=true";
+
+    // Fetch trending music from Jamendo API
+    const response = await axios.get(JAMENDO_API_URL, {
+      timeout: 10000, // 10 seconds timeout
+    });
+
+    // Extract and format the response
+    const tracks = response.data?.results || [];
+    const formattedTracks = tracks.map((track: any) => ({
+      musicUrl: track.audio || null,
+      musicName: track.name || null,
+      artistName: track.artist_name || null,
+    }));
+
+    return ResponseHelper.success(
+      res,
+      "Trending music retrieved successfully",
+      formattedTracks
+    );
+  } catch (error: any) {
+    console.error("Error in getTrendingMusic:", error);
+    
+    // Handle specific error cases
+    if (error.code === "ECONNABORTED") {
+      return ResponseHelper.serverError(
+        res,
+        "Request timeout while fetching trending music"
+      );
+    }
+    
+    if (error.response) {
+      return ResponseHelper.serverError(
+        res,
+        `Failed to fetch trending music: ${error.response.status} ${error.response.statusText}`
+      );
+    }
+
+    return ResponseHelper.serverError(
+      res,
+      error.message || "Failed to get trending music"
     );
   }
 }
