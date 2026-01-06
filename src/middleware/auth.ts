@@ -73,6 +73,7 @@ const AUTH_ROUTES = {
     "/video",
     "/user/avatar-videos",
     "/video_avatar",
+    "/music/trending",
   ],
 
   // Video routes (auth required)
