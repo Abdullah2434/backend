@@ -23,8 +23,8 @@ import {
   PropertyWebhookPayload,
   tourVideoSchema,
   TourVideoPayload,
-  narratedVideoSchema,
-  NarratedVideoPayload,
+  animatedVideoSchema,
+  AnimatedVideoPayload,
 } from "../validations/propertyImages.validations";
 
 // Store uploaded images in memory; we immediately stream to S3
@@ -51,7 +51,7 @@ const PROPERTY_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/438c63f4-902b-40c5-b954-552370924e51";
 const TOUR_VIDEO_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/tour-video";
-const NARRATED_VIDEO_WEBHOOK_URL =
+const ANIMATED_VIDEO_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/narrattied-video";
 
 // Service instance
@@ -888,10 +888,10 @@ export async function uploadTourVideo(
 }
 
 /**
- * Create narrated video
- * POST /api/narrated-video
+ * Create animated video
+ * POST /api/animated-video
  */
-export async function createNarratedVideo(
+export async function createAnimatedVideo(
   req: Request,
   res: Response
 ): Promise<Response> {
@@ -961,7 +961,7 @@ export async function createNarratedVideo(
     }
 
     // Validate request body
-    const parsed = narratedVideoSchema.safeParse(normalizedBody);
+    const parsed = animatedVideoSchema.safeParse(normalizedBody);
     if (!parsed.success) {
       console.error("Validation errors:", parsed.error.flatten());
       console.error("Received body:", JSON.stringify(req.body, null, 2));
@@ -1020,7 +1020,7 @@ export async function createNarratedVideo(
       videoCaption: true,
       voiceId: data.voice,
       title: data.title,
-      videoType: "narratedVideo",
+      videoType: "animatedVideo",
       useMusic: "yes",
       avatarType: avatarType,
       topic: data.videoTopic,
@@ -1029,7 +1029,7 @@ export async function createNarratedVideo(
     };
 
     // Forward to webhook asynchronously (fire and forget)
-    sendFireAndForgetWebhook(NARRATED_VIDEO_WEBHOOK_URL, webhookPayload);
+    sendFireAndForgetWebhook(ANIMATED_VIDEO_WEBHOOK_URL, webhookPayload);
 
     // Generate captions in background using topicKeyPoints
     (async () => {
@@ -1083,7 +1083,7 @@ export async function createNarratedVideo(
           );
 
           console.log(
-            `✅ Generated ${captionCount} unique platform captions for narrated video: ${data.title} (${data.email})`
+            `✅ Generated ${captionCount} unique platform captions for animated video: ${data.title} (${data.email})`
           );
           console.log(
             `   Platforms: Instagram, Facebook, LinkedIn, Twitter, TikTok, YouTube`
@@ -1092,7 +1092,7 @@ export async function createNarratedVideo(
       } catch (captionError: any) {
         // Silently fail - captions are optional
         console.error(
-          "Failed to generate captions for narrated video:",
+          "Failed to generate captions for animated video:",
           captionError?.message || captionError
         );
       }
@@ -1101,7 +1101,7 @@ export async function createNarratedVideo(
     // Return immediately without waiting for webhook response
     return res.json({
       success: true,
-      message: "Narrated video is in progress",
+      message: "Animated video is in progress",
       data: {
         status: "processing",
         timestamp: data.timestamp || new Date().toISOString(),
@@ -1112,10 +1112,10 @@ export async function createNarratedVideo(
       },
     });
   } catch (error: any) {
-    console.error("Failed to create narrated video:", error);
+    console.error("Failed to create animated video:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to create narrated video",
+      message: "Failed to create animated video",
       error: error?.message || "Unknown error",
     });
   }
