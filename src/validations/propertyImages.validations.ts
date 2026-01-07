@@ -72,3 +72,21 @@ export const tourVideoSchema = z.object({
 });
 
 export type TourVideoPayload = z.infer<typeof tourVideoSchema>;
+
+export const narratedVideoSchema = z.object({
+  avatar: z.string().min(1),
+  city: z.string().optional(),
+  email: z.string().email(),
+  gender: z.string().optional(),
+  music: z.string().optional(),
+  musicUrl: z.string().url(),
+  socialHandles: z.string().optional(),
+  style: z.string().optional(),
+  timestamp: z.string().datetime().optional(),
+  title: z.string().min(1),
+  topicKeyPoints: z.array(z.string()),
+  videoTopic: z.string().min(1),
+  voice: z.string().min(1),
+});
+
+export type NarratedVideoPayload = z.infer<typeof narratedVideoSchema>;

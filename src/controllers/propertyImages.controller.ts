@@ -23,6 +23,8 @@ import {
   PropertyWebhookPayload,
   tourVideoSchema,
   TourVideoPayload,
+  narratedVideoSchema,
+  NarratedVideoPayload,
 } from "../validations/propertyImages.validations";
 
 // Store uploaded images in memory; we immediately stream to S3
@@ -49,6 +51,8 @@ const PROPERTY_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/438c63f4-902b-40c5-b954-552370924e51";
 const TOUR_VIDEO_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/tour-video";
+const NARRATED_VIDEO_WEBHOOK_URL =
+  "https://edgeaimedia.app.n8n.cloud/webhook/narrattied-video";
 
 // Service instance
 const videoService = new VideoService();
@@ -878,6 +882,240 @@ export async function uploadTourVideo(
     return res.status(500).json({
       success: false,
       message: "Failed to upload tour video images",
+      error: error?.message || "Unknown error",
+    });
+  }
+}
+
+/**
+ * Create narrated video
+ * POST /api/narrated-video
+ */
+export async function createNarratedVideo(
+  req: Request,
+  res: Response
+): Promise<Response> {
+  try {
+    // ⚠️ CRITICAL: Check video limit FIRST before any processing or webhook calls
+    const email = String(req.body.email || "").trim();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required to check subscription limits",
+      });
+    }
+
+    const user = await videoService.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const videoLimit = await checkVideoCreationLimit(email, videoService);
+
+    if (!videoLimit.canCreate) {
+      return res.status(429).json({
+        success: false,
+        message: `Video limit reached. You have used ${
+          videoLimit.used || 0
+        } out of ${
+          videoLimit.limit || 0
+        } videos this month. Your subscription will renew monthly.`,
+        data: {
+          limit: videoLimit.limit,
+          remaining: videoLimit.remaining,
+          used: videoLimit.used,
+        },
+      });
+    }
+
+    // Normalize topicKeyPoints array before validation (handle JSON strings and objects)
+    const normalizedBody = { ...req.body };
+    if (normalizedBody.topicKeyPoints !== undefined) {
+      // If it's a JSON string, parse it
+      if (typeof normalizedBody.topicKeyPoints === "string") {
+        try {
+          normalizedBody.topicKeyPoints = JSON.parse(normalizedBody.topicKeyPoints);
+        } catch {
+          // If parsing fails, try to split by comma or newline
+          normalizedBody.topicKeyPoints = normalizedBody.topicKeyPoints
+            .split(/[,\n]/)
+            .map((item: string) => item.trim())
+            .filter((item: string) => item.length > 0);
+        }
+      }
+      // Convert object with numeric keys to array (form data format)
+      if (
+        normalizedBody.topicKeyPoints &&
+        typeof normalizedBody.topicKeyPoints === "object" &&
+        !Array.isArray(normalizedBody.topicKeyPoints)
+      ) {
+        normalizedBody.topicKeyPoints = objectToArray(normalizedBody.topicKeyPoints);
+      }
+      // Ensure it's an array
+      if (!Array.isArray(normalizedBody.topicKeyPoints)) {
+        normalizedBody.topicKeyPoints = [];
+      }
+    }
+
+    // Validate request body
+    const parsed = narratedVideoSchema.safeParse(normalizedBody);
+    if (!parsed.success) {
+      console.error("Validation errors:", parsed.error.flatten());
+      console.error("Received body:", JSON.stringify(req.body, null, 2));
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: parsed.error.flatten(),
+      });
+    }
+
+    const data = parsed.data;
+
+    // Look up avatarType from database
+    let avatarType: string | undefined;
+    try {
+      const avatar = await DefaultAvatar.findOne({ avatar_id: data.avatar });
+      if (avatar && (avatar as any).avatarType) {
+        avatarType = (avatar as any).avatarType;
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: `Avatar not found with ID: ${data.avatar}`,
+        });
+      }
+    } catch (err: any) {
+      console.error("Error looking up avatar:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to look up avatar",
+        error: err?.message || "Unknown error",
+      });
+    }
+
+    if (!avatarType) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "avatarType is required. Avatar must exist in the database with avatarType field.",
+      });
+    }
+
+    // Get user name from database
+    const dbUser = await User.findOne({ email: data.email });
+    const userName = dbUser
+      ? `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() ||
+        dbUser.email
+      : data.email;
+
+    // Prepare webhook payload matching the curl example format
+    const webhookPayload = {
+      email: data.email,
+      name: userName,
+      social_handles: data.socialHandles || "",
+      avatar: data.avatar,
+      music: data.musicUrl, // Use musicUrl from frontend
+      videoCaption: true,
+      voiceId: data.voice,
+      title: data.title,
+      videoType: "narratedVideo",
+      useMusic: "yes",
+      avatarType: avatarType,
+      topic: data.videoTopic,
+      keyPoints: data.topicKeyPoints,
+      style: data.style || "",
+    };
+
+    // Forward to webhook asynchronously (fire and forget)
+    sendFireAndForgetWebhook(NARRATED_VIDEO_WEBHOOK_URL, webhookPayload);
+
+    // Generate captions in background using topicKeyPoints
+    (async () => {
+      try {
+        // Combine key points into a string
+        const keyPointsText = data.topicKeyPoints.join(". ");
+
+        if (keyPointsText) {
+          // Get user for userContext
+          const user = await User.findOne({ email: data.email });
+          const userContext = {
+            name: userName,
+            position: "",
+            companyName: "",
+            city: data.city || "",
+            socialHandles: data.socialHandles || "",
+          };
+
+          // Generate 6 different platform-specific captions using OpenAI
+          const captions = await CaptionGenerationService.generateCaptions(
+            data.videoTopic || data.title, // Topic
+            keyPointsText, // Key Points
+            userContext,
+            undefined // language will be determined from user settings if available
+          );
+
+          // Truncate captions to platform limits
+          const truncatedCaptions = truncateSocialMediaCaptions(captions);
+
+          // Verify all 6 captions were generated
+          const captionCount = Object.keys(truncatedCaptions).filter(
+            (key) => truncatedCaptions[key as keyof typeof truncatedCaptions]
+          ).length;
+
+          // Store captions in PendingCaptions for later attachment to video
+          await PendingCaptions.findOneAndUpdate(
+            { email: data.email, title: data.title },
+            {
+              email: data.email,
+              title: data.title,
+              captions: truncatedCaptions,
+              topic: data.videoTopic || data.title,
+              keyPoints: keyPointsText,
+              userContext,
+              userId: user?._id?.toString(),
+              platforms: [...SOCIAL_MEDIA_PLATFORMS],
+              isDynamic: false,
+              isPending: false, // Captions are ready, just waiting for video
+            },
+            { upsert: true, new: true }
+          );
+
+          console.log(
+            `✅ Generated ${captionCount} unique platform captions for narrated video: ${data.title} (${data.email})`
+          );
+          console.log(
+            `   Platforms: Instagram, Facebook, LinkedIn, Twitter, TikTok, YouTube`
+          );
+        }
+      } catch (captionError: any) {
+        // Silently fail - captions are optional
+        console.error(
+          "Failed to generate captions for narrated video:",
+          captionError?.message || captionError
+        );
+      }
+    })();
+
+    // Return immediately without waiting for webhook response
+    return res.json({
+      success: true,
+      message: "Narrated video is in progress",
+      data: {
+        status: "processing",
+        timestamp: data.timestamp || new Date().toISOString(),
+        estimated_completion: new Date(
+          Date.now() + ESTIMATED_COMPLETION_MINUTES * 60 * 1000
+        ).toISOString(),
+        note: "Video generation is running in the background. The video will be available when ready.",
+      },
+    });
+  } catch (error: any) {
+    console.error("Failed to create narrated video:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create narrated video",
       error: error?.message || "Unknown error",
     });
   }
