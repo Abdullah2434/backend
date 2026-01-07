@@ -52,7 +52,7 @@ const PROPERTY_WEBHOOK_URL =
 const TOUR_VIDEO_WEBHOOK_URL =
   "https://edgeaimedia.app.n8n.cloud/webhook/tour-video";
 const ANIMATED_VIDEO_WEBHOOK_URL =
-  "https://edgeaimedia.app.n8n.cloud/webhook/narrattied-video";
+  "https://edgeaimedia.app.n8n.cloud/webhook-test/animated-video";
 
 // Service instance
 const videoService = new VideoService();
