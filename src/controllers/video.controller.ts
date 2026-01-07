@@ -102,7 +102,7 @@ export async function gallery(req: Request, res: Response): Promise<Response> {
     let videoType: string | undefined = undefined;
     if (req.query.videoType) {
       const videoTypeParam = String(req.query.videoType).trim();
-      const validVideoTypes = ["talkingHead", "listingVideo", "tourVideo"];
+      const validVideoTypes = ["talkingHead", "listingVideo", "tourVideo", "narratedVideo"];
       if (validVideoTypes.includes(videoTypeParam)) {
         videoType = videoTypeParam;
       }
