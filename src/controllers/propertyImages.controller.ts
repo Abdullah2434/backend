@@ -1035,7 +1035,12 @@ export async function createAnimatedVideo(
     (async () => {
       try {
         // Combine key points into a string
-        const keyPointsText = data.topicKeyPoints.join(". ");
+        let keyPointsText = data.topicKeyPoints.join(". ");
+
+        // Add style information to key points if provided
+        if (data.style && data.style.trim()) {
+          keyPointsText += `. Style: ${data.style}`;
+        }
 
         if (keyPointsText) {
           // Get user for userContext
@@ -1051,7 +1056,7 @@ export async function createAnimatedVideo(
           // Generate 6 different platform-specific captions using OpenAI
           const captions = await CaptionGenerationService.generateCaptions(
             data.videoTopic || data.title, // Topic
-            keyPointsText, // Key Points
+            keyPointsText, // Key Points (includes style if provided)
             userContext,
             undefined // language will be determined from user settings if available
           );
