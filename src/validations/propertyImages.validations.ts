@@ -73,7 +73,7 @@ export const tourVideoSchema = z.object({
 
 export type TourVideoPayload = z.infer<typeof tourVideoSchema>;
 
-export const narratedVideoSchema = z.object({
+export const animatedVideoSchema = z.object({
   avatar: z.string().min(1),
   city: z.string().optional(),
   email: z.string().email(),
@@ -89,4 +89,4 @@ export const narratedVideoSchema = z.object({
   voice: z.string().min(1),
 });
 
-export type NarratedVideoPayload = z.infer<typeof narratedVideoSchema>;
+export type AnimatedVideoPayload = z.infer<typeof animatedVideoSchema>;

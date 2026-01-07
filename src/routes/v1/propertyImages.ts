@@ -5,7 +5,7 @@ import {
   forwardPropertyWebhook,
   uploadTourVideo,
   uploadTourVideoMiddleware,
-  createNarratedVideo,
+  createAnimatedVideo,
 } from "../../controllers/propertyImages.controller";
 
 const router = Router();
@@ -23,7 +23,7 @@ router.post("/listing-create-video", forwardPropertyWebhook);
 // Multipart/form-data: tour video with startImage and restImages
 router.post("/tour-video", uploadTourVideoMiddleware, uploadTourVideo);
 
-// JSON body: create narrated video
-router.post("/narrated-video", createNarratedVideo);
+// JSON body: create animated video
+router.post("/animated-video", createAnimatedVideo);
 
 export default router;
