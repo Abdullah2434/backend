@@ -52,6 +52,7 @@ export const propertyWebhookSchema = z.object({
   title: z.string().min(1),
   videoType: z.string().optional().default("VideoListing"),
   useMusic: z.union([z.boolean(), z.string()]).optional(),
+  preset: z.enum(["low", "medium", "high"]).optional(),
 });
 
 export type PropertyWebhookPayload = z.infer<typeof propertyWebhookSchema>;
