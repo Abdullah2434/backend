@@ -1,9 +1,9 @@
 import { Router, RequestHandler } from "express";
 import {
-  uploadPropertyImages,
-  uploadPropertyImagesMiddleware,
-  forwardPropertyWebhook,
-  uploadTourVideo,
+  analyseListingImage,
+  analyseListingImageMiddleware,
+  listingCreateVideo,
+  createTourVideo,
   uploadTourVideoMiddleware,
   createAnimatedVideo,
 } from "../../controllers/propertyImages.controller";
@@ -13,15 +13,15 @@ const router = Router();
 // Multipart/form-data: field "images" for files, "payload" (JSON string) for metadata
 router.post(
   "/analyse-listing-image",
-  uploadPropertyImagesMiddleware as unknown as RequestHandler,
-  uploadPropertyImages
+  analyseListingImageMiddleware as unknown as RequestHandler,
+  analyseListingImage
 );
 
-// JSON body: forward property data to webhook
-router.post("/listing-create-video", forwardPropertyWebhook);
+// JSON body: create listing video from property data
+router.post("/listing-create-video", listingCreateVideo);
 
 // Multipart/form-data: tour video with startImage and restImages
-router.post("/tour-video", uploadTourVideoMiddleware, uploadTourVideo);
+router.post("/tour-video", uploadTourVideoMiddleware, createTourVideo);
 
 // JSON body: create animated video
 router.post("/animated-video", createAnimatedVideo);

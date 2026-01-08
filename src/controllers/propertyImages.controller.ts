@@ -129,7 +129,7 @@ function extractTypes(
   );
 }
 
-export const uploadPropertyImagesMiddleware = upload.array("images", 20);
+export const analyseListingImageMiddleware = upload.array("images", 20);
 
 // Multer configuration for tour video (startImage + restImages)
 const tourVideoUpload = multer({
@@ -152,7 +152,7 @@ export const uploadTourVideoMiddleware = tourVideoUpload.fields([
   { name: "restImages", maxCount: 20 },
 ]);
 
-export async function uploadPropertyImages(
+export async function analyseListingImage(
   req: Request,
   res: Response
 ): Promise<Response> {
@@ -270,6 +270,8 @@ export async function uploadPropertyImages(
         bathroomCount: data.bathroomCount,
         lotSize: data.lotSize,
         preferredTone: data.preferredTone,
+        unit: data.unit,
+        masterBedroomCount: data.masterBedroomCount,
         images: uploads.map((u) => ({
           type: u.type,
           imageurl: u.imageUrl,
@@ -309,6 +311,8 @@ export async function uploadPropertyImages(
         bathroomCount: data.bathroomCount,
         lotSize: data.lotSize,
         preferredTone: data.preferredTone,
+        unit: data.unit,
+        masterBedroomCount: data.masterBedroomCount,
         images: uploads,
         webhookResponse,
       },
@@ -405,10 +409,10 @@ function normalizeArrays(body: any): any {
 }
 
 /**
- * Forward property data to webhook
- * POST /api/property-webhook
+ * Create listing video from property data
+ * POST /api/listing-create-video
  */
-export async function forwardPropertyWebhook(
+export async function listingCreateVideo(
   req: Request,
   res: Response
 ): Promise<Response> {
@@ -608,10 +612,10 @@ export async function forwardPropertyWebhook(
 }
 
 /**
- * Upload tour video images and forward to webhook
+ * Create tour video from images
  * POST /api/tour-video
  */
-export async function uploadTourVideo(
+export async function createTourVideo(
   req: Request,
   res: Response
 ): Promise<Response> {
