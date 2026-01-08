@@ -57,6 +57,31 @@ const ANIMATED_VIDEO_WEBHOOK_URL =
 // Service instance
 const videoService = new VideoService();
 
+// Voice presets for different quality levels
+export const VOICE_PRESET_LOW = {
+  stability: 0.70,
+  similarity_boost: 0.8,
+  style: 0.0,
+  use_speaker_boost: true,
+  speed: 0.85,
+} as const;
+
+export const VOICE_PRESET_MEDIUM = {
+  stability: 0.5,
+  similarity_boost: 0.75,
+  style: 0.0,
+  use_speaker_boost: true,
+  speed: 1.0,
+} as const;
+
+export const VOICE_PRESET_HIGH = {
+  stability: 0.35,
+  similarity_boost: 0.7,
+  style: 0.0,
+  use_speaker_boost: true,
+  speed: 1.1,
+} as const;
+
 /**
  * Normalize incoming types (string JSON, comma-separated, or array) to array
  */
@@ -500,17 +525,42 @@ export async function listingCreateVideo(
       });
     }
 
+    // Determine voice preset based on preset value
+    let voicePreset:
+      | typeof VOICE_PRESET_LOW
+      | typeof VOICE_PRESET_MEDIUM
+      | typeof VOICE_PRESET_HIGH
+      | undefined;
+    if (data.preset) {
+      switch (data.preset.toLowerCase()) {
+        case "low":
+          voicePreset = VOICE_PRESET_LOW;
+          break;
+        case "medium":
+          voicePreset = VOICE_PRESET_MEDIUM;
+          break;
+        case "high":
+          voicePreset = VOICE_PRESET_HIGH;
+          break;
+      }
+    }
+
     // Prepare payload with timestamp if not provided
     const payload: PropertyWebhookPayload & {
       avatarType: string;
       videoType: string;
       useMusic?: boolean | string;
+      voicePreset?:
+        | typeof VOICE_PRESET_LOW
+        | typeof VOICE_PRESET_MEDIUM
+        | typeof VOICE_PRESET_HIGH;
     } = {
       ...data,
       avatarType,
       videoType: data.videoType || "VideoListing",
       timestamp: data.timestamp || new Date().toISOString(),
       useMusic: data.useMusic,
+      ...(voicePreset ? { voicePreset } : {}),
     };
 
     // Forward to webhook asynchronously (fire and forget)
